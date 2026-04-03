@@ -652,6 +652,28 @@ function App(){
             )
         ),
 
+        // Debug panel — remove before go-live
+        React.createElement('div',{style:{background:'rgba(0,0,0,0.7)',borderBottom:'1px solid rgba(255,255,0,0.2)',padding:'0.4rem 0.75rem',fontSize:'0.52rem',fontFamily:'monospace',color:'#fef08a',lineHeight:1.6}},
+            React.createElement('div',null,'👤 logged in as: '+user+' | simDelta: '+simDelta),
+            React.createElement('div',null,'📊 myRemaining: '+myRemaining+' | '+otherUser+'Remaining: '+otherRemaining),
+            React.createElement('div',null,'🔑 subs keys: '+Object.keys(subs).join(', ')||'(none)'),
+            ...loadedKeys.map(txKey=>
+                React.createElement('div',{key:txKey},
+                    'day '+txKey+': '+
+                    (TX[txKey]||[]).map(tx=>{
+                        const sub=getSub(tx.id);
+                        const tPick=getSubValue(sub,'Tony');
+                        const nPick=getSubValue(sub,'Nugs');
+                        const myR=remainingFor(user,tx,txKey);
+                        const otherR=remainingFor(otherUser,tx,txKey);
+                        const conf=isConflict(tx.id,txKey);
+                        const uns=isUnsurePinned(tx.id,txKey);
+                        return tx.id+'[T:'+tPick+' N:'+nPick+' conf:'+conf+' uns:'+uns+' myR:'+myR+' otherR:'+otherR+']';
+                    }).join(' | ')
+                )
+            )
+        ),
+
         // Dev banner
         React.createElement('div',{className:'dev-banner'},
             React.createElement('span',{className:'dev-label'},'🛠 dev'),

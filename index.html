@@ -416,6 +416,7 @@ function App(){
     const [showMac,setShowMac]=useState(false);
     const [connected,setConnected]=useState(null); // null=connecting, true, false
     const [onlineUsers,setOnlineUsers]=useState({});
+    const [syncCount,setSyncCount]=useState(0);
     const doneMsg=useRef(DONE[Math.floor(Math.random()*DONE.length)]);
     // For dev: simulate time passing for 72h auto-confirm
     // In production this would just be Date.now()
@@ -432,6 +433,7 @@ function App(){
         const handler=subsRef.on('value', snap=>{
             const data=snap.val()||{};
             setSubs(data);
+            setSyncCount(c=>c+1);
             // If a card that was collapsed is now a conflict (other person disagreed),
             // remove it from collapsing so it resurfaces
             setCol(prev=>{
@@ -451,10 +453,15 @@ function App(){
         return ()=>subsRef.off('value',handler);
     },[]);
 
-    // Monitor Firebase connection status
+    // Monitor Firebase connection status + test write on connect
     useEffect(()=>{
         connectedRef.on('value', snap=>{
-            setConnected(snap.val()===true);
+            const isConnected=snap.val()===true;
+            setConnected(isConnected);
+            if(isConnected){
+                // Write a harmless ping — if this shows in Firebase console, writes are working
+                db.ref('_ping').set({t:Date.now(),msg:'write test ok'});
+            }
         });
         return ()=>connectedRef.off('value');
     },[]);
@@ -621,7 +628,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-                connected===null?'connecting…':connected?'synced':'offline'
+                connected===null?'connecting…':connected?'synced #'+syncCount:'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

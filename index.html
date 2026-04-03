@@ -46,14 +46,14 @@
             gap: 0.5rem; flex-wrap: wrap;
         }
         .dev-label { font-size: 0.54rem; letter-spacing: 0.15em; text-transform: uppercase; color: #92400e; }
-        .day-display { font-size: 0.66rem; color: #fbbf24; min-width: 80px; text-align: center; }
+        .day-display { font-size: 0.66rem; color: #fbbf24; min-width: 72px; text-align: center; }
         .day-btn {
             background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.2);
             border-radius: 4px; color: #d97706; font-family: 'DM Mono', monospace;
             font-size: 0.66rem; padding: 0.16rem 0.5rem; cursor: pointer; transition: background 0.15s;
         }
         .day-btn:hover { background: rgba(234,179,8,0.2); }
-        .dev-sep { color: rgba(255,255,255,0.08); font-size: 0.8rem; }
+        .dev-sep { color: rgba(255,255,255,0.1); }
         .reset-cache-btn {
             background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2);
             border-radius: 4px; color: #f87171; font-family: 'DM Mono', monospace;
@@ -92,63 +92,75 @@
         .stat-val { font-family: 'Fraunces', serif; font-size: 1.2rem; font-weight: 300; color: #f1f0ec; line-height: 1; }
         .stat-label { font-size: 0.48rem; letter-spacing: 0.12em; text-transform: uppercase; color: #4b5563; margin-top: 0.2rem; }
 
+        /* ── Unsure pin section ── */
+        .unsure-section { margin-bottom: 1.1rem; }
+        .unsure-header {
+            display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.45rem;
+        }
+        .unsure-label {
+            font-size: 0.58rem; letter-spacing: 0.18em; text-transform: uppercase;
+            color: #f59e0b; white-space: nowrap;
+        }
+        .unsure-line { flex: 1; height: 1px; background: rgba(245,158,11,0.2); }
+
         /* ── Day group ── */
-        .day-group { margin-bottom: 1.25rem; }
-        .day-group-header {
-            display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem;
-        }
-        .day-group-label {
-            font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase;
-            color: #4b5563; white-space: nowrap;
-        }
+        .day-group { margin-bottom: 1.1rem; }
+        .day-group-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.45rem; }
+        .day-group-label { font-size: 0.58rem; letter-spacing: 0.18em; text-transform: uppercase; color: #4b5563; white-space: nowrap; }
         .day-group-label.today { color: #60a5fa; }
         .day-group-line { flex: 1; height: 1px; background: rgba(255,255,255,0.05); }
-        .day-group-date { font-size: 0.54rem; color: #2d3748; white-space: nowrap; }
+        .day-group-date { font-size: 0.52rem; color: #2d3748; white-space: nowrap; }
 
         /* ── Cards ── */
         .tx-card {
             border-radius: 9px; padding: 0.7rem; margin-bottom: 0.38rem;
             border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.02);
+            overflow: hidden;
+            transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.28s, margin 0.28s, border-width 0.28s;
+            max-height: 200px;
         }
         .tx-card.conflict { border-color: rgba(239,68,68,0.38); background: rgba(239,68,68,0.04); }
+        .tx-card.unsure-card { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.03); }
         .tx-card.collapsing {
-            max-height: 0 !important; padding: 0 !important; margin: 0 !important;
-            opacity: 0; border-width: 0; overflow: hidden;
-            transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s, margin 0.28s, border-width 0.28s;
+            max-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important;
+            margin-bottom: 0 !important; opacity: 0; border-width: 0 !important;
         }
-        .tx-card:not(.collapsing) { max-height: 200px; transition: max-height 0.28s ease, opacity 0.2s ease; }
 
         .tx-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.45rem; }
-        .tx-desc { font-size: 0.75rem; color: #d1cfc9; margin-bottom: 0.2rem; }
-        .tx-meta { display: flex; gap: 0.28rem; align-items: center; }
-        .tx-date { font-size: 0.54rem; color: #374151; background: rgba(255,255,255,0.04); padding: 0.08rem 0.38rem; border-radius: 3px; }
-        .badge { font-size: 0.54rem; padding: 0.08rem 0.38rem; border-radius: 3px; }
+        .tx-desc { font-size: 0.75rem; color: #d1cfc9; }
+        .tx-meta { display: flex; gap: 0.28rem; align-items: center; margin-bottom: 0.18rem; }
+        .badge { font-size: 0.52rem; padding: 0.07rem 0.36rem; border-radius: 3px; }
         .badge-conflict { background: rgba(239,68,68,0.16); color: #f87171; }
+        .badge-unsure   { background: rgba(245,158,11,0.15); color: #fbbf24; }
         .tx-amount { font-family: 'Fraunces', serif; font-size: 0.95rem; font-weight: 300; color: #93c5fd; white-space: nowrap; padding-left: 0.4rem; }
 
-        /* Assign row — plain, no active state */
+        /* ── Assign buttons — NEVER have an active/selected visual state ── */
         .assign-row { display: flex; gap: 0.28rem; align-items: center; }
-        .assign-label { font-size: 0.5rem; color: #2d3748; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+        .assign-label { font-size: 0.5rem; color: #2d3748; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; flex-shrink: 0; }
         .tap-btn {
-            flex: 1; padding: 0.4rem; border-radius: 5px;
+            flex: 1; padding: 0.4rem 0.3rem; border-radius: 5px;
             border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.03);
-            color: #6b7280; font-family: 'DM Mono', monospace; font-size: 0.7rem;
-            cursor: pointer; transition: background 0.12s, border-color 0.12s, color 0.12s; text-align: center;
+            color: #6b7280; font-family: 'DM Mono', monospace; font-size: 0.68rem;
+            cursor: pointer; text-align: center;
+            /* NO transition — prevents any lingering active state */
         }
-        .tap-btn:hover { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.28); color: #d1d5db; }
+        .tap-btn:hover { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.25); color: #d1d5db; }
+        .tap-btn.unsure-btn {
+            color: #92400e; border-color: rgba(245,158,11,0.15); background: rgba(245,158,11,0.05);
+        }
+        .tap-btn.unsure-btn:hover { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.3); color: #fbbf24; }
 
-        /* Conflict re-assign */
+        /* Conflict re-assign — NO highlight on any button by default */
         .conflict-note { font-size: 0.58rem; color: #6b7280; margin-bottom: 0.35rem; }
-        .conflict-note span { color: #f87171; }
         .conflict-assign { display: flex; gap: 0.28rem; }
         .conflict-tap-btn {
-            flex: 1; padding: 0.4rem; border-radius: 5px;
-            border: 1px solid rgba(239,68,68,0.22); background: rgba(239,68,68,0.07);
-            color: #f87171; font-family: 'DM Mono', monospace; font-size: 0.7rem;
-            cursor: pointer; transition: background 0.12s; text-align: center;
+            flex: 1; padding: 0.4rem 0.3rem; border-radius: 5px;
+            border: 1px solid rgba(239,68,68,0.2); background: rgba(239,68,68,0.06);
+            color: #f87171; font-family: 'DM Mono', monospace; font-size: 0.68rem;
+            cursor: pointer; text-align: center;
+            /* deliberately no active/mine class */
         }
-        .conflict-tap-btn:hover { background: rgba(239,68,68,0.16); }
-        .conflict-tap-btn.mine { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.45); font-weight: 500; }
+        .conflict-tap-btn:hover { background: rgba(239,68,68,0.14); }
 
         /* Switch overlay */
         .switch-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 2rem; }
@@ -170,15 +182,16 @@
 <script>
 const { useState, useEffect, useRef } = React;
 
-const USERS       = ['Tony', 'Nugs'];
+// All possible assignees — UNSURE is a special value, not a real user
+const USERS   = ['Tony', 'Nugs'];
+const ALL_OPTS = ['Tony', 'Nugs', 'Unsure'];
 const STORAGE_KEY = 'cc_submissions';
 const USER_KEY    = 'cc_current_user';
 
 // ── Transaction data per simulated day offset ─────────────
-// Key = day offset from real today (0=today, -1=yesterday, etc.)
-// Each tx has a unique id scoped to that day.
+// Reduced to today + 2 past days for testing
 const TX_BY_DAYOFF = {
-    '0':  [
+    '0': [
         { id: 'd0-0', amount: 75.00,   description: 'VELOCITY REWARDS FEE' },
         { id: 'd0-1', amount: 295.00,  description: 'CARD FEE' },
         { id: 'd0-2', amount: 32.21,   description: 'ALIEXPRESS North Sydney' },
@@ -189,59 +202,36 @@ const TX_BY_DAYOFF = {
         { id: 'd1-0', amount: 1468.00, description: 'FOREIGN FEE AUD 8.01' },
         { id: 'd1-1', amount: 275.05,  description: 'KICKSTARTER.COM Tsimshatsui' },
         { id: 'd1-2', amount: 54.40,   description: 'SPOTIFY PREMIUM' },
-        { id: 'd1-3', amount: 11.00,   description: 'GOOGLE ONE Storage' },
     ],
     '-2': [
         { id: 'd2-0', amount: 98.00,   description: 'GU HEALTH REWARDS Camberwell' },
         { id: 'd2-1', amount: 89.50,   description: 'COLES Footscray' },
-        { id: 'd2-2', amount: 45.00,   description: 'BUNNINGS Warehouse' },
-        { id: 'd2-3', amount: 22.30,   description: 'ALDI Stores West' },
     ],
-    '-3': [
-        { id: 'd3-0', amount: 210.00,  description: 'ELECTRICITY BILL AGL' },
-        { id: 'd3-1', amount: 9.99,    description: 'NETFLIX.COM' },
-        { id: 'd3-2', amount: 65.00,   description: 'INTERNET BILL Aussie BB' },
-        { id: 'd3-3', amount: 42.80,   description: 'SHELL COLES EXPRESS Footscray' },
-    ],
-    '-4': [
-        { id: 'd4-0', amount: 330.00,  description: 'QANTAS AIRWAYS Sydney' },
-        { id: 'd4-1', amount: 15.50,   description: 'PARKING CITY OF MELB' },
-        { id: 'd4-2', amount: 88.00,   description: 'DAN MURPHYS Yarraville' },
-        { id: 'd4-3', amount: 6.50,    description: 'MYKI TOP UP' },
-    ],
-    '-5': [
-        { id: 'd5-0', amount: 124.99,  description: 'AMAZON AU Sydney' },
-        { id: 'd5-1', amount: 37.40,   description: 'WOOLWORTHS Sunshine' },
-        { id: 'd5-2', amount: 200.00,  description: 'TRANSFER WESTPAC' },
-    ],
-    '1':  [
+    '1': [
         { id: 'df1-0', amount: 55.00,  description: 'MEDICARE LEVY PAYMENT' },
         { id: 'df1-1', amount: 149.00, description: 'OFFICEWORKS Footscray' },
         { id: 'df1-2', amount: 28.90,  description: 'THAI ORCHID Restaurant' },
     ],
-    '2':  [
+    '2': [
         { id: 'df2-0', amount: 499.00, description: 'JB HIFI Melbourne CBD' },
         { id: 'df2-1', amount: 19.99,  description: 'ADOBE CREATIVE CLOUD' },
-        { id: 'df2-2', amount: 72.00,  description: 'RACV MEMBERSHIP' },
     ],
 };
 
-function isoDate(offsetFromToday) {
+function isoDate(offset) {
     const d = new Date();
-    d.setDate(d.getDate() + offsetFromToday);
+    d.setDate(d.getDate() + offset);
     return d.toISOString().slice(0, 10);
 }
 
-// Day label relative to simulated today
 function dayLabel(txDayOff, simDelta) {
-    const rel = txDayOff - simDelta; // 0 = sim-today, -1 = sim-yesterday, etc.
-    if (rel === 0) return 'today';
+    const rel = txDayOff - simDelta;
+    if (rel === 0)  return 'today';
     if (rel === -1) return 'yesterday';
     return Math.abs(rel) + ' days ago';
 }
 
-// Conflict is only VISIBLE if we've advanced past the tx's day (rel < 0)
-// i.e. txDayOff < simDelta  →  transaction is in the past relative to sim-today
+// Conflict visible only when we've advanced past the tx's day
 function conflictVisible(txDayOff, simDelta) {
     return txDayOff < simDelta;
 }
@@ -250,8 +240,14 @@ const DONE_MSGS = [
     { emoji: '🎉', title: "That's all for today!", sub: 'Nothing left to assign. Nice work.' },
     { emoji: '✅', title: 'All sorted!',            sub: 'You two are on top of it.' },
     { emoji: '🙌', title: 'Clean slate!',           sub: 'Every transaction is assigned.' },
-    { emoji: '💪', title: 'Done and dusted!',       sub: 'Nothing left. Go enjoy your day.' },
+    { emoji: '💪', title: 'Done and dusted!',       sub: 'Go enjoy your day.' },
 ];
+
+// Load submissions fresh from localStorage
+function loadSubmissions() {
+    try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : {}; }
+    catch(e) { return {}; }
+}
 
 // ── Landing ──────────────────────────────────────────────
 function LandingPage({ onSelect }) {
@@ -288,12 +284,75 @@ function SwitchOverlay({ currentUser, onSelect, onClose }) {
     );
 }
 
+// ── Transaction Card ──────────────────────────────────────
+// Isolated component so it has its own state and never inherits stale button state
+function TxCard({ tx, dayOff, simDelta, currentUser, submissions, onAssign, collapsing }) {
+    const conflict   = conflictVisible(dayOff, simDelta) && (() => {
+        const sub = submissions[tx.id] || {};
+        const vals = USERS.map(u => sub[u]).filter(v => v != null && v !== 'Unsure');
+        return vals.length > 1 && new Set(vals).size > 1;
+    })();
+    const mySub      = (submissions[tx.id] || {})[currentUser] ?? null;
+    const anyUnsure  = USERS.some(u => (submissions[tx.id] || {})[u] === 'Unsure');
+    const isCollapsing = collapsing.has(tx.id);
+
+    const cardClass = ['tx-card',
+        conflict   ? 'conflict'    : '',
+        anyUnsure  ? 'unsure-card' : '',
+        isCollapsing ? 'collapsing' : '',
+    ].filter(Boolean).join(' ');
+
+    return React.createElement('div', { className: cardClass },
+        React.createElement('div', { className: 'tx-top' },
+            React.createElement('div', null,
+                React.createElement('div', { className: 'tx-meta' },
+                    conflict  && React.createElement('span', { className: 'badge badge-conflict' }, '⚠ conflict'),
+                    anyUnsure && React.createElement('span', { className: 'badge badge-unsure'   }, '? unsure'),
+                ),
+                React.createElement('p', { className: 'tx-desc' }, tx.description)
+            ),
+            React.createElement('span', { className: 'tx-amount' }, '$' + tx.amount.toFixed(2))
+        ),
+
+        conflict
+            // Conflict UI: no highlight on any button
+            ? React.createElement('div', null,
+                React.createElement('p', { className: 'conflict-note' }, 'Tap to update your pick'),
+                React.createElement('div', { className: 'conflict-assign' },
+                    // Show all options including Unsure for conflict resolution
+                    ALL_OPTS.map(opt =>
+                        React.createElement('button', {
+                            key: opt,
+                            className: 'conflict-tap-btn',
+                            onClick: () => onAssign(tx.id, dayOff, opt)
+                        }, opt)
+                    )
+                )
+              )
+            // Normal assign row: plain buttons, no active state ever
+            : React.createElement('div', { className: 'assign-row' },
+                React.createElement('span', { className: 'assign-label' }, 'assign'),
+                USERS.map(opt =>
+                    React.createElement('button', {
+                        key: opt,
+                        className: 'tap-btn',
+                        onClick: () => onAssign(tx.id, dayOff, opt)
+                    }, opt)
+                ),
+                React.createElement('button', {
+                    className: 'tap-btn unsure-btn',
+                    onClick: () => onAssign(tx.id, dayOff, 'Unsure')
+                }, '?')
+              )
+    );
+}
+
 // ── Main App ──────────────────────────────────────────────
 function CreditCardApp() {
     const [currentUser, setCurrentUser] = useState(null);
     const [submissions, setSubmissions]  = useState({});
     const [showSwitch, setShowSwitch]    = useState(false);
-    const [simDelta, setSimDelta]        = useState(0); // simulated "today" offset from real today
+    const [simDelta, setSimDelta]        = useState(0);
     const [collapsing, setCollapsing]    = useState(new Set());
     const [undoStack, setUndoStack]      = useState([]);
     const doneMsg = useRef(DONE_MSGS[Math.floor(Math.random() * DONE_MSGS.length)]);
@@ -301,17 +360,26 @@ function CreditCardApp() {
     useEffect(() => {
         const u = localStorage.getItem(USER_KEY);
         if (u && USERS.includes(u)) setCurrentUser(u);
-        try { const s = localStorage.getItem(STORAGE_KEY); if (s) setSubmissions(JSON.parse(s)); } catch(e){}
+        setSubmissions(loadSubmissions());
     }, []);
 
-    useEffect(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions));
-    }, [submissions]);
+    const saveSubmissions = (subs) => {
+        setSubmissions(subs);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(subs));
+    };
 
-    const selectUser = u => { setCurrentUser(u); localStorage.setItem(USER_KEY, u); };
+    // Switch user: reload submissions fresh from storage so other user's picks show immediately
+    const selectUser = u => {
+        setCurrentUser(u);
+        localStorage.setItem(USER_KEY, u);
+        setSubmissions(loadSubmissions()); // fresh reload
+        setCollapsing(new Set());
+        setUndoStack([]);
+        setShowSwitch(false);
+    };
 
     const resetCache = () => {
-        if (!confirm('Reset all data? This clears all assignments.')) return;
+        if (!confirm('Reset all data? This clears all assignments and logs you out.')) return;
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(USER_KEY);
         setSubmissions({});
@@ -320,32 +388,29 @@ function CreditCardApp() {
         setCurrentUser(null);
     };
 
-    // Build the set of day offsets to show: simDelta (today) + any past days that have
-    // unresolved transactions. We show from simDelta down to simDelta-5 max.
-    const MIN_DAY = simDelta - 5;
+    // Day offsets to consider: simDelta down to simDelta-2
+    const MIN_DAY = simDelta - 2;
     const allDayOffsets = [];
     for (let d = simDelta; d >= MIN_DAY; d--) {
         if (TX_BY_DAYOFF[String(d)]) allDayOffsets.push(d);
     }
 
-    // Helpers
-    const getSub = txId => submissions[txId] || {};
-    const myPick = txId => getSub(txId)[currentUser] ?? null;
+    const getSub   = txId => submissions[txId] || {};
+    const myPick   = txId => getSub(txId)[currentUser] ?? null;
 
     const isConflict = (txId, txDayOff) => {
         if (!conflictVisible(txDayOff, simDelta)) return false;
         const sub = getSub(txId);
-        const vals = USERS.map(u => sub[u]).filter(v => v != null);
+        const vals = USERS.map(u => sub[u]).filter(v => v != null && v !== 'Unsure');
         return vals.length > 1 && new Set(vals).size > 1;
     };
 
-    // A card should be visible if:
-    //  - it's a conflict (visible next day), OR
-    //  - current user hasn't picked yet
-    // AND it's not mid-collapse
-    const isVisible = (tx, txDayOff) => {
-        if (collapsing.has(tx.id)) return true; // still animating out
-        return isConflict(tx.id, txDayOff) || myPick(tx.id) === null;
+    const isUnsured = txId => USERS.some(u => getSub(txId)[u] === 'Unsure');
+
+    // Card is visible if: user hasn't picked, OR it's a conflict, OR someone said Unsure
+    const isVisible = (tx, dayOff) => {
+        if (collapsing.has(tx.id)) return true; // animating out
+        return isConflict(tx.id, dayOff) || isUnsured(tx.id) || myPick(tx.id) === null;
     };
 
     const assign = (txId, txDayOff, assignTo) => {
@@ -356,17 +421,21 @@ function CreditCardApp() {
             ...submissions,
             [txId]: { ...submissions[txId], [currentUser]: assignTo }
         };
-        setSubmissions(newSubs);
+        saveSubmissions(newSubs);
 
-        // Collapse after a beat — but only if no conflict
-        setTimeout(() => {
-            const sub = newSubs[txId] || {};
-            const vals = USERS.map(u => sub[u]).filter(v => v != null);
-            const conflict = conflictVisible(txDayOff, simDelta) && vals.length > 1 && new Set(vals).size > 1;
-            if (!conflict) {
-                setCollapsing(c => new Set([...c, txId]));
-            }
-        }, 250);
+        // Collapse after brief delay — unless it's Unsure (stays pinned) or conflict
+        if (assignTo !== 'Unsure') {
+            setTimeout(() => {
+                // Re-check conflict with new state
+                const sub = newSubs[txId] || {};
+                const vals = USERS.map(u => sub[u]).filter(v => v != null && v !== 'Unsure');
+                const conflict = conflictVisible(txDayOff, simDelta) && vals.length > 1 && new Set(vals).size > 1;
+                const unsured = USERS.some(u => sub[u] === 'Unsure');
+                if (!conflict && !unsured) {
+                    setCollapsing(c => new Set([...c, txId]));
+                }
+            }, 250);
+        }
     };
 
     const undo = () => {
@@ -374,38 +443,47 @@ function CreditCardApp() {
         const last = undoStack[undoStack.length - 1];
         setUndoStack(s => s.slice(0, -1));
         setCollapsing(c => { const n = new Set(c); n.delete(last.txId); return n; });
-        setSubmissions(prev => ({
-            ...prev,
-            [last.txId]: { ...prev[last.txId], [last.user]: last.prev }
-        }));
+        const newSubs = {
+            ...submissions,
+            [last.txId]: { ...submissions[last.txId], [last.user]: last.prev }
+        };
+        saveSubmissions(newSubs);
     };
 
-    // Tallies across ALL days
+    // Tallies across all days
     const tallies = Object.fromEntries(USERS.map(u => [u, 0]));
-    Object.entries(TX_BY_DAYOFF).forEach(([dayOff, txList]) => {
+    Object.entries(TX_BY_DAYOFF).forEach(([, txList]) => {
         txList.forEach(tx => {
             const sub = getSub(tx.id);
-            const vals = USERS.map(u => sub[u]).filter(v => v != null);
-            const agreed = vals.length === USERS.length && new Set(vals).size === 1;
-            if (agreed) {
+            const vals = USERS.map(u => sub[u]).filter(v => v != null && v !== 'Unsure');
+            if (vals.length === USERS.length && new Set(vals).size === 1) {
                 const to = sub[USERS[0]];
                 if (to in tallies) tallies[to] += tx.amount;
             }
         });
     });
 
-    if (!currentUser) return React.createElement(LandingPage, { onSelect: selectUser });
+    if (!currentUser) return React.createElement(LandingPage, { onSelect: u => { setCurrentUser(u); localStorage.setItem(USER_KEY, u); setSubmissions(loadSubmissions()); } });
 
-    // Build visible groups
+    // Build groups — only include groups that have visible non-collapsing cards
     const groups = allDayOffsets.map(dayOff => {
         const raw = TX_BY_DAYOFF[String(dayOff)] || [];
         const txList = raw.map(t => ({ ...t, dayOff, date: isoDate(dayOff) }));
         const visible = txList.filter(tx => isVisible(tx, dayOff));
-        return { dayOff, txList, visible };
-    }).filter(g => g.visible.length > 0 || g.dayOff === simDelta);
+        const activeVisible = visible.filter(tx => !collapsing.has(tx.id));
+        return { dayOff, txList, visible, activeVisible };
+    }).filter(g => g.activeVisible.length > 0);
 
-    // Global pending/conflict counts (across all days)
-    let totalPending = 0, totalConflicts = 0, totalTx = 0;
+    // Unsure-pinned cards across all days — float to top
+    const unsurePinned = allDayOffsets.flatMap(dayOff => {
+        const raw = TX_BY_DAYOFF[String(dayOff)] || [];
+        return raw
+            .filter(tx => isUnsured(tx.id) && !collapsing.has(tx.id))
+            .map(t => ({ ...t, dayOff, date: isoDate(dayOff) }));
+    });
+
+    // Stats across all visible days
+    let totalTx = 0, totalPending = 0, totalConflicts = 0;
     allDayOffsets.forEach(dayOff => {
         const txList = TX_BY_DAYOFF[String(dayOff)] || [];
         totalTx += txList.length;
@@ -415,14 +493,16 @@ function CreditCardApp() {
         });
     });
 
-    // All done = nothing visible anywhere (ignoring collapsing)
-    const anyVisible = groups.some(g =>
-        g.visible.some(tx => !collapsing.has(tx.id))
-    );
+    const anyVisible = groups.some(g => g.activeVisible.length > 0) || unsurePinned.length > 0;
 
     const simLabel = simDelta === 0 ? 'today'
         : simDelta > 0 ? `+${simDelta}d`
         : `${Math.abs(simDelta)}d ago`;
+
+    const stepDay = delta => {
+        setSimDelta(d => d + delta);
+        setCollapsing(new Set());
+    };
 
     return React.createElement('div', null,
 
@@ -430,21 +510,21 @@ function CreditCardApp() {
             currentUser, onSelect: selectUser, onClose: () => setShowSwitch(false)
         }),
 
-        // ── Dev banner ──
+        // Dev banner
         React.createElement('div', { className: 'dev-banner' },
             React.createElement('span', { className: 'dev-label' }, '🛠 dev'),
-            React.createElement('button', { className: 'day-btn', onClick: () => { setSimDelta(d => d - 1); setCollapsing(new Set()); } }, '◀ prev'),
+            React.createElement('button', { className: 'day-btn', onClick: () => stepDay(-1) }, '◀ prev'),
             React.createElement('span', { className: 'day-display' }, simLabel),
-            React.createElement('button', { className: 'day-btn', onClick: () => { setSimDelta(d => d + 1); setCollapsing(new Set()); } }, 'next ▶'),
-            React.createElement('button', { className: 'day-btn', style:{color:'#6b7280',borderColor:'rgba(107,114,128,0.2)',background:'transparent'}, onClick: () => { setSimDelta(0); setCollapsing(new Set()); } }, 'reset day'),
+            React.createElement('button', { className: 'day-btn', onClick: () => stepDay(1) }, 'next ▶'),
+            React.createElement('button', { className: 'day-btn', style:{color:'#6b7280',borderColor:'rgba(107,114,128,0.2)',background:'transparent'}, onClick: () => { setSimDelta(0); setCollapsing(new Set()); } }, 'reset'),
             React.createElement('span', { className: 'dev-sep' }, '|'),
             React.createElement('button', { className: 'reset-cache-btn', onClick: resetCache }, '🗑 clear data'),
         ),
 
-        // ── Tally bar ──
+        // Tally bar
         React.createElement('div', { className: 'tally-bar' },
             USERS.flatMap((u, i) => [
-                i > 0 ? React.createElement('div', { key: 'sep'+i, style:{width:'1px',background:'rgba(255,255,255,0.05)'} }) : null,
+                i > 0 ? React.createElement('div', { key:'sep'+i, style:{width:'1px',background:'rgba(255,255,255,0.05)'} }) : null,
                 React.createElement('div', { key: u, className: 'tally-item' },
                     React.createElement('div', { className: 'tally-name' }, u),
                     React.createElement('div', { className: 'tally-amount' }, '$' + (tallies[u]||0).toFixed(2))
@@ -452,7 +532,6 @@ function CreditCardApp() {
             ]).filter(Boolean)
         ),
 
-        // ── Main content ──
         React.createElement('div', { className: 'app' },
 
             React.createElement('div', { className: 'app-header' },
@@ -476,7 +555,6 @@ function CreditCardApp() {
                 ))
             ),
 
-            // All done
             !anyVisible
                 ? React.createElement('div', { className: 'all-done' },
                     React.createElement('span', { className: 'all-done-emoji' }, doneMsg.current.emoji),
@@ -484,76 +562,47 @@ function CreditCardApp() {
                     React.createElement('p', { className: 'all-done-sub' }, doneMsg.current.sub)
                   )
                 : React.createElement('div', null,
-                    groups.map(({ dayOff, txList, visible }) => {
-                        const label = dayLabel(dayOff, simDelta);
+
+                    // ── Unsure pinned section ──
+                    unsurePinned.length > 0 && React.createElement('div', { className: 'unsure-section' },
+                        React.createElement('div', { className: 'unsure-header' },
+                            React.createElement('span', { className: 'unsure-label' }, '📌 needs review'),
+                            React.createElement('div', { className: 'unsure-line' }),
+                        ),
+                        unsurePinned.map(tx =>
+                            React.createElement(TxCard, {
+                                key: tx.id + '-unsure',
+                                tx, dayOff: tx.dayOff, simDelta, currentUser,
+                                submissions, onAssign: assign, collapsing
+                            })
+                        )
+                    ),
+
+                    // ── Day groups ──
+                    groups.map(({ dayOff, visible }) => {
+                        const label   = dayLabel(dayOff, simDelta);
                         const isToday = dayOff === simDelta;
-                        const date = isoDate(dayOff);
+                        const date    = isoDate(dayOff);
+
+                        // Exclude unsure-pinned cards from the group (they're shown above)
+                        const groupCards = visible.filter(tx => !isUnsured(tx.id));
+                        if (groupCards.filter(tx => !collapsing.has(tx.id)).length === 0) return null;
 
                         return React.createElement('div', { key: dayOff, className: 'day-group' },
-                            // Group header
                             React.createElement('div', { className: 'day-group-header' },
                                 React.createElement('span', { className: 'day-group-label' + (isToday ? ' today' : '') }, label),
                                 React.createElement('div', { className: 'day-group-line' }),
                                 React.createElement('span', { className: 'day-group-date' }, date)
                             ),
-
-                            // Cards
-                            visible.map(tx => {
-                                const conflict = isConflict(tx.id, dayOff);
-                                const mySub = myPick(tx.id);
-                                const isCollapsing = collapsing.has(tx.id);
-
-                                return React.createElement('div', {
+                            groupCards.map(tx =>
+                                React.createElement(TxCard, {
                                     key: tx.id,
-                                    className: 'tx-card' + (conflict ? ' conflict' : '') + (isCollapsing ? ' collapsing' : ''),
-                                },
-                                    React.createElement('div', { className: 'tx-top' },
-                                        React.createElement('div', null,
-                                            React.createElement('div', { className: 'tx-meta', style:{marginBottom:'0.18rem'} },
-                                                conflict && React.createElement('span', { className: 'badge badge-conflict' }, '⚠ conflict'),
-                                            ),
-                                            React.createElement('p', { className: 'tx-desc' }, tx.description)
-                                        ),
-                                        React.createElement('span', { className: 'tx-amount' }, '$' + tx.amount.toFixed(2))
-                                    ),
-
-                                    conflict
-                                        ? React.createElement('div', null,
-                                            React.createElement('p', { className: 'conflict-note' },
-                                                'Your pick: ', React.createElement('span', null, mySub || '—'),
-                                                ' — tap to change'
-                                            ),
-                                            React.createElement('div', { className: 'conflict-assign' },
-                                                ...USERS.map(opt =>
-                                                    React.createElement('button', {
-                                                        key: opt,
-                                                        className: 'conflict-tap-btn' + (mySub === opt ? ' mine' : ''),
-                                                        onClick: () => assign(tx.id, dayOff, opt)
-                                                    }, opt)
-                                                )
-                                            )
-                                          )
-                                        : React.createElement('div', { className: 'assign-row' },
-                                            React.createElement('span', { className: 'assign-label' }, 'assign'),
-                                            ...USERS.map(opt =>
-                                                // No active/highlight class — plain buttons every time
-                                                React.createElement('button', {
-                                                    key: opt,
-                                                    className: 'tap-btn',
-                                                    onClick: () => assign(tx.id, dayOff, opt)
-                                                }, opt)
-                                            )
-                                          )
-                                );
-                            }),
-
-                            // If today's group has nothing left
-                            isToday && visible.filter(tx => !collapsing.has(tx.id)).length === 0 &&
-                                React.createElement('p', {
-                                    style: { fontSize:'0.65rem', color:'#374151', textAlign:'center', padding:'0.75rem 0' }
-                                }, 'All clear for today ✓')
+                                    tx, dayOff, simDelta, currentUser,
+                                    submissions, onAssign: assign, collapsing
+                                })
+                            )
                         );
-                    })
+                    }).filter(Boolean)
                   )
         )
     );

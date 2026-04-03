@@ -9,39 +9,41 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,300;9..144,600&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #0a0d12; color: #e8e6e1; font-family: 'DM Mono', monospace; min-height: 100vh; -webkit-tap-highlight-color: transparent; }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body { background:#0a0d12; color:#e8e6e1; font-family:'DM Mono',monospace; min-height:100vh; -webkit-tap-highlight-color:transparent; }
 
-        /* ── Landing ── */
+        /* Landing */
         .landing { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2rem;
-            background: radial-gradient(ellipse at 30% 20%, rgba(59,130,246,0.08) 0%, transparent 60%), radial-gradient(ellipse at 80% 80%, rgba(99,102,241,0.06) 0%, transparent 60%), #0a0d12; }
+            background:radial-gradient(ellipse at 30% 20%,rgba(59,130,246,0.08) 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(99,102,241,0.06) 0%,transparent 60%),#0a0d12; }
         .landing-card { width:100%; max-width:360px; text-align:center; }
         .landing-eyebrow { font-size:0.65rem; letter-spacing:0.25em; text-transform:uppercase; color:#4b5563; margin-bottom:1.5rem; }
         .landing-title { font-family:'Fraunces',serif; font-size:2.4rem; font-weight:300; color:#f1f0ec; line-height:1.15; margin-bottom:0.5rem; }
         .landing-sub { font-size:0.72rem; color:#4b5563; margin-bottom:3rem; letter-spacing:0.05em; }
         .who-label { font-size:0.65rem; letter-spacing:0.2em; text-transform:uppercase; color:#6b7280; margin-bottom:1rem; }
-        .user-btn { display:block; width:100%; padding:1rem 1.5rem; margin-bottom:0.75rem; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; color:#e8e6e1; font-family:'Fraunces',serif; font-size:1.4rem; font-weight:300; cursor:pointer; transition:all 0.2s ease; text-align:left; }
+        .user-btn { display:block; width:100%; padding:1rem 1.5rem; margin-bottom:0.75rem; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; color:#e8e6e1; font-family:'Fraunces',serif; font-size:1.4rem; font-weight:300; cursor:pointer; transition:all 0.2s; text-align:left; -webkit-tap-highlight-color:transparent; }
         .user-btn:hover { background:rgba(59,130,246,0.1); border-color:rgba(59,130,246,0.3); transform:translateX(4px); }
         .user-initial { display:inline-block; width:32px; height:32px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.25); border-radius:50%; text-align:center; line-height:32px; font-size:0.9rem; margin-right:0.75rem; vertical-align:middle; font-family:'DM Mono',monospace; color:#60a5fa; }
         .landing-footer { margin-top:3rem; font-size:0.6rem; color:#374151; letter-spacing:0.1em; }
 
-        /* ── Dev banner ── */
+        /* Dev banner */
         .dev-banner { background:rgba(234,179,8,0.06); border-bottom:1px solid rgba(234,179,8,0.15); padding:0.4rem 0.75rem; display:flex; align-items:center; justify-content:center; gap:0.5rem; flex-wrap:wrap; }
         .dev-label { font-size:0.54rem; letter-spacing:0.15em; text-transform:uppercase; color:#92400e; }
-        .day-display { font-size:0.66rem; color:#fbbf24; min-width:72px; text-align:center; }
+        .day-display { font-size:0.66rem; color:#fbbf24; min-width:60px; text-align:center; }
         .day-btn { background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.2); border-radius:4px; color:#d97706; font-family:'DM Mono',monospace; font-size:0.66rem; padding:0.16rem 0.5rem; cursor:pointer; -webkit-tap-highlight-color:transparent; user-select:none; }
-        .reset-cache-btn { background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:4px; color:#f87171; font-family:'DM Mono',monospace; font-size:0.66rem; padding:0.16rem 0.5rem; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+        .reset-btn { background:transparent; border:1px solid rgba(107,114,128,0.2); border-radius:4px; color:#6b7280; font-family:'DM Mono',monospace; font-size:0.66rem; padding:0.16rem 0.5rem; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+        .clear-btn { background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:4px; color:#f87171; font-family:'DM Mono',monospace; font-size:0.66rem; padding:0.16rem 0.5rem; cursor:pointer; -webkit-tap-highlight-color:transparent; }
         .dev-sep { color:rgba(255,255,255,0.1); }
 
-        /* ── Tally bar ── */
-        .tally-bar { background:rgba(255,255,255,0.015); border-bottom:1px solid rgba(255,255,255,0.05); display:flex; overflow-x:auto; }
-        .tally-item { flex:1; min-width:80px; display:flex; flex-direction:column; align-items:center; padding:0.5rem; border-right:1px solid rgba(255,255,255,0.05); }
+        /* Tally bar */
+        .tally-bar { background:rgba(255,255,255,0.015); border-bottom:1px solid rgba(255,255,255,0.05); display:flex; }
+        .tally-item { flex:1; display:flex; flex-direction:column; align-items:center; padding:0.5rem; border-right:1px solid rgba(255,255,255,0.05); }
         .tally-item:last-child { border-right:none; }
-        .tally-name { font-size:0.5rem; letter-spacing:0.18em; text-transform:uppercase; color:#4b5563; margin-bottom:0.15rem; }
+        .tally-name { font-size:0.52rem; letter-spacing:0.18em; text-transform:uppercase; color:#4b5563; margin-bottom:0.15rem; }
         .tally-amount { font-family:'Fraunces',serif; font-size:0.95rem; font-weight:300; color:#93c5fd; }
-        .tally-note { font-size:0.48rem; color:#374151; margin-top:0.1rem; letter-spacing:0.05em; }
+        .tally-amount.shared { color:#a78bfa; }
+        .tally-note { font-size:0.44rem; color:#374151; margin-top:0.08rem; }
 
-        /* ── App ── */
+        /* App */
         .app { max-width:480px; margin:0 auto; padding:1rem 1rem 5rem; }
         .app-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.9rem; padding-bottom:0.8rem; border-bottom:1px solid rgba(255,255,255,0.06); }
         .app-title { font-family:'Fraunces',serif; font-size:1.4rem; font-weight:300; color:#f1f0ec; }
@@ -59,58 +61,56 @@
         /* Day group */
         .day-group { margin-bottom:1.1rem; }
         .day-group-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.45rem; }
-        .day-label-text { font-size:0.58rem; letter-spacing:0.18em; text-transform:uppercase; color:#4b5563; white-space:nowrap; }
-        .day-label-text.is-today { color:#60a5fa; }
-        .attention-dot { display:inline-block; width:5px; height:5px; border-radius:50%; background:#f59e0b; margin-right:0.3rem; flex-shrink:0; }
-        .day-group-line { flex:1; height:1px; background:rgba(255,255,255,0.05); }
-        .day-group-line.attention { background:rgba(245,158,11,0.18); }
-        .day-group-date { font-size:0.5rem; color:#2d3748; white-space:nowrap; }
+        .day-label-pill { font-size:0.56rem; letter-spacing:0.15em; text-transform:uppercase; white-space:nowrap; }
+        .day-label-pill.today { color:#60a5fa; }
+        .day-label-pill.past { color:#f59e0b; }
+        .attention-dot { width:5px; height:5px; border-radius:50%; background:#f59e0b; flex-shrink:0; }
+        .day-line { flex:1; height:1px; background:rgba(255,255,255,0.05); }
+        .day-line.past { background:rgba(245,158,11,0.2); }
+        .day-date { font-size:0.5rem; white-space:nowrap; color:#2d3748; }
+        .day-date.past { color:rgba(245,158,11,0.45); }
+        .attention-tag { font-size:0.46rem; color:rgba(245,158,11,0.6); letter-spacing:0.08em; text-transform:uppercase; }
 
         /* Cards */
-        .tx-card { border-radius:9px; padding:0.7rem; margin-bottom:0.38rem; border:1px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.02); overflow:hidden; transition:max-height 0.28s ease, opacity 0.22s ease, padding 0.28s, margin 0.28s, border-width 0.28s; max-height:220px; }
-        .tx-card.conflict { border-color:rgba(239,68,68,0.38); background:rgba(239,68,68,0.04); }
+        .tx-card { border-radius:9px; padding:0.7rem; margin-bottom:0.38rem; border:1px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.02); overflow:hidden; transition:max-height 0.28s ease,opacity 0.22s ease,padding 0.28s,margin 0.28s,border-width 0.28s; max-height:240px; }
+        .tx-card.conflict { border-color:rgba(239,68,68,0.38); background:rgba(239,68,68,0.035); }
         .tx-card.collapsing { max-height:0!important; padding-top:0!important; padding-bottom:0!important; margin-bottom:0!important; opacity:0; border-width:0!important; }
 
         .tx-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.45rem; }
         .tx-desc { font-size:0.75rem; color:#d1cfc9; }
         .tx-meta { display:flex; gap:0.28rem; align-items:center; margin-bottom:0.18rem; }
-        .badge { font-size:0.52rem; padding:0.07rem 0.36rem; border-radius:3px; }
+        .badge { font-size:0.5rem; padding:0.06rem 0.35rem; border-radius:3px; }
         .badge-conflict { background:rgba(239,68,68,0.16); color:#f87171; }
+        .badge-unsure { background:rgba(245,158,11,0.13); color:#fbbf24; }
         .tx-amount { font-family:'Fraunces',serif; font-size:0.95rem; font-weight:300; color:#93c5fd; white-space:nowrap; padding-left:0.4rem; }
 
-        /* ── Tap buttons — NO hover, NO active, NO sticky states ── */
+        /* Assign buttons - NO hover, NO sticky state, pointer events only */
         .assign-row { display:flex; gap:0.28rem; align-items:center; }
-        .assign-label { font-size:0.5rem; color:#2d3748; letter-spacing:0.1em; text-transform:uppercase; white-space:nowrap; flex-shrink:0; }
-
-        /* Base tap button — completely stripped of any state styles */
+        .assign-label { font-size:0.48rem; color:#2d3748; letter-spacing:0.1em; text-transform:uppercase; white-space:nowrap; flex-shrink:0; }
         .tap-btn {
             flex:1; padding:0.4rem 0.25rem; border-radius:5px;
             border:1px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.03);
-            color:#6b7280; font-family:'DM Mono',monospace; font-size:0.66rem;
-            cursor:pointer; text-align:center;
-            /* Kill ALL platform highlighting */
-            -webkit-tap-highlight-color: transparent;
-            -webkit-touch-callout: none;
-            user-select: none;
-            touch-action: manipulation;
-            outline: none;
-        }
-        /* Flash class added/removed by JS only — auto-removed after 150ms */
-        .tap-btn.flash { background:rgba(59,130,246,0.18); border-color:rgba(59,130,246,0.35); color:#93c5fd; }
-        .tap-btn.unsure-btn { color:#78716c; border-color:rgba(245,158,11,0.12); background:rgba(245,158,11,0.04); font-size:0.62rem; }
-        .tap-btn.unsure-btn.flash { background:rgba(245,158,11,0.15); border-color:rgba(245,158,11,0.3); color:#fbbf24; }
-
-        .conflict-assign { display:flex; gap:0.28rem; flex-wrap:wrap; }
-        .conflict-note { font-size:0.56rem; color:#6b7280; margin-bottom:0.32rem; }
-        .conflict-tap-btn {
-            flex:1; min-width:60px; padding:0.4rem 0.25rem; border-radius:5px;
-            border:1px solid rgba(239,68,68,0.2); background:rgba(239,68,68,0.06);
-            color:#f87171; font-family:'DM Mono',monospace; font-size:0.66rem;
+            color:#6b7280; font-family:'DM Mono',monospace; font-size:0.64rem;
             cursor:pointer; text-align:center;
             -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none;
             user-select:none; touch-action:manipulation; outline:none;
         }
-        .conflict-tap-btn.flash { background:rgba(239,68,68,0.2); }
+        .tap-btn.mac-btn { color:#7c6f9e; border-color:rgba(167,139,250,0.12); background:rgba(167,139,250,0.04); font-size:0.6rem; }
+        .tap-btn.unsure-btn { color:#6b6047; border-color:rgba(245,158,11,0.1); background:rgba(245,158,11,0.03); font-size:0.6rem; }
+        .tap-btn.flash { background:rgba(59,130,246,0.18)!important; border-color:rgba(59,130,246,0.4)!important; color:#93c5fd!important; }
+        .tap-btn.mac-btn.flash { background:rgba(167,139,250,0.2)!important; border-color:rgba(167,139,250,0.4)!important; color:#c4b5fd!important; }
+        .tap-btn.unsure-btn.flash { background:rgba(245,158,11,0.15)!important; border-color:rgba(245,158,11,0.3)!important; color:#fbbf24!important; }
+
+        .conflict-note { font-size:0.54rem; color:#6b7280; margin-bottom:0.32rem; }
+        .conflict-row { display:flex; gap:0.28rem; flex-wrap:wrap; }
+        .conflict-tap-btn {
+            flex:1; min-width:55px; padding:0.38rem 0.25rem; border-radius:5px;
+            border:1px solid rgba(239,68,68,0.2); background:rgba(239,68,68,0.06);
+            color:#f87171; font-family:'DM Mono',monospace; font-size:0.64rem;
+            cursor:pointer; text-align:center;
+            -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation; outline:none;
+        }
+        .conflict-tap-btn.flash { background:rgba(239,68,68,0.2)!important; }
 
         /* Switch overlay */
         .switch-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.82); display:flex; align-items:center; justify-content:center; z-index:100; padding:2rem; }
@@ -118,449 +118,404 @@
         .switch-title { font-family:'Fraunces',serif; font-size:1.2rem; font-weight:300; margin-bottom:0.35rem; color:#f1f0ec; }
         .switch-sub { font-size:0.62rem; color:#4b5563; margin-bottom:1.5rem; }
 
-        /* ── All done / celebration ── */
-        .all-done { position:relative; text-align:center; padding:3rem 1.5rem 4rem; overflow:hidden; }
+        /* All done */
+        .all-done { position:relative; text-align:center; padding:3rem 1.5rem 4rem; }
         .all-done-inner { animation:fadeUp 0.6s ease forwards; }
         .all-done-emoji { font-size:3.2rem; display:block; margin-bottom:0.8rem; animation:pop 0.5s cubic-bezier(.36,.07,.19,.97) 0.15s both; }
         .all-done-title { font-family:'Fraunces',serif; font-size:2rem; font-weight:300; color:#f1f0ec; margin-bottom:0.5rem; line-height:1.2; }
         .all-done-sub { font-size:0.72rem; color:#4b5563; margin-bottom:1.5rem; }
-        .all-done-streak { display:inline-block; font-size:0.62rem; letter-spacing:0.15em; text-transform:uppercase; color:#60a5fa; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.2); border-radius:20px; padding:0.3rem 0.8rem; animation:fadeUp 0.5s ease 0.5s both; }
-
-        /* Confetti canvas */
-        #confetti-canvas { position:fixed; inset:0; pointer-events:none; z-index:200; width:100%; height:100%; }
-
+        .all-done-badge { display:inline-block; font-size:0.6rem; letter-spacing:0.15em; text-transform:uppercase; color:#60a5fa; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.2); border-radius:20px; padding:0.3rem 0.8rem; animation:fadeUp 0.5s ease 0.5s both; }
+        #confetti-canvas { position:fixed; inset:0; pointer-events:none; z-index:200; }
         @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes pop { 0%{transform:scale(0.5);opacity:0} 60%{transform:scale(1.25)} 80%{transform:scale(0.95)} 100%{transform:scale(1);opacity:1} }
+        @keyframes pop { 0%{transform:scale(0.4);opacity:0} 60%{transform:scale(1.3)} 80%{transform:scale(0.95)} 100%{transform:scale(1);opacity:1} }
     </style>
 </head>
 <body>
-<canvas id="confetti-canvas" style="display:none"></canvas>
+<canvas id="confetti-canvas" style="display:none;width:100%;height:100%"></canvas>
 <div id="root"></div>
 <script>
-// ── Confetti engine ────────────────────────────────────────
-(function() {
-    const canvas = document.getElementById('confetti-canvas');
-    const ctx = canvas.getContext('2d');
-    let particles = [], raf = null, running = false;
-
-    const COLORS = ['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa','#fb923c','#e8e6e1'];
-    function rand(a,b){return Math.random()*(b-a)+a;}
-
-    function spawn(n) {
-        for(let i=0;i<n;i++) {
-            const angle = rand(-0.5,0.5);
-            particles.push({
-                x: rand(0.2,0.8)*canvas.width,
-                y: rand(-50,-10),
-                vx: Math.sin(angle)*rand(1,4)*( Math.random()<0.5?1:-1),
-                vy: rand(3,8),
-                rot: rand(0,Math.PI*2),
-                rotV: rand(-0.12,0.12),
-                w: rand(7,14), h: rand(4,8),
-                color: COLORS[Math.floor(Math.random()*COLORS.length)],
-                alpha:1, life:1
-            });
-        }
-    }
-
-    function tick() {
-        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        particles = particles.filter(p => p.alpha > 0.01);
-        particles.forEach(p => {
-            p.x += p.vx; p.y += p.vy;
-            p.vy += 0.15; p.rot += p.rotV;
-            if(p.y > canvas.height*0.7) p.alpha -= 0.025;
-            ctx.save();
-            ctx.globalAlpha = p.alpha;
-            ctx.translate(p.x,p.y); ctx.rotate(p.rot);
-            ctx.fillStyle = p.color;
-            ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);
-            ctx.restore();
+/* ── Confetti ── */
+(function(){
+    const cv=document.getElementById('confetti-canvas');
+    const cx=cv.getContext('2d');
+    let pts=[],raf=null,on=false;
+    const COLS=['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa','#fb923c'];
+    const rnd=(a,b)=>Math.random()*(b-a)+a;
+    function spawn(n){
+        for(let i=0;i<n;i++) pts.push({
+            x:rnd(0.15,0.85)*cv.width, y:rnd(-60,-5),
+            vx:rnd(-3,3), vy:rnd(3,8), rot:rnd(0,6.28), rv:rnd(-0.12,0.12),
+            w:rnd(7,14), h:rnd(4,8), col:COLS[Math.floor(Math.random()*COLS.length)], a:1
         });
-        if(particles.length > 0) raf = requestAnimationFrame(tick);
-        else { canvas.style.display='none'; running=false; }
     }
-
-    window.launchConfetti = function() {
-        canvas.style.display='block';
-        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-        particles = [];
-        spawn(110);
-        if(!running){ running=true; raf=requestAnimationFrame(tick); }
-        // Second burst
-        setTimeout(()=>spawn(70), 400);
+    function frame(){
+        cv.width=window.innerWidth; cv.height=window.innerHeight;
+        cx.clearRect(0,0,cv.width,cv.height);
+        pts=pts.filter(p=>p.a>0.02);
+        pts.forEach(p=>{
+            p.x+=p.vx; p.y+=p.vy; p.vy+=0.15; p.rot+=p.rv;
+            if(p.y>cv.height*0.65) p.a-=0.022;
+            cx.save(); cx.globalAlpha=p.a; cx.translate(p.x,p.y); cx.rotate(p.rot);
+            cx.fillStyle=p.col; cx.fillRect(-p.w/2,-p.h/2,p.w,p.h); cx.restore();
+        });
+        if(pts.length) raf=requestAnimationFrame(frame);
+        else { cv.style.display='none'; on=false; }
+    }
+    window.launchConfetti=function(){
+        cv.style.display='block'; cv.width=window.innerWidth; cv.height=window.innerHeight;
+        pts=[]; spawn(100); if(!on){on=true;raf=requestAnimationFrame(frame);}
+        setTimeout(()=>spawn(65),350);
     };
 })();
 
-// ── React app ─────────────────────────────────────────────
-const { useState, useEffect, useRef, useCallback } = React;
+/* ── App ── */
+const {useState,useEffect,useRef,useCallback}=React;
 
-// Real users who log in and make decisions
-const USERS    = ['Tony', 'Nugs'];
-// Assignable options — Macquarie is a shared/joint category, not a login user
-const ALL_OPTS = ['Tony', 'Nugs', 'Macquarie', 'Unsure'];
-const STORAGE_KEY = 'cc_submissions_v2';
-const USER_KEY    = 'cc_current_user_v2';
+// Real login users
+const USERS=['Tony','Nugs'];
+// All assignable options (Macquarie = shared joint, Unsure = needs review)
+const ASSIGN_OPTS=['Tony','Nugs','Macquarie','Unsure'];
 
-const TX_BY_DAYOFF = {
-    '0': [
-        { id:'d0-0', amount:75.00,   description:'VELOCITY REWARDS FEE' },
-        { id:'d0-1', amount:295.00,  description:'CARD FEE' },
-        { id:'d0-2', amount:32.21,   description:'ALIEXPRESS North Sydney' },
-        { id:'d0-3', amount:18.50,   description:'UBER EATS Melbourne' },
-        { id:'d0-4', amount:12.90,   description:'MCDONALDS Sunshine' },
+const SK='cc_v3_subs';  // storage key
+const UK='cc_v3_user';
+
+const TX={
+    '0':[
+        {id:'d0-0',amount:75.00,  desc:'VELOCITY REWARDS FEE'},
+        {id:'d0-1',amount:295.00, desc:'CARD FEE'},
+        {id:'d0-2',amount:32.21,  desc:'ALIEXPRESS North Sydney'},
+        {id:'d0-3',amount:18.50,  desc:'UBER EATS Melbourne'},
+        {id:'d0-4',amount:12.90,  desc:'MCDONALDS Sunshine'},
     ],
-    '-1': [
-        { id:'d1-0', amount:1468.00, description:'FOREIGN FEE AUD 8.01' },
-        { id:'d1-1', amount:275.05,  description:'KICKSTARTER.COM Tsimshatsui' },
-        { id:'d1-2', amount:54.40,   description:'SPOTIFY PREMIUM' },
-        { id:'d1-3', amount:11.00,   description:'GOOGLE ONE Storage' },
+    '1':[
+        {id:'d1-0',amount:1468.00,desc:'FOREIGN FEE AUD 8.01'},
+        {id:'d1-1',amount:275.05, desc:'KICKSTARTER.COM Tsimshatsui'},
+        {id:'d1-2',amount:54.40,  desc:'SPOTIFY PREMIUM'},
+        {id:'d1-3',amount:11.00,  desc:'GOOGLE ONE Storage'},
     ],
-    '-2': [
-        { id:'d2-0', amount:98.00,   description:'GU HEALTH REWARDS Camberwell' },
-        { id:'d2-1', amount:89.50,   description:'COLES Footscray' },
-        { id:'d2-2', amount:45.00,   description:'BUNNINGS Warehouse' },
+    '2':[
+        {id:'d2-0',amount:98.00,  desc:'GU HEALTH REWARDS Camberwell'},
+        {id:'d2-1',amount:89.50,  desc:'COLES Footscray'},
+        {id:'d2-2',amount:45.00,  desc:'BUNNINGS Warehouse'},
+        {id:'d2-3',amount:22.30,  desc:'ALDI Stores West'},
     ],
-    '-3': [
-        { id:'d3-0', amount:210.00,  description:'ELECTRICITY BILL AGL' },
-        { id:'d3-1', amount:9.99,    description:'NETFLIX.COM' },
-        { id:'d3-2', amount:65.00,   description:'INTERNET BILL Aussie BB' },
+    '3':[
+        {id:'d3-0',amount:210.00, desc:'ELECTRICITY BILL AGL'},
+        {id:'d3-1',amount:9.99,   desc:'NETFLIX.COM'},
+        {id:'d3-2',amount:65.00,  desc:'INTERNET BILL Aussie BB'},
     ],
-    '1': [
-        { id:'df1-0', amount:55.00,  description:'MEDICARE LEVY PAYMENT' },
-        { id:'df1-1', amount:149.00, description:'OFFICEWORKS Footscray' },
-        { id:'df1-2', amount:28.90,  description:'THAI ORCHID Restaurant' },
-    ],
-    '2': [
-        { id:'df2-0', amount:499.00, description:'JB HIFI Melbourne CBD' },
-        { id:'df2-1', amount:19.99,  description:'ADOBE CREATIVE CLOUD' },
-        { id:'df2-2', amount:72.00,  description:'RACV MEMBERSHIP' },
-    ],
-    '3': [
-        { id:'df3-0', amount:330.00, description:'QANTAS AIRWAYS Sydney' },
-        { id:'df3-1', amount:42.80,  description:'SHELL COLES EXPRESS Footscray' },
+    '4':[
+        {id:'d4-0',amount:330.00, desc:'QANTAS AIRWAYS Sydney'},
+        {id:'d4-1',amount:42.80,  desc:'SHELL COLES EXPRESS Footscray'},
+        {id:'d4-2',amount:149.00, desc:'OFFICEWORKS Footscray'},
     ],
 };
 
-function isoDate(offset) {
-    const d = new Date(); d.setDate(d.getDate()+offset);
+// simDelta=0 → today's transactions; simDelta=1 → "we're now on day 1, yesterday's conflicts visible" etc.
+// TX keys are relative day index (0=first day loaded, 1=next day, etc.)
+// "today" always shows TX['0']. Stepping forward reveals conflicts from TX['0'] and loads TX['1'] as new day.
+
+function isoDate(daysFromNow){
+    const d=new Date(); d.setDate(d.getDate()+daysFromNow);
     return d.toISOString().slice(0,10);
 }
 
-function dayLabel(txDayOff, simDelta) {
-    const rel = txDayOff - simDelta;
-    if(rel===0)  return 'today';
-    if(rel===-1) return 'yesterday';
-    return Math.abs(rel)+'d ago';
+// Returns which TX days are "loaded" and what their labels are given simDelta
+// simDelta=0: only day 0 loaded, no conflicts visible
+// simDelta=1: day 0 conflicts visible, day 1 loaded as "today"
+// simDelta=2: day 0+1 conflicts visible, day 2 loaded as "today"
+function getLoadedDays(simDelta){
+    const days=[];
+    for(let i=simDelta;i>=0;i--){
+        if(TX[String(i)]) days.push(i);
+    }
+    return days; // descending: today first, then older
 }
 
-// Is conflict/unsure visible? Only after the tx's day has passed (txDayOff < simDelta)
-function isNextDayVisible(txDayOff, simDelta) { return txDayOff < simDelta; }
+function getDayLabel(txDay,simDelta){
+    const rel=txDay-simDelta; // 0=today,-1=yesterday,-2=2 days ago
+    if(rel===0) return {label:'today',past:false};
+    if(rel===-1) return {label:'yesterday',past:true};
+    return {label:Math.abs(rel)+'d ago',past:true};
+}
 
-const DONE_MSGS = [
-    { emoji:'🎉', title:"All done!", sub:'Every transaction is sorted. Legends.' },
-    { emoji:'🏆', title:'Clean sweep!', sub:'Nothing left to action today.' },
-    { emoji:'✨', title:'That\'s everything!', sub:'You\'re both on top of it.' },
-    { emoji:'🚀', title:'Done and dusted!', sub:'Go enjoy the rest of your day.' },
+// Conflict/unsure only revealed once that day is in the past (txDay < simDelta)
+function isPast(txDay,simDelta){ return txDay<simDelta; }
+
+function loadSubs(){ try{const s=localStorage.getItem(SK);return s?JSON.parse(s):{}}catch(e){return{};} }
+
+const DONE=[
+    {emoji:'🎉',title:"All done!",sub:'Every transaction sorted. Legends.'},
+    {emoji:'🏆',title:'Clean sweep!',sub:'Nothing left to action today.'},
+    {emoji:'✨',title:"That's everything!",sub:"You're both on top of it."},
+    {emoji:'🚀',title:'Done and dusted!',sub:'Go enjoy the rest of your day.'},
 ];
 
-function loadSubs() {
-    try { const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):{}; } catch(e){return{};}
-}
-
-// ── Flash helper — adds class briefly, auto-removes ──
-function flashBtn(el) {
-    if(!el) return;
-    el.classList.add('flash');
-    setTimeout(()=>{ if(el) el.classList.remove('flash'); }, 150);
-}
-
-// ── Landing ──
-function LandingPage({ onSelect }) {
-    return React.createElement('div', {className:'landing'},
-        React.createElement('div', {className:'landing-card'},
-            React.createElement('p',  {className:'landing-eyebrow'}, '💳 Credit Card'),
-            React.createElement('h1', {className:'landing-title'}, 'Who are\nyou?'),
-            React.createElement('p',  {className:'landing-sub'}, 'Select your name to continue'),
-            React.createElement('p',  {className:'who-label'}, 'I am…'),
-            ...USERS.map(u=>  // USERS = ['Tony','Nugs'] only
-                React.createElement('button',{key:u,className:'user-btn',onClick:()=>onSelect(u)},
-                    React.createElement('span',{className:'user-initial'},u[0]), u)
-            ),
+/* ── Landing ── */
+function Landing({onSelect}){
+    return React.createElement('div',{className:'landing'},
+        React.createElement('div',{className:'landing-card'},
+            React.createElement('p',{className:'landing-eyebrow'},'💳 Credit Card'),
+            React.createElement('h1',{className:'landing-title'},'Who are\nyou?'),
+            React.createElement('p',{className:'landing-sub'},'Select your name to continue'),
+            React.createElement('p',{className:'who-label'},'I am…'),
+            ...USERS.map(u=>React.createElement('button',{key:u,className:'user-btn',onClick:()=>onSelect(u)},
+                React.createElement('span',{className:'user-initial'},u[0]),u)),
             React.createElement('p',{className:'landing-footer'},'Westpac • Transaction reconciliation')
         )
     );
 }
 
-// ── Switch overlay ──
-function SwitchOverlay({currentUser,onSelect,onClose}) {
+/* ── Switch overlay ── */
+function SwitchOverlay({currentUser,onSelect,onClose}){
     return React.createElement('div',{className:'switch-overlay',onClick:onClose},
         React.createElement('div',{className:'switch-card',onClick:e=>e.stopPropagation()},
             React.createElement('p',{className:'switch-title'},'Switch user'),
             React.createElement('p',{className:'switch-sub'},'Signed in as '+currentUser),
-            ...USERS.map(u=>  // only real login users
-                React.createElement('button',{key:u,className:'user-btn',style:{opacity:u===currentUser?0.3:1},onClick:()=>{onSelect(u);onClose();}},
-                    React.createElement('span',{className:'user-initial'},u[0]),u)
-            )
+            ...USERS.map(u=>React.createElement('button',{key:u,className:'user-btn',
+                style:{opacity:u===currentUser?0.3:1},onClick:()=>{onSelect(u);onClose();}},
+                React.createElement('span',{className:'user-initial'},u[0]),u))
         )
     );
 }
 
-// ── TxCard ──
-function TxCard({tx, dayOff, simDelta, currentUser, submissions, onAssign, collapsing}) {
-    const sub      = submissions[tx.id] || {};
-    const mySub    = sub[currentUser] ?? null;
-    const nextDayOk= isNextDayVisible(dayOff, simDelta);
+/* ── flash helper — pointerDown/Up/Leave only, no CSS hover ── */
+function useTap(onTap){
+    return {
+        onPointerDown:e=>{ e.currentTarget.classList.add('flash'); },
+        onPointerUp:  e=>{ e.currentTarget.classList.remove('flash'); onTap(e); },
+        onPointerLeave:e=>{ e.currentTarget.classList.remove('flash'); },
+        onPointerCancel:e=>{ e.currentTarget.classList.remove('flash'); },
+    };
+}
 
-    // Conflict: any two non-unsure users disagree — only visible next day
-    const nonUnsureVals = USERS.map(u=>sub[u]).filter(v=>v!=null && v!=='Unsure');
-    const isConflict    = nextDayOk && nonUnsureVals.length > 1 && new Set(nonUnsureVals).size > 1;
+/* ── TxCard ── */
+function TxCard({tx,txDay,simDelta,currentUser,subs,onAssign,collapsing}){
+    const sub=subs[tx.id]||{};
+    const past=isPast(txDay,simDelta);
 
-    // Unsure pin: visible next day only
-    const anyUnsure = nextDayOk && USERS.some(u=>sub[u]==='Unsure');
+    const nonUnsureVals=USERS.map(u=>sub[u]).filter(v=>v&&v!=='Unsure');
+    const isConflict=past && nonUnsureVals.length>1 && new Set(nonUnsureVals).size>1;
+    const anyUnsure=past && USERS.some(u=>sub[u]==='Unsure');
+    const mySub=sub[currentUser]||null;
+    const isCollapsing=collapsing.has(tx.id);
 
-    const isCollapsing = collapsing.has(tx.id);
-    const cardClass = ['tx-card', isConflict?'conflict':'', isCollapsing?'collapsing':''].filter(Boolean).join(' ');
+    const cardCls=['tx-card',isConflict?'conflict':'',isCollapsing?'collapsing':''].filter(Boolean).join(' ');
 
-    const handleAssign = useCallback((opt, e) => {
-        flashBtn(e.currentTarget);
-        onAssign(tx.id, dayOff, opt);
-    }, [tx.id, dayOff, onAssign]);
+    const makeConflictTap=opt=>({
+        onPointerDown:e=>e.currentTarget.classList.add('flash'),
+        onPointerUp:  e=>{e.currentTarget.classList.remove('flash');onAssign(tx.id,txDay,opt);},
+        onPointerLeave:e=>e.currentTarget.classList.remove('flash'),
+        onPointerCancel:e=>e.currentTarget.classList.remove('flash'),
+    });
 
-    return React.createElement('div', {className:cardClass},
+    const makeTap=opt=>({
+        onPointerDown:e=>e.currentTarget.classList.add('flash'),
+        onPointerUp:  e=>{e.currentTarget.classList.remove('flash');onAssign(tx.id,txDay,opt);},
+        onPointerLeave:e=>e.currentTarget.classList.remove('flash'),
+        onPointerCancel:e=>e.currentTarget.classList.remove('flash'),
+    });
+
+    return React.createElement('div',{className:cardCls},
         React.createElement('div',{className:'tx-top'},
             React.createElement('div',null,
                 React.createElement('div',{className:'tx-meta'},
                     isConflict && React.createElement('span',{className:'badge badge-conflict'},'⚠ conflict'),
-                    anyUnsure  && React.createElement('span',{className:'badge',style:{background:'rgba(245,158,11,0.14)',color:'#fbbf24'}},'? unsure'),
+                    anyUnsure  && React.createElement('span',{className:'badge badge-unsure'},'? unsure'),
                 ),
-                React.createElement('p',{className:'tx-desc'},tx.description)
+                React.createElement('p',{className:'tx-desc'},tx.desc)
             ),
             React.createElement('span',{className:'tx-amount'},'$'+tx.amount.toFixed(2))
         ),
 
-        isConflict || anyUnsure
+        (isConflict||anyUnsure)
             ? React.createElement('div',null,
-                React.createElement('p',{className:'conflict-note'}, isConflict?'Tap to update your pick:':'Needs decision:'),
-                React.createElement('div',{className:'conflict-assign'},
-                    ALL_OPTS.map(opt=>
-                        React.createElement('button',{
-                            key:opt,
-                            className:'conflict-tap-btn'+(opt==='Unsure'?' unsure-btn':''),
-                            onPointerDown: e=>{ e.currentTarget.classList.add('flash'); },
-                            onPointerUp:   e=>{ e.currentTarget.classList.remove('flash'); handleAssign(opt,e); },
-                            onPointerLeave:e=>{ e.currentTarget.classList.remove('flash'); },
-                        }, opt===mySub ? '✓ '+opt : opt)
-                    )
+                React.createElement('p',{className:'conflict-note'},isConflict?'Tap to update your pick:':'Needs a decision:'),
+                React.createElement('div',{className:'conflict-row'},
+                    ASSIGN_OPTS.map(opt=>React.createElement('button',{
+                        key:opt,
+                        className:'conflict-tap-btn'+(opt==='Macquarie'?' mac-btn':'')+(opt==='Unsure'?' unsure-btn':''),
+                        ...makeConflictTap(opt)
+                    }, mySub===opt?'✓ '+opt:opt))
                 )
               )
             : React.createElement('div',{className:'assign-row'},
                 React.createElement('span',{className:'assign-label'},'assign'),
-                USERS.map(opt=>
-                    React.createElement('button',{
-                        key:opt,
-                        className:'tap-btn',
-                        onPointerDown: e=>{ e.currentTarget.classList.add('flash'); },
-                        onPointerUp:   e=>{ e.currentTarget.classList.remove('flash'); handleAssign(opt,e); },
-                        onPointerLeave:e=>{ e.currentTarget.classList.remove('flash'); },
-                    }, opt)
-                ),
-                React.createElement('button',{
-                    className:'tap-btn unsure-btn',
-                    onPointerDown: e=>{ e.currentTarget.classList.add('flash'); },
-                    onPointerUp:   e=>{ e.currentTarget.classList.remove('flash'); handleAssign('Unsure',e); },
-                    onPointerLeave:e=>{ e.currentTarget.classList.remove('flash'); },
-                }, '?')
+                React.createElement('button',{className:'tap-btn',...makeTap('Tony')},'Tony'),
+                React.createElement('button',{className:'tap-btn',...makeTap('Nugs')},'Nugs'),
+                React.createElement('button',{className:'tap-btn mac-btn',...makeTap('Macquarie')},'MAC'),
+                React.createElement('button',{className:'tap-btn unsure-btn',...makeTap('Unsure')},'?'),
               )
     );
 }
 
-// ── All Done screen ──
-function AllDone({msg}) {
-    useEffect(()=>{
-        window.launchConfetti && window.launchConfetti();
-    },[]);
+/* ── AllDone ── */
+function AllDone({msg}){
+    useEffect(()=>{ window.launchConfetti&&window.launchConfetti(); },[]);
     return React.createElement('div',{className:'all-done'},
         React.createElement('div',{className:'all-done-inner'},
             React.createElement('span',{className:'all-done-emoji'},msg.emoji),
-            React.createElement('h2', {className:'all-done-title'},msg.title),
-            React.createElement('p',  {className:'all-done-sub'},msg.sub),
-            React.createElement('span',{className:'all-done-streak'},'💳 all transactions assigned')
+            React.createElement('h2',{className:'all-done-title'},msg.title),
+            React.createElement('p',{className:'all-done-sub'},msg.sub),
+            React.createElement('span',{className:'all-done-badge'},'💳 all transactions assigned')
         )
     );
 }
 
-// ── Main App ──
-function CreditCardApp() {
-    const [currentUser, setCurrentUser] = useState(null);
-    const [submissions, setSubmissions]  = useState({});
-    const [showSwitch,  setShowSwitch]   = useState(false);
-    const [simDelta,    setSimDelta]     = useState(0);
-    const [collapsing,  setCollapsing]   = useState(new Set());
-    const [undoStack,   setUndoStack]    = useState([]);
-    const doneMsg = useRef(DONE_MSGS[Math.floor(Math.random()*DONE_MSGS.length)]);
-    const prevAllDone = useRef(false);
+/* ── Main ── */
+function App(){
+    const [user,setUser]       = useState(null);
+    const [subs,setSubs]       = useState({});
+    const [simDelta,setSimDelta]= useState(0);
+    const [collapsing,setCol]  = useState(new Set());
+    const [undoStack,setUndo]  = useState([]);
+    const [showSwitch,setSwitch]= useState(false);
+    const doneMsg=useRef(DONE[Math.floor(Math.random()*DONE.length)]);
 
     useEffect(()=>{
-        const u=localStorage.getItem(USER_KEY);
-        if(u && USERS.includes(u)) setCurrentUser(u);
-        setSubmissions(loadSubs());
+        const u=localStorage.getItem(UK);
+        if(u&&USERS.includes(u)) setUser(u);
+        setSubs(loadSubs());
     },[]);
 
-    const saveSubs = s=>{ setSubmissions(s); localStorage.setItem(STORAGE_KEY,JSON.stringify(s)); };
+    const save=s=>{setSubs(s);localStorage.setItem(SK,JSON.stringify(s));};
 
-    const selectUser = u=>{
-        setCurrentUser(u); localStorage.setItem(USER_KEY,u);
-        setSubmissions(loadSubs()); setCollapsing(new Set()); setUndoStack([]); setShowSwitch(false);
+    const login=u=>{
+        setUser(u); localStorage.setItem(UK,u);
+        setSubs(loadSubs()); setCol(new Set()); setUndo([]); setSwitch(false);
     };
 
-    const resetCache = ()=>{
+    const resetCache=()=>{
         if(!confirm('Reset all data?')) return;
-        localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(USER_KEY);
-        setSubmissions({}); setCollapsing(new Set()); setUndoStack([]); setCurrentUser(null);
+        localStorage.removeItem(SK); localStorage.removeItem(UK);
+        setSubs({}); setCol(new Set()); setUndo([]); setUser(null);
     };
 
-    const getSub  = id=>(submissions[id]||{});
-    const myPick  = id=>getSub(id)[currentUser]??null;
+    const getSub=id=>(subs[id]||{});
+    const myPick=id=>getSub(id)[user]||null;
 
-    const isConflict = (txId, dayOff)=>{
-        if(!isNextDayVisible(dayOff,simDelta)) return false;
-        const vals=USERS.map(u=>getSub(txId)[u]).filter(v=>v!=null&&v!=='Unsure');
-        return vals.length>1 && new Set(vals).size>1;
+    const isConflict=(id,txDay)=>{
+        if(!isPast(txDay,simDelta)) return false;
+        const vals=USERS.map(u=>getSub(id)[u]).filter(v=>v&&v!=='Unsure');
+        return vals.length>1&&new Set(vals).size>1;
     };
-
-    const isUnsurePinned = (txId, dayOff)=>
-        isNextDayVisible(dayOff,simDelta) && USERS.some(u=>getSub(txId)[u]==='Unsure');
-
-    // Card visible if user hasn't picked, or conflict, or unsure-pinned
-    const isVisible = (tx, dayOff)=>{
+    const isUnsure=(id,txDay)=>isPast(txDay,simDelta)&&USERS.some(u=>getSub(id)[u]==='Unsure');
+    const isVisible=(tx,txDay)=>{
         if(collapsing.has(tx.id)) return true;
-        const pick = myPick(tx.id);
-        return isConflict(tx.id,dayOff) || isUnsurePinned(tx.id,dayOff) || pick===null;
+        return isConflict(tx.id,txDay)||isUnsure(tx.id,txDay)||!myPick(tx.id);
     };
 
-    const assign = (txId, txDayOff, assignTo)=>{
+    const assign=(txId,txDay,opt)=>{
         const prev=myPick(txId);
-        setUndoStack(s=>[...s,{txId,user:currentUser,prev}]);
-        const newSubs={...submissions,[txId]:{...submissions[txId],[currentUser]:assignTo}};
-        saveSubs(newSubs);
-
-        if(assignTo!=='Unsure') {
+        setUndo(s=>[...s,{txId,u:user,prev}]);
+        const ns={...subs,[txId]:{...subs[txId],[user]:opt}};
+        save(ns);
+        if(opt!=='Unsure'){
             setTimeout(()=>{
-                const sub=newSubs[txId]||{};
-                const vals=USERS.map(u=>sub[u]).filter(v=>v!=null&&v!=='Unsure');
-                const conflict=isNextDayVisible(txDayOff,simDelta)&&vals.length>1&&new Set(vals).size>1;
-                const unsured =isNextDayVisible(txDayOff,simDelta)&&USERS.some(u=>sub[u]==='Unsure');
-                if(!conflict&&!unsured) setCollapsing(c=>new Set([...c,txId]));
+                const sub=ns[txId]||{};
+                const vals=USERS.map(u=>sub[u]).filter(v=>v&&v!=='Unsure');
+                const conflict=isPast(txDay,simDelta)&&vals.length>1&&new Set(vals).size>1;
+                const unsure=isPast(txDay,simDelta)&&USERS.some(u=>sub[u]==='Unsure');
+                if(!conflict&&!unsure) setCol(c=>new Set([...c,txId]));
             },220);
         }
     };
 
-    const undo = ()=>{
+    const undo=()=>{
         if(!undoStack.length) return;
         const last=undoStack[undoStack.length-1];
-        setUndoStack(s=>s.slice(0,-1));
-        setCollapsing(c=>{const n=new Set(c);n.delete(last.txId);return n;});
-        saveSubs({...submissions,[last.txId]:{...submissions[last.txId],[last.user]:last.prev}});
+        setUndo(s=>s.slice(0,-1));
+        setCol(c=>{const n=new Set(c);n.delete(last.txId);return n;});
+        const ns={...subs,[last.txId]:{...subs[last.txId],[last.u]:last.prev}};
+        save(ns);
     };
 
-    // Day offsets window: simDelta down to simDelta-3
-    const allDayOffsets=[];
-    for(let d=simDelta;d>=simDelta-3;d--) { if(TX_BY_DAYOFF[String(d)]) allDayOffsets.push(d); }
+    const stepDay=()=>{ setSimDelta(d=>d+1); setCol(new Set()); };
+    const resetDay=()=>{ setSimDelta(0); setCol(new Set()); };
 
-    // Tallies: sum transactions each user assigned to any target (including Macquarie)
-    // Tony and Nugs tally = sum of what they've personally assigned (to anyone)
-    // Macquarie tally = sum of txns assigned TO Macquarie by any user
-    const tallyOwn = Object.fromEntries([...USERS,'Macquarie'].map(u=>[u,0]));
-    Object.entries(TX_BY_DAYOFF).forEach(([,txList])=>{
-        txList.forEach(tx=>{
-            // Macquarie bucket: anyone assigned it to Macquarie
-            USERS.forEach(u=>{
-                const pick=getSub(tx.id)[u];
-                if(pick==='Macquarie') tallyOwn['Macquarie']=(tallyOwn['Macquarie']||0)+tx.amount;
-            });
-            // Per-user: sum of what that user has assigned to themselves
-            USERS.forEach(u=>{
-                const pick=getSub(tx.id)[u];
-                if(pick && pick!=='Unsure' && pick===u) tallyOwn[u]+=tx.amount;
-            });
+    // Tally: Tony & Nugs = sum of txns each assigned to themselves
+    //        Macquarie  = sum of distinct txns anyone assigned to Macquarie
+    const tallyTony={},tallyNugs={},macSet=new Set();
+    Object.entries(TX).forEach(([,list])=>{
+        list.forEach(tx=>{
+            const sub=getSub(tx.id);
+            if(sub.Tony==='Tony') tallyTony[tx.id]=tx.amount;
+            if(sub.Nugs==='Nugs') tallyNugs[tx.id]=tx.amount;
+            USERS.forEach(u=>{ if(sub[u]==='Macquarie') macSet.add(tx.id+':'+tx.amount); });
         });
     });
-    // Deduplicate Macquarie (if both users assigned to Macquarie, only count once)
-    const macTxIds = new Set();
-    Object.entries(TX_BY_DAYOFF).forEach(([,txList])=>{
-        txList.forEach(tx=>{
-            const picks = USERS.map(u=>getSub(tx.id)[u]);
-            if(picks.some(p=>p==='Macquarie')) macTxIds.add(tx.id);
-        });
-    });
-    tallyOwn['Macquarie']=0;
-    macTxIds.forEach(txId=>{
-        const allTx=[...Object.values(TX_BY_DAYOFF).flat()].find(t=>t.id===txId);
-        if(allTx) tallyOwn['Macquarie']+=allTx.amount;
-    });
+    const tTony=Object.values(tallyTony).reduce((a,b)=>a+b,0);
+    const tNugs=Object.values(tallyNugs).reduce((a,b)=>a+b,0);
+    const tMac=[...macSet].reduce((a,s)=>a+parseFloat(s.split(':')[1]),0);
 
-    if(!currentUser) return React.createElement(LandingPage,{onSelect:u=>{setCurrentUser(u);localStorage.setItem(USER_KEY,u);setSubmissions(loadSubs());}});
+    if(!user) return React.createElement(Landing,{onSelect:login});
 
-    // Build visible groups
-    const groups=allDayOffsets.map(dayOff=>{
-        const raw=TX_BY_DAYOFF[String(dayOff)]||[];
-        const txList=raw.map(t=>({...t,dayOff,date:isoDate(dayOff)}));
-        const visible=txList.filter(tx=>isVisible(tx,dayOff));
+    const loadedDays=getLoadedDays(simDelta);
+
+    // Build groups
+    const groups=loadedDays.map(txDay=>{
+        const list=(TX[String(txDay)]||[]).map(tx=>({...tx,txDay,date:isoDate(txDay-simDelta)}));
+        const visible=list.filter(tx=>isVisible(tx,txDay));
         const active=visible.filter(tx=>!collapsing.has(tx.id));
-        return {dayOff,visible,active};
+        const {label,past}=getDayLabel(txDay,simDelta);
+        return {txDay,visible,active,label,past};
     }).filter(g=>g.active.length>0);
 
-    // Stats
+    // Stats from all loaded days
     let totalTx=0,totalPending=0,totalConflicts=0;
-    allDayOffsets.forEach(dayOff=>{
-        const txList=TX_BY_DAYOFF[String(dayOff)]||[];
-        totalTx+=txList.length;
-        txList.forEach(tx=>{
-            if(isConflict(tx.id,dayOff)) totalConflicts++;
-            else if(myPick(tx.id)===null) totalPending++;
+    loadedDays.forEach(txDay=>{
+        const list=TX[String(txDay)]||[];
+        totalTx+=list.length;
+        list.forEach(tx=>{
+            if(isConflict(tx.id,txDay)) totalConflicts++;
+            else if(!myPick(tx.id)) totalPending++;
         });
     });
 
     const anyVisible=groups.length>0;
-    const simLabel=simDelta===0?'today':simDelta>0?`+${simDelta}d`:`${Math.abs(simDelta)}d ago`;
-
-    const stepDay=delta=>{ setSimDelta(d=>d+delta); setCollapsing(new Set()); };
+    const simLabel=simDelta===0?'today':'+'+simDelta+'d';
 
     return React.createElement('div',null,
-        showSwitch && React.createElement(SwitchOverlay,{currentUser,onSelect:selectUser,onClose:()=>setShowSwitch(false)}),
+        showSwitch&&React.createElement(SwitchOverlay,{currentUser:user,onSelect:login,onClose:()=>setSwitch(false)}),
 
-        // Dev banner — only step forward to simulate next day conflict reveal
+        // Dev banner
         React.createElement('div',{className:'dev-banner'},
             React.createElement('span',{className:'dev-label'},'🛠 dev'),
             React.createElement('span',{className:'day-display'},simLabel),
-            React.createElement('button',{className:'day-btn',onClick:()=>stepDay(1)},'next day ▶'),
-            React.createElement('button',{className:'day-btn',style:{color:'#6b7280',borderColor:'rgba(107,114,128,0.2)',background:'transparent'},onClick:()=>{setSimDelta(0);setCollapsing(new Set());}},'reset'),
+            React.createElement('button',{className:'day-btn',onClick:stepDay},'next day ▶'),
+            React.createElement('button',{className:'reset-btn',onClick:resetDay},'reset'),
             React.createElement('span',{className:'dev-sep'},'|'),
-            React.createElement('button',{className:'reset-cache-btn',onClick:resetCache},'🗑 clear'),
+            React.createElement('button',{className:'clear-btn',onClick:resetCache},'🗑 clear'),
         ),
 
-        // Tally bar — Tony and Nugs only (Macquarie is a shared category, not a user)
-        const tallyUsers = USERS; // ['Tony', 'Nugs']
+        // Tally
         React.createElement('div',{className:'tally-bar'},
-            [...tallyUsers, 'Macquarie'].flatMap((u,i)=>[
-                i>0?React.createElement('div',{key:'sep'+i,style:{width:'1px',background:'rgba(255,255,255,0.05)'}}):null,
-                React.createElement('div',{key:u,className:'tally-item'},
-                    React.createElement('div',{className:'tally-name'},u),
-                    React.createElement('div',{className:'tally-amount',style:u==='Macquarie'?{color:'#a78bfa'}:{}},'$'+(tallyOwn[u]||0).toFixed(2)),
-                    React.createElement('div',{className:'tally-note'},u==='Macquarie'?'shared':'your picks')
-                )
-            ]).filter(Boolean)
+            React.createElement('div',{className:'tally-item'},
+                React.createElement('div',{className:'tally-name'},'Tony'),
+                React.createElement('div',{className:'tally-amount'},'$'+tTony.toFixed(2)),
+                React.createElement('div',{className:'tally-note'},'your picks')
+            ),
+            React.createElement('div',{style:{width:'1px',background:'rgba(255,255,255,0.05)'}}),
+            React.createElement('div',{className:'tally-item'},
+                React.createElement('div',{className:'tally-name'},'Nugs'),
+                React.createElement('div',{className:'tally-amount'},'$'+tNugs.toFixed(2)),
+                React.createElement('div',{className:'tally-note'},'your picks')
+            ),
+            React.createElement('div',{style:{width:'1px',background:'rgba(255,255,255,0.05)'}}),
+            React.createElement('div',{className:'tally-item'},
+                React.createElement('div',{className:'tally-name'},'Macquarie'),
+                React.createElement('div',{className:'tally-amount shared'},'$'+tMac.toFixed(2)),
+                React.createElement('div',{className:'tally-note'},'shared')
+            )
         ),
 
         React.createElement('div',{className:'app'},
             React.createElement('div',{className:'app-header'},
                 React.createElement('h1',{className:'app-title'},'💳 Transactions'),
                 React.createElement('div',{className:'header-right'},
-                    React.createElement('button',{className:'undo-btn',disabled:undoStack.length===0,onClick:undo},'↩ undo'),
-                    React.createElement('button',{className:'user-badge',onClick:()=>setShowSwitch(true)},
-                        currentUser[0],' ',currentUser,' ↕')
+                    React.createElement('button',{className:'undo-btn',disabled:!undoStack.length,onClick:undo},'↩ undo'),
+                    React.createElement('button',{className:'user-badge',onClick:()=>setSwitch(true)},
+                        user[0],' ',user,' ↕')
                 )
             ),
 
@@ -575,42 +530,28 @@ function CreditCardApp() {
             !anyVisible
                 ? React.createElement(AllDone,{msg:doneMsg.current})
                 : React.createElement('div',null,
-                    groups.map(({dayOff,visible})=>{
-                        const label=dayLabel(dayOff,simDelta);
-                        const isToday=(dayOff===simDelta);
-                        const isOld=(dayOff<simDelta); // past days
-                        const date=isoDate(dayOff);
-                        const cards=visible.filter(tx=>!collapsing.has(tx.id));
-                        if(!cards.length) return null;
-
-                        return React.createElement('div',{key:dayOff,className:'day-group'},
-                            // Day header with optional attention indicator
+                    groups.map(({txDay,visible,label,past})=>
+                        React.createElement('div',{key:txDay,className:'day-group'},
                             React.createElement('div',{className:'day-group-header'},
-                                isOld && React.createElement('span',{className:'attention-dot'}),
-                                React.createElement('span',{
-                                    className:'day-label-text'+(isToday?' is-today':''),
-                                    style:isOld?{color:'#f59e0b'}:{}
-                                }, label),
-                                React.createElement('div',{className:'day-group-line'+(isOld?' attention':'')}),
-                                React.createElement('span',{
-                                    className:'day-group-date',
-                                    style:isOld?{color:'rgba(245,158,11,0.4)'}:{}
-                                }, isOld ? '⚠ attention required · '+date : date)
+                                past&&React.createElement('span',{className:'attention-dot'}),
+                                React.createElement('span',{className:'day-label-pill '+(past?'past':'today')},label),
+                                React.createElement('div',{className:'day-line '+(past?'past':'')}),
+                                past
+                                    ? React.createElement('span',{className:'attention-tag'},'attention · '+isoDate(txDay-simDelta))
+                                    : React.createElement('span',{className:'day-date'},isoDate(txDay-simDelta))
                             ),
-                            visible.map(tx=>
-                                React.createElement(TxCard,{
-                                    key:tx.id,tx,dayOff,simDelta,currentUser,
-                                    submissions,onAssign:assign,collapsing
-                                })
-                            )
-                        );
-                    }).filter(Boolean)
+                            visible.map(tx=>React.createElement(TxCard,{
+                                key:tx.id,tx,txDay,simDelta,currentUser:user,
+                                subs,onAssign:assign,collapsing
+                            }))
+                        )
+                    )
                   )
         )
     );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(CreditCardApp));
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
 </script>
 </body>
 </html>

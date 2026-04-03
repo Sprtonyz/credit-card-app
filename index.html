@@ -95,6 +95,15 @@
         .tap-btn.mac-btn{color:#7c6f9e;border-color:rgba(167,139,250,0.12);background:rgba(167,139,250,0.04);}
         .tap-btn.unsure-btn{color:#6b6047;border-color:rgba(245,158,11,0.1);background:rgba(245,158,11,0.03);}
         .tap-btn.flash{background:rgba(59,130,246,0.2)!important;border-color:rgba(59,130,246,0.4)!important;color:#93c5fd!important;}
+        .tap-btn.tony-btn{color:#4ade80;border-color:rgba(74,222,128,0.15);background:rgba(74,222,128,0.05);}
+        .tap-btn.nugs-btn{color:#f9a8d4;border-color:rgba(249,168,212,0.15);background:rgba(249,168,212,0.05);}
+        .tap-btn.tony-btn.flash{background:rgba(74,222,128,0.18)!important;border-color:rgba(74,222,128,0.4)!important;color:#86efac!important;}
+        .tap-btn.nugs-btn.flash{background:rgba(249,168,212,0.18)!important;border-color:rgba(249,168,212,0.4)!important;color:#fbcfe8!important;}
+        .conflict-tap-btn.tony-btn{border-color:rgba(74,222,128,0.2);background:rgba(74,222,128,0.06);color:#4ade80;}
+        .conflict-tap-btn.nugs-btn{border-color:rgba(249,168,212,0.2);background:rgba(249,168,212,0.06);color:#f9a8d4;}
+        .conflict-tap-btn.tony-btn.flash{background:rgba(74,222,128,0.2)!important;}
+        .conflict-tap-btn.nugs-btn.flash{background:rgba(249,168,212,0.2)!important;}
+        .tally-item.me .tally-amount{color:#e8e6e1;}
         .tap-btn.mac-btn.flash{background:rgba(167,139,250,0.2)!important;border-color:rgba(167,139,250,0.4)!important;color:#c4b5fd!important;}
         .tap-btn.unsure-btn.flash{background:rgba(245,158,11,0.15)!important;border-color:rgba(245,158,11,0.3)!important;color:#fbbf24!important;}
 
@@ -283,9 +292,16 @@ function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
 
     const cardCls=['tx-card',isConflict?'conflict':'',isCollapsing?'collapsing':''].filter(Boolean).join(' ');
 
+    function optClass(opt){
+        if(opt==='Macquarie')return ' mac-btn';
+        if(opt==='Unsure')return ' unsure-btn';
+        if(opt==='Tony')return ' tony-btn';
+        if(opt==='Nugs')return ' nugs-btn';
+        return '';
+    }
     function makeTap(opt,baseClass='tap-btn'){
         return {
-            className:baseClass+(opt==='Macquarie'?' mac-btn':opt==='Unsure'?' unsure-btn':''),
+            className:baseClass+optClass(opt),
             onPointerDown:e=>e.currentTarget.classList.add('flash'),
             onPointerUp:  e=>{e.currentTarget.classList.remove('flash');onAssign(tx.id,txKey,opt);},
             onPointerLeave:e=>e.currentTarget.classList.remove('flash'),
@@ -394,11 +410,12 @@ function App(){
 
     const isVisible=(tx,txKey)=>{
         if(collapsing.has(tx.id))return true;
-        // If auto-confirmed, not visible (resolved)
         if(isAutoConf(tx.id))return false;
-        // If I've picked, collapse it (including past-day conflicts where I've re-assigned)
+        // Always surface conflicts and unsure once they become visible (next day)
+        if(isConflict(tx.id,txKey))return true;
+        if(isUnsurePinned(tx.id,txKey))return true;
+        // Hide if I have already picked (and no conflict)
         if(myPick(tx.id))return false;
-        // If I haven't picked: show it
         return true;
     };
 
@@ -428,13 +445,14 @@ function App(){
     const stepDay=()=>{setSim(d=>d+1);setCol(new Set());setSimNow(simNow+24*60*60*1000);};
     const resetDay=()=>{setSim(0);setCol(new Set());setSimNow(Date.now());};
 
-    // Tally: profile-local — show MY total (txns I assigned to myself)
-    // Macquarie: txns anyone assigned to Macquarie (deduplicated)
-    const myTally=Object.values(ALL_TX_MAP).reduce((acc,tx)=>{
-        const pick=getSubValue(getSub(tx.id),user);
-        if(pick===user)acc+=tx.amount;
+    // Tally: always show Tony and Nugs totals (what each assigned to themselves)
+    // Macquarie: deduplicated sum of txns anyone assigned to Macquarie
+    const userTallies={};
+    USERS.forEach(u=>{ userTallies[u]=Object.values(ALL_TX_MAP).reduce((acc,tx)=>{
+        const pick=getSubValue(getSub(tx.id),u);
+        if(pick===u)acc+=tx.amount;
         return acc;
-    },0);
+    },0); });
 
     const macSet=new Set();
     Object.values(ALL_TX_MAP).forEach(tx=>{
@@ -492,22 +510,23 @@ function App(){
             React.createElement('button',{className:'clear-btn',onClick:resetCache},'🗑 clear'),
         ),
 
-        // Tally bar — profile local: shows MY total + Macquarie toggle
+        // Tally bar — always show Tony + Nugs, Macquarie toggle on right
         React.createElement('div',{className:'tally-bar'},
             React.createElement('div',{className:'tally-main'},
-                React.createElement('div',{className:'tally-item'},
-                    React.createElement('div',{className:'tally-name'},user),
-                    React.createElement('div',{className:'tally-amount'},'$'+myTally.toFixed(2)),
-                    React.createElement('div',{className:'tally-note'},'your assignments')
-                )
+                ...USERS.map((u,i)=>[
+                    i>0&&React.createElement('div',{key:'sep'+i,style:{width:'1px',background:'rgba(255,255,255,0.05)'}}),
+                    React.createElement('div',{key:u,className:'tally-item'+(u===user?' me':'')},
+                        React.createElement('div',{className:'tally-name'},u+(u===user?' (you)':'')),
+                        React.createElement('div',{className:'tally-amount'},'$'+(userTallies[u]||0).toFixed(2)),
+                        React.createElement('div',{className:'tally-note'},'own assignments')
+                    )
+                ]).flat().filter(Boolean)
             ),
-            // Macquarie panel (conditionally shown)
             showMac&&React.createElement('div',{className:'mac-panel'},
                 React.createElement('div',{className:'tally-name'},'Macquarie'),
                 React.createElement('div',{className:'tally-amount mac'},'$'+macTally.toFixed(2)),
                 React.createElement('div',{className:'tally-note'},'shared')
             ),
-            // Toggle arrow
             React.createElement('button',{className:'mac-toggle',onClick:()=>setShowMac(v=>!v),title:'Toggle Macquarie'},
                 showMac?'›':'‹'
             )

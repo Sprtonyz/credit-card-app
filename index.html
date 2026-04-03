@@ -411,6 +411,7 @@ function App(){
     const [subs,   setSubs]   =useState({});
     const [simDelta,setSim]   =useState(0);
     const [collapsing,setCol] =useState(new Set());
+    const collapseTimers=useRef([]);
     const [undoStack,setUndo] =useState([]);
     const [showSwitch,setSwitch]=useState(false);
     const [showMac,setShowMac]=useState(false);
@@ -509,12 +510,12 @@ function App(){
 
     const isToday=(txKey)=>parseInt(txKey)===simDelta;
 
-    // Pure per-user remaining function — user-agnostic, used by both isVisible and stats
+    // Pure per-user remaining — based on data only, no animation state
     const remainingFor=(u,tx,txKey)=>{
         if(isAutoConf(tx.id))return false;
-        if(collapsing.has(tx.id))return false;
         const pick=getSubValue(getSub(tx.id),u);
         if(isToday(txKey))return !pick;
+        // Past day: conflict and unsure always need attention
         if(isConflict(tx.id,txKey))return true;
         if(isUnsurePinned(tx.id,txKey))return true;
         return !pick;
@@ -539,23 +540,21 @@ function App(){
         // TODAY → always collapse immediately (one tap = done)
         // PAST DAY → collapse only if not a conflict/unsure after this pick
         //            (if still conflicted, card stays visible for re-resolution)
-        const collapseIt=()=>{
+        const timer=setTimeout(()=>{
             const sub=newSubs[txId]||{};
             const isThisDayPast=parseInt(txKey)<simDelta;
             if(!isThisDayPast){
                 setCol(c=>new Set([...c,txId]));
                 return;
             }
-            // Past day: check if conflict/unsure remains after my new pick
             const anyUnsureNow=USERS.some(u=>sub[u]?.value==='Unsure');
             const nonUnsureVals=USERS.map(u=>sub[u]?.value).filter(v=>v&&v!=='Unsure');
             const stillConflict=!anyUnsureNow&&nonUnsureVals.length>1&&new Set(nonUnsureVals).size>1;
             if(!stillConflict&&!anyUnsureNow){
                 setCol(c=>new Set([...c,txId]));
             }
-            // else: leave visible so user sees it's still conflicted
-        };
-        setTimeout(collapseIt,220);
+        },220);
+        collapseTimers.current.push(timer);
     };
 
     const undo=()=>{
@@ -578,8 +577,9 @@ function App(){
         }
     };
 
-    const stepDay=()=>{setSim(d=>d+1);setCol(new Set());setSimNow(simNow+24*60*60*1000);};
-    const resetDay=()=>{setSim(0);setCol(new Set());setSimNow(Date.now());};
+    const cancelTimers=()=>{ collapseTimers.current.forEach(clearTimeout); collapseTimers.current=[]; };
+    const stepDay=()=>{ cancelTimers(); setSim(d=>d+1); setCol(new Set()); setSimNow(simNow+24*60*60*1000); };
+    const resetDay=()=>{ cancelTimers(); setSim(0); setCol(new Set()); setSimNow(Date.now()); };
 
     // Tally: always show Tony and Nugs totals (what each assigned to themselves)
     // Macquarie: deduplicated sum of txns anyone assigned to Macquarie

@@ -196,8 +196,10 @@
 // ── React app ─────────────────────────────────────────────
 const { useState, useEffect, useRef, useCallback } = React;
 
-const USERS       = ['Tony', 'Nugs', 'Macquarie'];
-const ALL_OPTS    = [...USERS, 'Unsure'];
+// Real users who log in and make decisions
+const USERS    = ['Tony', 'Nugs'];
+// Assignable options — Macquarie is a shared/joint category, not a login user
+const ALL_OPTS = ['Tony', 'Nugs', 'Macquarie', 'Unsure'];
 const STORAGE_KEY = 'cc_submissions_v2';
 const USER_KEY    = 'cc_current_user_v2';
 
@@ -282,7 +284,7 @@ function LandingPage({ onSelect }) {
             React.createElement('h1', {className:'landing-title'}, 'Who are\nyou?'),
             React.createElement('p',  {className:'landing-sub'}, 'Select your name to continue'),
             React.createElement('p',  {className:'who-label'}, 'I am…'),
-            ...USERS.map(u=>
+            ...USERS.map(u=>  // USERS = ['Tony','Nugs'] only
                 React.createElement('button',{key:u,className:'user-btn',onClick:()=>onSelect(u)},
                     React.createElement('span',{className:'user-initial'},u[0]), u)
             ),
@@ -297,7 +299,7 @@ function SwitchOverlay({currentUser,onSelect,onClose}) {
         React.createElement('div',{className:'switch-card',onClick:e=>e.stopPropagation()},
             React.createElement('p',{className:'switch-title'},'Switch user'),
             React.createElement('p',{className:'switch-sub'},'Signed in as '+currentUser),
-            ...USERS.map(u=>
+            ...USERS.map(u=>  // only real login users
                 React.createElement('button',{key:u,className:'user-btn',style:{opacity:u===currentUser?0.3:1},onClick:()=>{onSelect(u);onClose();}},
                     React.createElement('span',{className:'user-initial'},u[0]),u)
             )
@@ -467,26 +469,36 @@ function CreditCardApp() {
     const allDayOffsets=[];
     for(let d=simDelta;d>=simDelta-3;d--) { if(TX_BY_DAYOFF[String(d)]) allDayOffsets.push(d); }
 
-    // ── Tallies: per user, based on THEIR OWN pick (not consensus) ──
-    // This gives each user a running sense of their share
-    const tallies=Object.fromEntries(USERS.map(u=>[u,0]));
+    // Tallies: sum transactions each user assigned to any target (including Macquarie)
+    // Tony and Nugs tally = sum of what they've personally assigned (to anyone)
+    // Macquarie tally = sum of txns assigned TO Macquarie by any user
+    const tallyOwn = Object.fromEntries([...USERS,'Macquarie'].map(u=>[u,0]));
     Object.entries(TX_BY_DAYOFF).forEach(([,txList])=>{
         txList.forEach(tx=>{
+            // Macquarie bucket: anyone assigned it to Macquarie
             USERS.forEach(u=>{
                 const pick=getSub(tx.id)[u];
-                if(pick && pick!=='Unsure' && pick===u) tallies[u]+=tx.amount;
+                if(pick==='Macquarie') tallyOwn['Macquarie']=(tallyOwn['Macquarie']||0)+tx.amount;
+            });
+            // Per-user: sum of what that user has assigned to themselves
+            USERS.forEach(u=>{
+                const pick=getSub(tx.id)[u];
+                if(pick && pick!=='Unsure' && pick===u) tallyOwn[u]+=tx.amount;
             });
         });
     });
-    // More useful: sum of transactions user assigned to themselves
-    const tallyOwn=Object.fromEntries(USERS.map(u=>[u,0]));
+    // Deduplicate Macquarie (if both users assigned to Macquarie, only count once)
+    const macTxIds = new Set();
     Object.entries(TX_BY_DAYOFF).forEach(([,txList])=>{
         txList.forEach(tx=>{
-            USERS.forEach(u=>{
-                const pick=getSub(tx.id)[u];
-                if(pick && pick!=='Unsure') tallyOwn[pick]=(tallyOwn[pick]||0)+tx.amount;
-            });
+            const picks = USERS.map(u=>getSub(tx.id)[u]);
+            if(picks.some(p=>p==='Macquarie')) macTxIds.add(tx.id);
         });
+    });
+    tallyOwn['Macquarie']=0;
+    macTxIds.forEach(txId=>{
+        const allTx=[...Object.values(TX_BY_DAYOFF).flat()].find(t=>t.id===txId);
+        if(allTx) tallyOwn['Macquarie']+=allTx.amount;
     });
 
     if(!currentUser) return React.createElement(LandingPage,{onSelect:u=>{setCurrentUser(u);localStorage.setItem(USER_KEY,u);setSubmissions(loadSubs());}});
@@ -519,25 +531,25 @@ function CreditCardApp() {
     return React.createElement('div',null,
         showSwitch && React.createElement(SwitchOverlay,{currentUser,onSelect:selectUser,onClose:()=>setShowSwitch(false)}),
 
-        // Dev banner
+        // Dev banner — only step forward to simulate next day conflict reveal
         React.createElement('div',{className:'dev-banner'},
             React.createElement('span',{className:'dev-label'},'🛠 dev'),
-            React.createElement('button',{className:'day-btn',onClick:()=>stepDay(-1)},'◀ prev'),
             React.createElement('span',{className:'day-display'},simLabel),
-            React.createElement('button',{className:'day-btn',onClick:()=>stepDay(1)},'next ▶'),
+            React.createElement('button',{className:'day-btn',onClick:()=>stepDay(1)},'next day ▶'),
             React.createElement('button',{className:'day-btn',style:{color:'#6b7280',borderColor:'rgba(107,114,128,0.2)',background:'transparent'},onClick:()=>{setSimDelta(0);setCollapsing(new Set());}},'reset'),
             React.createElement('span',{className:'dev-sep'},'|'),
             React.createElement('button',{className:'reset-cache-btn',onClick:resetCache},'🗑 clear'),
         ),
 
-        // Tally bar — per user, based on their picks
+        // Tally bar — Tony and Nugs only (Macquarie is a shared category, not a user)
+        const tallyUsers = USERS; // ['Tony', 'Nugs']
         React.createElement('div',{className:'tally-bar'},
-            USERS.flatMap((u,i)=>[
+            [...tallyUsers, 'Macquarie'].flatMap((u,i)=>[
                 i>0?React.createElement('div',{key:'sep'+i,style:{width:'1px',background:'rgba(255,255,255,0.05)'}}):null,
                 React.createElement('div',{key:u,className:'tally-item'},
                     React.createElement('div',{className:'tally-name'},u),
-                    React.createElement('div',{className:'tally-amount'},'$'+(tallyOwn[u]||0).toFixed(2)),
-                    React.createElement('div',{className:'tally-note'},'your picks')
+                    React.createElement('div',{className:'tally-amount',style:u==='Macquarie'?{color:'#a78bfa'}:{}},'$'+(tallyOwn[u]||0).toFixed(2)),
+                    React.createElement('div',{className:'tally-note'},u==='Macquarie'?'shared':'your picks')
                 )
             ]).filter(Boolean)
         ),

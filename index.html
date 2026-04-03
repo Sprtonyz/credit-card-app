@@ -134,6 +134,21 @@
         .all-done-sub{font-size:0.72rem;color:#4b5563;margin-bottom:1.5rem;}
         .all-done-badge{display:inline-block;font-size:0.6rem;letter-spacing:0.15em;text-transform:uppercase;color:#60a5fa;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);border-radius:20px;padding:0.3rem 0.8rem;animation:fadeUp 0.5s ease 0.5s both;}
         #confetti-canvas{position:fixed;inset:0;pointer-events:none;z-index:200;}
+
+        /* Sync status bar */
+        .sync-bar{display:flex;align-items:center;justify-content:space-between;padding:0.3rem 0.9rem;background:rgba(0,0,0,0.3);border-bottom:1px solid rgba(255,255,255,0.04);}
+        .sync-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+        .sync-dot.connected{background:#4ade80;box-shadow:0 0 6px rgba(74,222,128,0.6);}
+        .sync-dot.disconnected{background:#f87171;}
+        .sync-dot.connecting{background:#fbbf24;animation:pulse 1s infinite;}
+        .sync-status{display:flex;align-items:center;gap:0.4rem;font-size:0.52rem;color:#4b5563;letter-spacing:0.08em;}
+        .sync-status.connected{color:#4ade80;}
+        .sync-status.disconnected{color:#f87171;}
+        .online-users{display:flex;align-items:center;gap:0.35rem;}
+        .online-chip{font-size:0.5rem;padding:0.1rem 0.45rem;border-radius:10px;letter-spacing:0.05em;}
+        .online-chip.active{background:rgba(96,165,250,0.15);color:#60a5fa;border:1px solid rgba(96,165,250,0.2);}
+        .online-chip.self{background:rgba(74,222,128,0.12);color:#4ade80;border:1px solid rgba(74,222,128,0.2);}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pop{0%{transform:scale(0.4);opacity:0}60%{transform:scale(1.3)}80%{transform:scale(0.95)}100%{transform:scale(1);opacity:1}}
     </style>
@@ -149,6 +164,11 @@ const FIREBASE_URL = 'https://credit-card-app-96107-default-rtdb.asia-southeast1
 firebase.initializeApp({ databaseURL: FIREBASE_URL });
 const db = firebase.database();
 const subsRef = db.ref('submissions');
+
+// ── Presence: track who's currently viewing the app ──
+// Uses Firebase's built-in .info/connected for reliable online detection
+const presenceRef = db.ref('presence');
+const connectedRef = db.ref('.info/connected');
 
 /* ── Confetti ── */
 (function(){
@@ -394,6 +414,8 @@ function App(){
     const [undoStack,setUndo] =useState([]);
     const [showSwitch,setSwitch]=useState(false);
     const [showMac,setShowMac]=useState(false);
+    const [connected,setConnected]=useState(null); // null=connecting, true, false
+    const [onlineUsers,setOnlineUsers]=useState({});
     const doneMsg=useRef(DONE[Math.floor(Math.random()*DONE.length)]);
     // For dev: simulate time passing for 72h auto-confirm
     // In production this would just be Date.now()
@@ -412,6 +434,31 @@ function App(){
         });
         return ()=>subsRef.off('value',handler);
     },[]);
+
+    // Monitor Firebase connection status
+    useEffect(()=>{
+        connectedRef.on('value', snap=>{
+            setConnected(snap.val()===true);
+        });
+        return ()=>connectedRef.off('value');
+    },[]);
+
+    // Presence: register this user as online when logged in, remove on disconnect
+    useEffect(()=>{
+        if(!user)return;
+        const myRef=presenceRef.child(user);
+        // Set presence, auto-remove on disconnect
+        myRef.set({online:true,ts:Date.now()});
+        myRef.onDisconnect().remove();
+        // Watch all presence
+        const handler=presenceRef.on('value',snap=>{
+            setOnlineUsers(snap.val()||{});
+        });
+        return ()=>{
+            myRef.remove();
+            presenceRef.off('value',handler);
+        };
+    },[user]);
 
     // Save a single tx submission to Firebase (merge with existing)
     const save=(txId,txData)=>{
@@ -549,6 +596,22 @@ function App(){
 
     return React.createElement('div',null,
         showSwitch&&React.createElement(SwitchOverlay,{currentUser:user,onSelect:login,onClose:()=>setSwitch(false)}),
+
+        // Sync status bar
+        React.createElement('div',{className:'sync-bar'},
+            React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
+                React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
+                connected===null?'connecting…':connected?'synced':'offline'
+            ),
+            React.createElement('div',{className:'online-users'},
+                USERS.map(u=>
+                    onlineUsers[u]
+                        ? React.createElement('span',{key:u,className:'online-chip '+(u===user?'self':'active')},
+                            u===user?'● '+u:'● '+u)
+                        : null
+                ).filter(Boolean)
+            )
+        ),
 
         // Dev banner
         React.createElement('div',{className:'dev-banner'},

@@ -284,10 +284,12 @@ function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
     const otherSub=getSubValue(sub,otherUser);
     const autoConf=isAutoConfirmed(sub,tx.id,nowMs);
 
-    // Conflict: both picked differently, visible only day-after
-    const nonUnsureVals=USERS.map(u=>getSubValue(sub,u)).filter(v=>v&&v!=='Unsure');
-    const isConflict=past&&nonUnsureVals.length>1&&new Set(nonUnsureVals).size>1;
+    // Unsure overrides everything — if anyone marked Unsure, the whole tx is unsure
     const anyUnsure=past&&USERS.some(u=>getSubValue(sub,u)==='Unsure');
+    const unsureMarkedBy=USERS.filter(u=>getSubValue(sub,u)==='Unsure');
+    // Conflict only when no one said Unsure
+    const nonUnsureVals=USERS.map(u=>getSubValue(sub,u)).filter(v=>v&&v!=='Unsure');
+    const isConflict=past&&!anyUnsure&&nonUnsureVals.length>1&&new Set(nonUnsureVals).size>1;
     const isCollapsing=collapsing.has(tx.id);
 
     const cardCls=['tx-card',isConflict?'conflict':'',isCollapsing?'collapsing':''].filter(Boolean).join(' ');
@@ -330,8 +332,20 @@ function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
         // Conflict or unsure: show re-assign
         : (isConflict||anyUnsure)
             ? React.createElement('div',null,
-                mySub&&React.createElement('p',{className:'my-pick-note'},
-                    'Your pick: ',React.createElement('span',{className:'my-pick-chip'},mySub),' · tap to change'),
+                anyUnsure
+                    // Unsure: show who flagged it, and what the OTHER person has chosen
+                    ? React.createElement('p',{className:'my-pick-note'},
+                        unsureMarkedBy.join(' & ')+' marked unsure'+(
+                            otherSub&&otherSub!=='Unsure'
+                                ? ' · '+otherUser+' picked '+otherSub
+                                : !otherSub ? ' · '+otherUser+' hasn\'t picked yet' : ''
+                        )
+                      )
+                    // Conflict: show other person's pick
+                    : React.createElement('p',{className:'my-pick-note'},
+                        otherUser+' picked ',React.createElement('span',{className:'my-pick-chip'},otherSub||'—'),
+                        mySub?' · your pick: '+mySub:' · tap to assign'
+                      ),
                 React.createElement('div',{className:'conflict-row'},
                     ASSIGN_OPTS.map(opt=>React.createElement('button',{key:opt,...makeTap(opt,'conflict-tap-btn')},opt))
                 )
@@ -400,12 +414,16 @@ function App(){
     //   BUT: if I assign a past-day conflict TODAY, it clears from my view immediately.
     //   It will re-surface tomorrow if the other person disagrees.
     // In practice: card visible = I have no pick OR (past & conflict & I haven't re-assigned today)
+    // Unsure takes priority: if ANY user marked Unsure, the whole tx is "unsure" next day
+    const anyoneUnsure=(id)=>USERS.some(u=>getSubValue(getSub(id),u)==='Unsure');
+    const isUnsurePinned=(id,txKey)=>conflictVisible(txKey,simDelta)&&anyoneUnsure(id);
+    // Conflict only applies when no one said Unsure
     const isConflict=(id,txKey)=>{
         if(!conflictVisible(txKey,simDelta))return false;
+        if(anyoneUnsure(id))return false; // unsure overrides conflict
         const vals=USERS.map(u=>getSubValue(getSub(id),u)).filter(v=>v&&v!=='Unsure');
         return vals.length>1&&new Set(vals).size>1;
     };
-    const isUnsurePinned=(id,txKey)=>conflictVisible(txKey,simDelta)&&USERS.some(u=>getSubValue(getSub(id),u)==='Unsure');
     const isAutoConf=(id)=>isAutoConfirmed(getSub(id),id,simNow);
 
     const isVisible=(tx,txKey)=>{
@@ -478,15 +496,18 @@ function App(){
         return {txKey,list,visible,active,past,label,date:isoDate(rel)};
     }).filter(g=>g.active.length>0);
 
-    // Stats: how many TX I still need to action vs how many other user needs
-    // "Need to action" = no pick from that user (and not auto-confirmed)
+    // Stats: count ALL unresolved tx per user — includes conflicts, unsures, and unpicked
+    // "Remaining" = anything that isn't auto-confirmed and fully resolved
+    // A tx is resolved for a user if: auto-confirmed OR (they've picked AND no conflict/unsure pending)
     let myRemaining=0,otherRemaining=0;
     loadedKeys.forEach(txKey=>{
         (TX[txKey]||[]).forEach(tx=>{
-            if(!isAutoConf(tx.id)){
-                if(!myPick(tx.id))myRemaining++;
-                if(!getSubValue(getSub(tx.id),otherUser))otherRemaining++;
-            }
+            if(isAutoConf(tx.id))return; // auto-confirmed = done for everyone
+            const conflict=isConflict(tx.id,txKey);
+            const unsure=isUnsurePinned(tx.id,txKey);
+            // I still have work if: haven't picked, OR conflict/unsure needs resolution
+            if(!myPick(tx.id)||conflict||unsure)myRemaining++;
+            if(!getSubValue(getSub(tx.id),otherUser)||conflict||unsure)otherRemaining++;
         });
     });
 

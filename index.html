@@ -412,6 +412,9 @@ function App(){
     const [simDelta,setSim]   =useState(0);
     const [collapsing,setCol] =useState(new Set());
     const collapseTimers=useRef([]);
+    // resolved: txIds this user has explicitly re-tapped on during conflict/unsure resolution this session
+    // Cleared on stepDay/resetDay. Used so remainingFor doesn't keep counting after you've re-tapped.
+    const [resolved,setResolved]=useState(new Set());
     const [undoStack,setUndo] =useState([]);
     const [showSwitch,setSwitch]=useState(false);
     const [showMac,setShowMac]=useState(false);
@@ -477,7 +480,7 @@ function App(){
 
     const login=u=>{
         setUser(u);localStorage.setItem(UK,u);
-        setCol(new Set());setUndo([]);setSwitch(false);
+        setCol(new Set());setResolved(new Set());setUndo([]);setSwitch(false);
     };
 
     const resetCache=()=>{
@@ -509,24 +512,40 @@ function App(){
 
     const isAutoConf=(id)=>isAutoConfirmed(getSub(id),id,simNow);
 
-    // remainingFor(u): has user U still got work to do on this tx?
-    // Today: remaining if no pick yet
-    // Past day: remaining if no pick, OR picked Unsure (needs real answer),
-    //           OR there's a conflict/unsure that needs re-resolution from this user
+    // remainingFor(u, tx, txKey): does user U still have work on this tx?
+    //
+    // TODAY: done once they've picked anything (one tap = done)
+    //
+    // PAST DAY — three sub-cases:
+    //   a) No pick at all → remaining
+    //   b) Picked Unsure → remaining (needs real answer)
+    //   c) Has a real pick:
+    //      - If conflict or unsure EXISTS on this tx:
+    //          → remaining for user u, UNLESS u has already re-tapped it this session
+    //            (tracked in `resolved` set — local to this device/session)
+    //      - No conflict/unsure → done
+    //
+    // `resolved` is only for the CURRENT user on this device. For the other user,
+    // we can't know if they've re-tapped, so we always show their count as remaining
+    // until the conflict/unsure is fully cleared from Firebase data.
     const remainingFor=(u,tx,txKey)=>{
         if(isAutoConf(tx.id))return false;
         const pick=getSubValue(getSub(tx.id),u);
         if(isToday(txKey)){
-            return !pick; // today: one tap = done
+            return !pick;
         }
         // Past day
-        if(!pick)return true;           // never picked → remaining
-        if(pick==='Unsure')return true; // Unsure = needs real decision
-        // Has a real pick — check if conflict or unsure exists
-        // If conflict: this user needs to re-evaluate
-        if(isConflict(tx.id,txKey))return true;
-        if(isUnsurePinned(tx.id,txKey))return true;
-        return false; // real pick, no conflict/unsure → done
+        if(!pick)return true;
+        if(pick==='Unsure')return true;
+        // Has a real pick on a past day
+        const hasConflict=isConflict(tx.id,txKey);
+        const hasUnsure=isUnsurePinned(tx.id,txKey);
+        if(!hasConflict&&!hasUnsure)return false; // clean, done
+        // Conflict or unsure exists — check if THIS user has re-tapped this session
+        // Only the current logged-in user's session has the resolved set
+        if(u===user && resolved.has(tx.id))return false; // current user re-tapped it already
+        // For the other user (or current user who hasn't re-tapped): still remaining
+        return true;
     };
 
     // isVisible: should this card show on screen for the current user?
@@ -550,9 +569,15 @@ function App(){
         const timer=setTimeout(()=>{
             const myNewPick=newSubs[txId]?.[user]?.value;
             const thisDayIsPast=isPast(txKey);
-            // Past day + Unsure → keep visible (needs a real answer)
-            if(thisDayIsPast && myNewPick==='Unsure') return;
-            // Everything else → collapse for this user
+            if(thisDayIsPast && myNewPick==='Unsure'){
+                // Past-day Unsure: mark as re-tapped so count goes down, but keep visible
+                setResolved(r=>new Set([...r,txId]));
+                return;
+            }
+            // All other cases: collapse card + mark resolved (for conflict re-taps)
+            if(thisDayIsPast){
+                setResolved(r=>new Set([...r,txId]));
+            }
             setCol(c=>new Set([...c,txId]));
         },220);
         collapseTimers.current.push(timer);
@@ -579,8 +604,8 @@ function App(){
     };
 
     const cancelTimers=()=>{ collapseTimers.current.forEach(clearTimeout); collapseTimers.current=[]; };
-    const stepDay=()=>{ cancelTimers(); setSim(d=>d+1); setCol(new Set()); setSimNow(simNow+24*60*60*1000); };
-    const resetDay=()=>{ cancelTimers(); setSim(0); setCol(new Set()); setSimNow(Date.now()); };
+    const stepDay=()=>{ cancelTimers(); setSim(d=>d+1); setCol(new Set()); setResolved(new Set()); setSimNow(simNow+24*60*60*1000); };
+    const resetDay=()=>{ cancelTimers(); setSim(0); setCol(new Set()); setResolved(new Set()); setSimNow(Date.now()); };
 
     // Tally: always show Tony and Nugs totals (what each assigned to themselves)
     // Macquarie: deduplicated sum of txns anyone assigned to Macquarie
@@ -635,7 +660,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r1':'offline'
+connected===null?'connecting…':connected?'synced r2':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

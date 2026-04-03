@@ -416,7 +416,9 @@ function App(){
     const [showMac,setShowMac]=useState(false);
     const [connected,setConnected]=useState(null); // null=connecting, true, false
     const [onlineUsers,setOnlineUsers]=useState({});
-    const [syncCount,setSyncCount]=useState(0);
+    const [syncCount,setSyncCount]=useState(0); // kept for compat but unused now
+    // Revision = total number of individual user picks stored (across all tx, all users)
+    // Computed from subs directly — updates whenever Firebase syncs
     const doneMsg=useRef(DONE[Math.floor(Math.random()*DONE.length)]);
     // For dev: simulate time passing for 72h auto-confirm
     // In production this would just be Date.now()
@@ -594,22 +596,15 @@ function App(){
         return {txKey,list,visible,active,past,label,date:isoDate(rel)};
     }).filter(g=>g.active.length>0);
 
-    // Stats: remaining = things I still need to tap today
-    // Today: just unpicked. Past days: unpicked + conflicts + unsures.
+    // Stats: remaining = transactions I haven't tapped yet across all loaded days.
+    // Simple rule: if I've picked it → it's done for me. No re-adding for conflicts.
+    // Conflicts will resurface as fresh tasks the next day.
     let myRemaining=0,otherRemaining=0;
     loadedKeys.forEach(txKey=>{
-        const today=parseInt(txKey)===simDelta;
         (TX[txKey]||[]).forEach(tx=>{
             if(isAutoConf(tx.id))return;
-            if(today){
-                if(!myPick(tx.id))myRemaining++;
-                if(!getSubValue(getSub(tx.id),otherUser))otherRemaining++;
-            } else {
-                const conflict=isConflict(tx.id,txKey);
-                const unsure=isUnsurePinned(tx.id,txKey);
-                if(!myPick(tx.id)||conflict||unsure)myRemaining++;
-                if(!getSubValue(getSub(tx.id),otherUser)||conflict||unsure)otherRemaining++;
-            }
+            if(!myPick(tx.id))myRemaining++;
+            if(!getSubValue(getSub(tx.id),otherUser))otherRemaining++;
         });
     });
 
@@ -625,7 +620,11 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-                connected===null?'connecting…':connected?'synced #'+syncCount:'offline'
+                (()=>{
+                    const rev=Object.values(subs).reduce((a,tx)=>
+                        a+USERS.filter(u=>tx[u]?.value).length,0);
+                    return connected===null?'connecting…':connected?'synced r'+rev:'offline';
+                })()
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

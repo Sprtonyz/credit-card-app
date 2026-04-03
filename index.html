@@ -191,6 +191,15 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
+const APP_VERSION='r3.0';
+const VK='cc_version';
+// Force clear local state if app version changed (ensures clean slate on new deploys)
+(function(){
+    if(localStorage.getItem(VK)!==APP_VERSION){
+        localStorage.removeItem(UK);
+        localStorage.setItem(VK, APP_VERSION);
+    }
+})();
 const AUTO_CONFIRM_MS=72*60*60*1000; // 72 hours in ms
 
 // Transaction data by simulated day index
@@ -410,20 +419,14 @@ function App(){
     const [user,   setUser]   =useState(null);
     const [subs,   setSubs]   =useState({});
     const [simDelta,setSim]   =useState(0);
-    const [collapsing,setCol]       =useState(new Set());
-    const collapseTimers            =useRef([]);
-    // sessionResolved: past-day txIds this user has tapped this session.
-    // Allows MY remaining to drop immediately after tapping a conflict/unsure,
-    // without waiting for Firebase. Cleared on stepDay/resetDay/login.
-    const [sessionResolved,setSessRes]=useState(new Set());
+    const [collapsing,setCol] = useState(new Set());
+    const collapseTimers      = useRef([]);
     const [undoStack,setUndo] =useState([]);
     const [showSwitch,setSwitch]=useState(false);
     const [showMac,setShowMac]=useState(false);
     const [connected,setConnected]=useState(null); // null=connecting, true, false
     const [onlineUsers,setOnlineUsers]=useState({});
-    const [syncCount,setSyncCount]=useState(0); // kept for compat but unused now
-    // Revision = total number of individual user picks stored (across all tx, all users)
-    // Computed from subs directly — updates whenever Firebase syncs
+
     const doneMsg=useRef(DONE[Math.floor(Math.random()*DONE.length)]);
     // For dev: simulate time passing for 72h auto-confirm
     // In production this would just be Date.now()
@@ -480,84 +483,73 @@ function App(){
 
     const login=u=>{
         setUser(u);localStorage.setItem(UK,u);
-        setCol(new Set());setSessRes(new Set());setUndo([]);setSwitch(false);
+        setCol(new Set()); setUndo([]); setSwitch(false);
     };
 
     const resetCache=()=>{
         if(!confirm('Reset all data? This clears ALL devices.'))return;
         subsRef.remove();
         localStorage.removeItem(UK);
-        setSubs({});setCol(new Set());setUndo([]);setUser(null);setShowMac(false);
+        setSubs({}); setCol(new Set()); setUndo([]); setUser(null); setShowMac(false);
     };
 
-    // ── Single source of truth: Firebase only ──────────────────────────────────
-    // All logic reads purely from `subs` which is always set to Firebase data.
-    // No optimistic writes. No mixed logic. Both users always see the same counts.
+    // ── All logic reads from `subs` (Firebase ground truth only) ──────────────
+    // subs is set exclusively by the Firebase listener. No optimistic writes.
+    // remainingFor is identical on both devices for both users.
 
-    const getSub=id=>subs[id]||{};
-    const getPick=(txId,u)=>getSub(txId)[u]?.value??null;
-    const myPick=id=>getPick(id,user); // kept for undo compatibility
+    const getSub  = id => subs[id] || {};
+    const getPick = (id, u) => getSub(id)[u]?.value ?? null;
 
-    const isToday=(txKey)=>parseInt(txKey)===simDelta;
-    const isPast=(txKey)=>parseInt(txKey)<simDelta;
+    const isToday = txKey => parseInt(txKey) === simDelta;
+    const isPast  = txKey => parseInt(txKey) < simDelta;
 
-    const isAutoConf=(id)=>isAutoConfirmed(getSub(id),id,simNow);
+    const isAutoConf = id => isAutoConfirmed(getSub(id), id, simNow);
 
-    // anyoneUnsure: any user has 'Unsure' in Firebase for this tx
-    const anyoneUnsure=(id)=>USERS.some(u=>getPick(id,u)==='Unsure');
+    // Unsure: any user picked 'Unsure'. Overrides conflict. Only revealed on past days.
+    const anyoneUnsure    = id => USERS.some(u => getPick(id, u) === 'Unsure');
+    const isUnsurePinned  = (id, txKey) => isPast(txKey) && anyoneUnsure(id);
 
-    // isUnsurePinned: unsure is only surfaced on past days
-    const isUnsurePinned=(id,txKey)=>isPast(txKey)&&anyoneUnsure(id);
-
-    // isConflict: past day, no unsure, both users picked differently (personal picks only).
-    // Macquarie is a shared category — if anyone picked Macquarie, no conflict.
-    const isConflict=(id,txKey)=>{
-        if(!isPast(txKey))return false;
-        if(anyoneUnsure(id))return false;
-        // Only personal picks (Tony/Nugs) can conflict — Macquarie is shared, not conflicting
-        if(USERS.some(u=>getPick(id,u)==='Macquarie'))return false;
-        const vals=USERS.map(u=>getPick(id,u)).filter(v=>v);
-        return vals.length===USERS.length&&new Set(vals).size>1;
+    // Conflict: past day, no unsure, both users have picked, and their picks differ.
+    // Any pick counts — Tony, Nugs, or Macquarie. If they both picked Macquarie → agree → no conflict.
+    const isConflict = (id, txKey) => {
+        if (!isPast(txKey)) return false;
+        if (anyoneUnsure(id)) return false;   // unsure overrides conflict
+        const picks = USERS.map(u => getPick(id, u)).filter(Boolean);
+        return picks.length === USERS.length && new Set(picks).size > 1;
     };
 
-    // remainingFor: purely Firebase-derived. Identical result on both devices.
-    // TODAY:     remaining = no pick yet
-    // PAST DAY:  remaining = no pick, OR Unsure, OR conflict/unsure exists AND user hasn't tapped this session
-    // "tapped this session" = txId is in local `sessionResolved` set (cleared on stepDay/login)
-    const remainingFor=(u,tx,txKey)=>{
-        if(isAutoConf(tx.id))return false;
-        const pick=getPick(tx.id,u);
-        if(isToday(txKey)) return !pick;
-        // Past day
-        if(!pick) return true;
-        if(pick==='Unsure') return true;
-        // Has a real pick — check if conflict/unsure needs attention
-        if(!isConflict(tx.id,txKey)&&!isUnsurePinned(tx.id,txKey)) return false;
-        // Conflict/unsure exists — remaining UNLESS this user tapped it this session
-        return u===user ? !sessionResolved.has(tx.id) : true;
+    // remainingFor(u, tx, txKey): does user U still need to action this tx?
+    // Rules:
+    //   Auto-confirmed              → false (done for everyone)
+    //   Today + no pick             → true  (needs assignment)
+    //   Today + has any pick        → false (done for today)
+    //   Past + no pick              → true  (missed it)
+    //   Past + picked Unsure        → true  (needs real decision)
+    //   Past + real pick + no issue → false (clean, done)
+    //   Past + real pick + conflict → true  (disagreement, both must re-resolve)
+    //   Past + real pick + unsure   → true  (flagged, both must re-resolve)
+    // This function is IDENTICAL for both users and both devices.
+    const remainingFor = (u, tx, txKey) => {
+        if (isAutoConf(tx.id)) return false;
+        const pick = getPick(tx.id, u);
+        if (isToday(txKey)) return !pick;
+        if (!pick) return true;
+        if (pick === 'Unsure') return true;
+        if (isConflict(tx.id, txKey)) return true;
+        if (isUnsurePinned(tx.id, txKey)) return true;
+        return false;
     };
 
-    // isVisible: should this card show on screen for the current user?
-    const isVisible=(tx,txKey)=>{
-        if(collapsing.has(tx.id))return true; // mid-animation
-        return remainingFor(user,tx,txKey);
-    };
+    // isVisible: card shown on screen if remaining for current user OR mid-animation
+    const isVisible = (tx, txKey) =>
+        collapsing.has(tx.id) || remainingFor(user, tx, txKey);
 
-    const assign=(txId,txKey,opt)=>{
-        const prev=getPick(txId,user);
-        setUndo(s=>[...s,{txId,u:user,prev,prevSub:getSub(txId)[user]}]);
-        const ts=simNow;
-        save(txId,{[user]:{value:opt,ts}});
-        // Both today and past-day: collapse immediately on tap.
-        // Past-day: also add to sessionResolved so MY remaining drops now,
-        // not waiting for Firebase round-trip. Other user's remaining updates
-        // when Firebase confirms (remainingFor for them ignores sessionResolved).
-        if(isPast(txKey)){
-            setSessRes(r=>new Set([...r,txId]));
-        }
-        const timer=setTimeout(()=>{
-            setCol(c=>new Set([...c,txId]));
-        },220);
+    // assign: write to Firebase, collapse card visually.
+    // Count updates come from Firebase listener firing (~100-200ms later).
+    const assign = (txId, txKey, opt) => {
+        setUndo(s => [...s, {txId, u:user, prev:getPick(txId,user), prevSub:getSub(txId)[user]}]);
+        save(txId, {[user]: {value:opt, ts:simNow}});
+        const timer = setTimeout(() => setCol(c => new Set([...c, txId])), 220);
         collapseTimers.current.push(timer);
     };
 
@@ -582,8 +574,8 @@ function App(){
     };
 
     const cancelTimers=()=>{ collapseTimers.current.forEach(clearTimeout); collapseTimers.current=[]; };
-    const stepDay=()=>{ cancelTimers(); setSim(d=>d+1); setCol(new Set()); setSessRes(new Set()); setSimNow(simNow+24*60*60*1000); };
-    const resetDay=()=>{ cancelTimers(); setSim(0); setCol(new Set()); setSessRes(new Set()); setSimNow(Date.now()); };
+    const stepDay = () => { cancelTimers(); setSim(d=>d+1); setCol(new Set()); setSimNow(simNow+24*60*60*1000); };
+    const resetDay = () => { cancelTimers(); setSim(0);     setCol(new Set()); setSimNow(Date.now()); };
 
     // Tally: always show Tony and Nugs totals (what each assigned to themselves)
     // Macquarie: deduplicated sum of txns anyone assigned to Macquarie
@@ -638,7 +630,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r2.6':'offline'
+connected===null?'connecting…':connected?'synced r3.0':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

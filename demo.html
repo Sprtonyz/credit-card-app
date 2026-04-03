@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Credit Card Consolidation - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script>
+        const { useState, useEffect } = React;
+
+        function CreditCardApp() {
+            const [transactions, setTransactions] = useState([]);
+            const [submissions, setSubmissions] = useState({});
+            const [currentUser, setCurrentUser] = useState('Tony');
+            const [editingTx, setEditingTx] = useState(null);
+            const [csvFile, setCsvFile] = useState(null);
+            const USERS = ['Tony', 'Nugs'];
+            const STORAGE_KEY = 'cc_submissions';
+
+            // Load from local storage on mount
+            useEffect(() => {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    try {
+                        setSubmissions(JSON.parse(saved));
+                    } catch (e) {
+                        console.log('Failed to load submissions');
+                    }
+                }
+            }, []);
+
+            // Save to local storage whenever submissions change
+            useEffect(() => {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions));
+            }, [submissions]);
+
+            // Load demo data on first load
+            useEffect(() => {
+                loadDemoData();
+            }, []);
+
+            // Load demo CSV data
+            const loadDemoData = () => {
+                const demoCSV = `Date,Amount,Description,Owner
+2026-04-03,75.00,VELOCITY REWARDS FEE,Unknown
+2026-04-03,295.00,CARD FEE,Unknown
+2026-04-03,32.21,aliexpress North Sydney AUS,Unknown
+2026-04-02,1468.00,FOREIGN FEE AUD 8.01,Unknown
+2026-04-02,275.05,KICKSTARTER.COM TSIMSHATSUI HKG,Unknown
+2026-04-01,98.00,gu health rewards GR CAMBERWELL AUS,Unknown
+2026-04-01,12.90,McDonalds 950055 SUNSHINE AUS,Unknown
+2026-03-31,89.50,Coles Supermarket Footscray,Unknown
+2026-03-31,45.00,Bunnings Warehouse,Unknown
+2026-03-30,22.30,ALDI STORES WEST,Unknown`;
+
+                Papa.parse(demoCSV, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: (results) => {
+                        const parsed = results.data
+                            .filter((row) => row.Date && row.Amount)
+                            .map((row, idx) => ({
+                                id: `${row.Date}-${idx}`,
+                                date: row.Date,
+                                amount: parseFloat(row.Amount) || 0,
+                                description: row.Description || 'Unknown',
+                            }));
+
+                        setTransactions(parsed);
+                        setCsvFile('demo-transactions.csv');
+                    },
+                });
+            };
+
+            // Parse CSV and extract transactions
+            const handleCSVUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: (results) => {
+                        const parsed = results.data
+                            .filter((row) => row.Date && row.Amount)
+                            .map((row, idx) => ({
+                                id: `${row.Date}-${idx}`,
+                                date: row.Date,
+                                amount: parseFloat(row.Amount) || 0,
+                                description: row.Description || 'Unknown',
+                            }));
+
+                        setTransactions(parsed);
+                        setCsvFile(file.name);
+                    },
+                    error: (err) => alert(`Error parsing CSV: ${err.message}`),
+                });
+            };
+
+            // Handle user submission
+            const submitAssignment = (txId, user) => {
+                setSubmissions((prev) => ({
+                    ...prev,
+                    [txId]: {
+                        ...prev[txId],
+                        [currentUser]: user,
+                        lastUpdated: new Date().toISOString(),
+                    },
+                }));
+                setEditingTx(null);
+            };
+
+            // Detect conflicts
+            const hasConflict = (txId) => {
+                const sub = submissions[txId];
+                if (!sub) return false;
+                const userAssignments = Object.entries(sub)
+                    .filter(([key]) => USERS.includes(key))
+                    .map(([, val]) => val)
+                    .filter((v) => v !== null);
+                return userAssignments.length > 1 && new Set(userAssignments).size > 1;
+            };
+
+            // Check if all users submitted for a transaction
+            const allSubmitted = (txId) => {
+                const sub = submissions[txId];
+                if (!sub) return false;
+                return USERS.every((user) => sub[user] !== null && sub[user] !== undefined);
+            };
+
+            // Get current user's submission for a transaction
+            const getCurrentSubmission = (txId) => {
+                return submissions[txId]?.[currentUser] || null;
+            };
+
+            // Calculate stats
+            const stats = {
+                total: transactions.length,
+                assigned: transactions.filter((tx) => allSubmitted(tx.id) && !hasConflict(tx.id)).length,
+                conflicts: transactions.filter((tx) => hasConflict(tx.id)).length,
+                pending: transactions.filter((tx) => !allSubmitted(tx.id) || hasConflict(tx.id)).length,
+            };
+
+            // Sort transactions: pending/conflicts first, then completed
+            const sortedTransactions = [...transactions].sort((a, b) => {
+                const aStatus = hasConflict(a.id) || !allSubmitted(a.id) ? 0 : 1;
+                const bStatus = hasConflict(b.id) || !allSubmitted(b.id) ? 0 : 1;
+                return aStatus - bStatus;
+            });
+
+            return React.createElement(
+                'div',
+                { className: 'min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-6' },
+                React.createElement(
+                    'div',
+                    { className: 'max-w-6xl mx-auto' },
+                    // Header
+                    React.createElement(
+                        'div',
+                        { className: 'mb-8' },
+                        React.createElement('h1', { className: 'text-4xl font-bold mb-2' }, '💳 Credit Card Consolidation'),
+                        React.createElement('p', { className: 'text-slate-300' }, 'Assign transactions and resolve conflicts'),
+                        React.createElement('p', { className: 'text-xs text-slate-400 mt-2' }, '(Demo - Data saved locally)')
+                    ),
+
+                    // Upload Section
+                    React.createElement(
+                        'div',
+                        { className: 'bg-slate-800 rounded-lg p-6 mb-6 border border-slate-700' },
+                        React.createElement('label', { className: 'block mb-2 text-sm font-medium' }, 'Upload CSV'),
+                        React.createElement('input', {
+                            type: 'file',
+                            accept: '.csv',
+                            onChange: handleCSVUpload,
+                            className: 'w-full px-4 py-2 bg-slate-700 rounded border border-slate-600 text-white cursor-pointer hover:border-blue-500 transition',
+                        }),
+                        csvFile && React.createElement('p', { className: 'text-sm text-green-400 mt-2' }, '✓ Loaded: ' + csvFile)
+                    ),
+
+                    transactions.length === 0
+                        ? React.createElement(
+                            'div',
+                            { className: 'bg-slate-800 rounded-lg p-12 text-center border border-slate-700' },
+                            React.createElement('p', { className: 'text-slate-400' }, 'Upload a CSV to get started')
+                        )
+                        : React.createElement(
+                            React.Fragment,
+                            null,
+                            // Stats Bar
+                            React.createElement(
+                                'div',
+                                { className: 'grid grid-cols-2 md:grid-cols-4 gap-4 mb-6' },
+                                [
+                                    { label: 'Total', value: stats.total, color: 'blue' },
+                                    { label: 'Assigned', value: stats.assigned, color: 'green' },
+                                    { label: 'Conflicts', value: stats.conflicts, color: 'red' },
+                                    { label: 'Pending', value: stats.pending, color: 'yellow' },
+                                ].map((stat) =>
+                                    React.createElement(
+                                        'div',
+                                        {
+                                            key: stat.label,
+                                            className: `bg-slate-800 rounded-lg p-4 text-center border-2 border-${stat.color}-500`,
+                                        },
+                                        React.createElement('p', { className: 'text-2xl font-bold' }, stat.value),
+                                        React.createElement('p', { className: 'text-sm text-slate-400' }, stat.label)
+                                    )
+                                )
+                            ),
+
+                            // User Selection
+                            React.createElement(
+                                'div',
+                                { className: 'bg-slate-800 rounded-lg p-4 mb-6 border border-slate-700' },
+                                React.createElement('p', { className: 'text-sm mb-2' }, 'Current User:'),
+                                React.createElement(
+                                    'div',
+                                    { className: 'flex gap-2' },
+                                    USERS.map((user) =>
+                                        React.createElement(
+                                            'button',
+                                            {
+                                                key: user,
+                                                onClick: () => setCurrentUser(user),
+                                                className: `px-6 py-2 rounded transition ${
+                                                    currentUser === user
+                                                        ? 'bg-blue-600 text-white'
+                                                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                                }`,
+                                            },
+                                            user
+                                        )
+                                    )
+                                )
+                            ),
+
+                            // Transactions List
+                            React.createElement(
+                                'div',
+                                { className: 'space-y-3' },
+                                sortedTransactions.map((tx) => {
+                                    const conflict = hasConflict(tx.id);
+                                    const submitted = allSubmitted(tx.id);
+                                    const userSub = getCurrentSubmission(tx.id);
+                                    const isEditing = editingTx === tx.id;
+
+                                    return React.createElement(
+                                        'div',
+                                        {
+                                            key: tx.id,
+                                            className: `bg-slate-800 rounded-lg p-4 border-2 transition ${
+                                                conflict
+                                                    ? 'border-red-500 bg-red-900/20'
+                                                    : submitted
+                                                        ? 'border-green-500 bg-green-900/20'
+                                                        : 'border-yellow-500 bg-yellow-900/20'
+                                            }`,
+                                        },
+                                        React.createElement(
+                                            'div',
+                                            { className: 'flex justify-between items-start mb-2' },
+                                            React.createElement(
+                                                'div',
+                                                { className: 'flex-1' },
+                                                React.createElement(
+                                                    'div',
+                                                    { className: 'flex gap-2 items-center mb-1' },
+                                                    React.createElement('span', { className: 'text-xs px-2 py-1 bg-slate-700 rounded' }, tx.date),
+                                                    conflict && React.createElement('span', { className: 'text-xs px-2 py-1 bg-red-600 rounded' }, '⚠️ CONFLICT'),
+                                                    submitted && !conflict && React.createElement('span', { className: 'text-xs px-2 py-1 bg-green-600 rounded' }, '✓ ASSIGNED')
+                                                ),
+                                                React.createElement('p', { className: 'font-medium' }, tx.description),
+                                                React.createElement('p', { className: 'text-sm text-slate-400' }, 'Amount: $' + tx.amount.toFixed(2))
+                                            ),
+                                            React.createElement(
+                                                'div',
+                                                { className: 'text-right' },
+                                                React.createElement('p', { className: 'text-2xl font-bold text-blue-300' }, '$' + tx.amount.toFixed(2))
+                                            )
+                                        ),
+
+                                        // Submissions Display
+                                        React.createElement(
+                                            'div',
+                                            { className: 'bg-slate-900 rounded p-3 mb-3 text-sm' },
+                                            React.createElement('p', { className: 'text-slate-400 mb-2' }, 'User Assignments:'),
+                                            React.createElement(
+                                                'div',
+                                                { className: 'grid grid-cols-2 gap-2' },
+                                                USERS.map((user) => {
+                                                    const assignment = submissions[tx.id]?.[user];
+                                                    return React.createElement(
+                                                        'div',
+                                                        { key: user, className: 'bg-slate-800 rounded p-2' },
+                                                        React.createElement('p', { className: 'text-xs text-slate-400' }, user + ':'),
+                                                        React.createElement(
+                                                            'p',
+                                                            { className: 'font-mono text-sm' },
+                                                            assignment ? React.createElement('span', { className: 'text-blue-300' }, assignment) : React.createElement('span', { className: 'text-slate-500' }, '—')
+                                                        )
+                                                    );
+                                                })
+                                            )
+                                        ),
+
+                                        // Action Buttons / Edit Mode
+                                        isEditing
+                                            ? React.createElement(
+                                                'div',
+                                                { className: 'flex gap-2 flex-wrap' },
+                                                ['Tony', 'Nugs', 'Split', 'Other'].map((option) =>
+                                                    React.createElement(
+                                                        'button',
+                                                        {
+                                                            key: option,
+                                                            onClick: () => submitAssignment(tx.id, option),
+                                                            className: 'px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 rounded transition',
+                                                        },
+                                                        option
+                                                    )
+                                                ),
+                                                React.createElement(
+                                                    'button',
+                                                    {
+                                                        onClick: () => setEditingTx(null),
+                                                        className: 'px-3 py-1 text-sm bg-slate-700 hover:bg-slate-600 rounded transition',
+                                                    },
+                                                    'Cancel'
+                                                )
+                                            )
+                                            : React.createElement(
+                                                'div',
+                                                { className: 'flex gap-2' },
+                                                React.createElement(
+                                                    'button',
+                                                    {
+                                                        onClick: () => setEditingTx(tx.id),
+                                                        className: 'flex-1 px-3 py-2 text-sm bg-slate-700 hover:bg-slate-600 rounded transition',
+                                                    },
+                                                    userSub ? '✏️ Edit' : '➕ Assign'
+                                                ),
+                                                userSub &&
+                                                    React.createElement(
+                                                        'span',
+                                                        { className: 'px-3 py-2 text-sm bg-slate-700 rounded' },
+                                                        'You: ',
+                                                        React.createElement('span', { className: 'text-blue-300' }, userSub)
+                                                    )
+                                            )
+                                    );
+                                })
+                            ),
+
+                            // Summary
+                            React.createElement(
+                                'div',
+                                { className: 'bg-slate-800 rounded-lg p-6 mt-8 border border-slate-700' },
+                                React.createElement('h3', { className: 'text-lg font-bold mb-4' }, 'Summary'),
+                                React.createElement(
+                                    'div',
+                                    { className: 'grid md:grid-cols-2 gap-4 text-sm' },
+                                    React.createElement(
+                                        'div',
+                                        null,
+                                        React.createElement('p', { className: 'text-slate-400' }, 'Resolved:'),
+                                        React.createElement('p', { className: 'text-2xl font-bold text-green-400' }, stats.assigned)
+                                    ),
+                                    React.createElement(
+                                        'div',
+                                        null,
+                                        React.createElement('p', { className: 'text-slate-400' }, 'Remaining:'),
+                                        React.createElement('p', { className: 'text-2xl font-bold text-yellow-400' }, stats.pending)
+                                    )
+                                ),
+                                stats.conflicts > 0 &&
+                                    React.createElement('p', { className: 'text-red-400 mt-4 text-sm' }, '⚠️ ' + stats.conflicts + ' transaction(s) have conflicts that need resolution')
+                            )
+                        )
+                )
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(CreditCardApp));
+    </script>
+</body>
+</html>

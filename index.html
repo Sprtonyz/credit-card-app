@@ -434,12 +434,13 @@ function App(){
         if(u&&USERS.includes(u))setUser(u);
     },[]);
 
-    // Firebase real-time listener — updates subs AND the fbSubsRef ground truth.
+    // Firebase real-time listener — updates BOTH subs (optimistic base) AND fbSubs (ground truth).
+    // fbSubs is state so any Firebase change triggers a re-render → recalculates other user's remaining.
     useEffect(()=>{
         const handler=subsRef.on('value', snap=>{
             const data=snap.val()||{};
-            fbSubsRef.current=data; // ground truth, never optimistically modified
-            setSubs(data);
+            setFbSubs(data);  // ground truth — triggers re-render for other user's count
+            setSubs(data);    // also reset optimistic subs to Firebase truth
         });
         return ()=>subsRef.off('value',handler);
     },[]);
@@ -493,10 +494,10 @@ function App(){
 
     const getSub=id=>subs[id]||{};
     const myPick=id=>getSubValue(getSub(id),user);
-    // fbSubs: ground truth from Firebase only, never optimistically updated.
-    // Used to evaluate the OTHER user's state so optimistic writes don't affect their count.
-    const fbSubsRef=useRef({});
-    const getFbSub=id=>fbSubsRef.current[id]||{};
+    // fbSubs: ground truth from Firebase, stored as STATE (not ref) so any Firebase
+    // update triggers a re-render and recalculates the other user's remaining count.
+    const [fbSubs,setFbSubs]=useState({});
+    const getFbSub=id=>fbSubs[id]||{};
 
     const isToday=(txKey)=>parseInt(txKey)===simDelta;
     const isPast=(txKey)=>parseInt(txKey)<simDelta;
@@ -697,7 +698,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r2.2':'offline'
+connected===null?'connecting…':connected?'synced r2.3':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>
@@ -737,7 +738,15 @@ connected===null?'connecting…':connected?'synced r2.2':'offline'
                                 }).join('|')
                             )
                         ];
-                        navigator.clipboard.writeText(lines.join('\n')).then(()=>alert('Copied to clipboard!')).catch(()=>alert(lines.join('\n')));
+                        const text=lines.join('\n');
+                        try{
+                            const ta=document.createElement('textarea');
+                            ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+                            document.body.appendChild(ta); ta.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(ta);
+                            alert('Copied!');
+                        }catch(e){alert(text);}
                     }
                 },'📋 copy log')
             ),

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Credit Card Consolidation</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script>
+        const { useState, useEffect } = React;
+
+        function CreditCardApp() {
+            const [transactions, setTransactions] = useState([]);
+            const [submissions, setSubmissions] = useState({});
+            const [currentUser, setCurrentUser] = useState('Tony');
+            const [editingTx, setEditingTx] = useState(null);
+            const USERS = ['Tony', 'Nugs'];
+            const STORAGE_KEY = 'cc_submissions';
+
+            useEffect(() => {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    try {
+                        setSubmissions(JSON.parse(saved));
+                    } catch (e) {
+                        console.log('Failed to load');
+                    }
+                }
+                
+                // Load demo data
+                const demoTransactions = [
+                    { id: '2026-04-03-0', date: '2026-04-03', amount: 75.0, description: 'VELOCITY REWARDS FEE' },
+                    { id: '2026-04-03-1', date: '2026-04-03', amount: 295.0, description: 'CARD FEE' },
+                    { id: '2026-04-03-2', date: '2026-04-03', amount: 32.21, description: 'aliexpress North Sydney' },
+                    { id: '2026-04-02-0', date: '2026-04-02', amount: 1468.0, description: 'FOREIGN FEE AUD 8.01' },
+                    { id: '2026-04-02-1', date: '2026-04-02', amount: 275.05, description: 'KICKSTARTER.COM TSIMSHATSUI' },
+                    { id: '2026-04-01-0', date: '2026-04-01', amount: 98.0, description: 'gu health rewards GR CAMBERWELL' },
+                    { id: '2026-04-01-1', date: '2026-04-01', amount: 12.9, description: 'McDonalds 950055 SUNSHINE' },
+                    { id: '2026-03-31-0', date: '2026-03-31', amount: 89.5, description: 'Coles Supermarket Footscray' },
+                    { id: '2026-03-31-1', date: '2026-03-31', amount: 45.0, description: 'Bunnings Warehouse' },
+                    { id: '2026-03-30-0', date: '2026-03-30', amount: 22.3, description: 'ALDI STORES WEST' },
+                ];
+                setTransactions(demoTransactions);
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions));
+            }, [submissions]);
+
+            const submitAssignment = (txId, user) => {
+                setSubmissions((prev) => ({
+                    ...prev,
+                    [txId]: {
+                        ...prev[txId],
+                        [currentUser]: user,
+                    },
+                }));
+                setEditingTx(null);
+            };
+
+            const hasConflict = (txId) => {
+                const sub = submissions[txId];
+                if (!sub) return false;
+                const userAssignments = Object.entries(sub)
+                    .filter(([key]) => USERS.includes(key))
+                    .map(([, val]) => val)
+                    .filter((v) => v !== null);
+                return userAssignments.length > 1 && new Set(userAssignments).size > 1;
+            };
+
+            const allSubmitted = (txId) => {
+                const sub = submissions[txId];
+                if (!sub) return false;
+                return USERS.every((user) => sub[user] !== null && sub[user] !== undefined);
+            };
+
+            const getCurrentSubmission = (txId) => {
+                return submissions[txId]?.[currentUser] || null;
+            };
+
+            const stats = {
+                total: transactions.length,
+                assigned: transactions.filter((tx) => allSubmitted(tx.id) && !hasConflict(tx.id)).length,
+                conflicts: transactions.filter((tx) => hasConflict(tx.id)).length,
+                pending: transactions.filter((tx) => !allSubmitted(tx.id) || hasConflict(tx.id)).length,
+            };
+
+            const sortedTransactions = [...transactions].sort((a, b) => {
+                const aStatus = hasConflict(a.id) || !allSubmitted(a.id) ? 0 : 1;
+                const bStatus = hasConflict(b.id) || !allSubmitted(b.id) ? 0 : 1;
+                return aStatus - bStatus;
+            });
+
+            return React.createElement(
+                'div',
+                { className: 'min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-4 pb-20' },
+                React.createElement(
+                    'div',
+                    { className: 'max-w-2xl mx-auto' },
+                    React.createElement(
+                        'div',
+                        { className: 'mb-6' },
+                        React.createElement('h1', { className: 'text-3xl font-bold mb-1' }, '💳 Credit Card'),
+                        React.createElement('p', { className: 'text-slate-400 text-sm' }, 'Resolve conflicts')
+                    ),
+
+                    React.createElement(
+                        'div',
+                        { className: 'grid grid-cols-4 gap-2 mb-6' },
+                        [
+                            { label: 'Total', value: stats.total },
+                            { label: 'Done', value: stats.assigned },
+                            { label: 'Issues', value: stats.conflicts },
+                            { label: 'Pending', value: stats.pending },
+                        ].map((stat) =>
+                            React.createElement(
+                                'div',
+                                {
+                                    key: stat.label,
+                                    className: 'bg-slate-800 rounded p-3 text-center border border-slate-700',
+                                },
+                                React.createElement('p', { className: 'text-xl font-bold' }, stat.value),
+                                React.createElement('p', { className: 'text-xs text-slate-400' }, stat.label)
+                            )
+                        )
+                    ),
+
+                    React.createElement(
+                        'div',
+                        { className: 'bg-slate-800 rounded p-3 mb-6 border border-slate-700 flex gap-2' },
+                        USERS.map((user) =>
+                            React.createElement(
+                                'button',
+                                {
+                                    key: user,
+                                    onClick: () => setCurrentUser(user),
+                                    className: `flex-1 py-2 rounded transition text-sm font-medium ${
+                                        currentUser === user
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-slate-700 text-slate-300'
+                                    }`,
+                                },
+                                user
+                            )
+                        )
+                    ),
+
+                    React.createElement(
+                        'div',
+                        { className: 'space-y-2' },
+                        sortedTransactions.map((tx) => {
+                            const conflict = hasConflict(tx.id);
+                            const submitted = allSubmitted(tx.id);
+                            const userSub = getCurrentSubmission(tx.id);
+                            const isEditing = editingTx === tx.id;
+
+                            return React.createElement(
+                                'div',
+                                {
+                                    key: tx.id,
+                                    className: `bg-slate-800 rounded p-3 border-2 transition ${
+                                        conflict
+                                            ? 'border-red-500 bg-red-900/20'
+                                            : submitted
+                                                ? 'border-green-500 bg-green-900/20'
+                                                : 'border-yellow-500 bg-yellow-900/20'
+                                    }`,
+                                },
+                                React.createElement(
+                                    'div',
+                                    { className: 'flex justify-between items-start mb-2' },
+                                    React.createElement(
+                                        'div',
+                                        { className: 'flex-1' },
+                                        React.createElement(
+                                            'div',
+                                            { className: 'flex gap-1 items-center mb-1' },
+                                            React.createElement('span', { className: 'text-xs px-2 py-0.5 bg-slate-700 rounded' }, tx.date),
+                                            conflict && React.createElement('span', { className: 'text-xs px-2 py-0.5 bg-red-600 rounded' }, '⚠️'),
+                                            submitted && !conflict && React.createElement('span', { className: 'text-xs px-2 py-0.5 bg-green-600 rounded' }, '✓')
+                                        ),
+                                        React.createElement('p', { className: 'font-medium text-sm' }, tx.description),
+                                        React.createElement('p', { className: 'text-xs text-slate-400' }, '$' + tx.amount.toFixed(2))
+                                    ),
+                                    React.createElement('p', { className: 'text-lg font-bold text-blue-300' }, '$' + tx.amount.toFixed(2))
+                                ),
+
+                                React.createElement(
+                                    'div',
+                                    { className: 'bg-slate-900 rounded p-2 mb-2 text-xs' },
+                                    React.createElement(
+                                        'div',
+                                        { className: 'grid grid-cols-2 gap-1' },
+                                        USERS.map((user) =>
+                                            React.createElement(
+                                                'div',
+                                                { key: user, className: 'bg-slate-800 rounded p-1' },
+                                                React.createElement('p', { className: 'text-slate-400' }, user + ':'),
+                                                React.createElement('p', { className: 'font-mono' }, submissions[tx.id]?.[user] || '—')
+                                            )
+                                        )
+                                    )
+                                ),
+
+                                isEditing
+                                    ? React.createElement(
+                                        'div',
+                                        { className: 'grid grid-cols-2 gap-1' },
+                                        ['Tony', 'Nugs'].map((option) =>
+                                            React.createElement(
+                                                'button',
+                                                {
+                                                    key: option,
+                                                    onClick: () => submitAssignment(tx.id, option),
+                                                    className: 'px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded',
+                                                },
+                                                option
+                                            )
+                                        ),
+                                        React.createElement(
+                                            'button',
+                                            {
+                                                onClick: () => setEditingTx(null),
+                                                className: 'col-span-2 px-2 py-1 text-xs bg-slate-700 rounded',
+                                            },
+                                            'Cancel'
+                                        )
+                                    )
+                                    : React.createElement(
+                                        'button',
+                                        {
+                                            onClick: () => setEditingTx(tx.id),
+                                            className: 'w-full px-2 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded font-medium',
+                                        },
+                                        userSub ? '✏️ ' + userSub : '➕ Assign'
+                                    )
+                            );
+                        })
+                    )
+                )
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(CreditCardApp));
+    </script>
+</body>
+</html>

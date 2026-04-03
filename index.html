@@ -514,20 +514,18 @@ function App(){
 
     // remainingFor(u, tx, txKey): does user U still have work on this tx?
     //
-    // TODAY: done once they've picked anything (one tap = done)
+    // TODAY: done once they've picked anything.
     //
-    // PAST DAY — three sub-cases:
-    //   a) No pick at all → remaining
-    //   b) Picked Unsure → remaining (needs real answer)
-    //   c) Has a real pick:
-    //      - If conflict or unsure EXISTS on this tx:
-    //          → remaining for user u, UNLESS u has already re-tapped it this session
-    //            (tracked in `resolved` set — local to this device/session)
-    //      - No conflict/unsure → done
-    //
-    // `resolved` is only for the CURRENT user on this device. For the other user,
-    // we can't know if they've re-tapped, so we always show their count as remaining
-    // until the conflict/unsure is fully cleared from Firebase data.
+    // PAST DAY:
+    //   - No pick → remaining
+    //   - Picked Unsure → remaining (needs real answer)
+    //   - Has a real pick AND no conflict/unsure → done
+    //   - Has a real pick AND conflict/unsure exists:
+    //       For the CURRENT USER (this device): use the local `resolved` set for
+    //       immediate feedback after they tap. This avoids waiting for Firebase round-trip.
+    //       For the OTHER USER: derive purely from Firebase data. A conflict/unsure is
+    //       resolved for them when isConflict and isUnsurePinned both return false —
+    //       which happens automatically once their new pick clears the conflict in Firebase.
     const remainingFor=(u,tx,txKey)=>{
         if(isAutoConf(tx.id))return false;
         const pick=getSubValue(getSub(tx.id),u);
@@ -537,14 +535,21 @@ function App(){
         // Past day
         if(!pick)return true;
         if(pick==='Unsure')return true;
-        // Has a real pick on a past day
+        // Has a real pick — check if conflict/unsure still exists in Firebase
         const hasConflict=isConflict(tx.id,txKey);
         const hasUnsure=isUnsurePinned(tx.id,txKey);
-        if(!hasConflict&&!hasUnsure)return false; // clean, done
-        // Conflict or unsure exists — check if THIS user has re-tapped this session
-        // Only the current logged-in user's session has the resolved set
-        if(u===user && resolved.has(tx.id))return false; // current user re-tapped it already
-        // For the other user (or current user who hasn't re-tapped): still remaining
+        if(!hasConflict&&!hasUnsure)return false;
+        // Conflict or unsure exists in Firebase data.
+        // For the current user: trust local resolved set for immediate feedback.
+        if(u===user)return !resolved.has(tx.id);
+        // For the other user: they are remaining until Firebase data shows no conflict/unsure.
+        // But we need to detect if THEY have re-tapped their pick.
+        // After they re-tap, their pick in Firebase updates. If that new pick
+        // resolves the conflict (both agree), isConflict returns false above → done.
+        // If they re-pick but conflict persists (still disagree), they're still remaining.
+        // If it's an unsure situation and they've picked a real non-Unsure value,
+        // they've done their part — check if their pick is real.
+        if(hasUnsure&&pick!=='Unsure')return false; // they picked real value on unsure → done for them
         return true;
     };
 

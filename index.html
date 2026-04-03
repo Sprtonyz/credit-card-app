@@ -434,11 +434,12 @@ function App(){
         if(u&&USERS.includes(u))setUser(u);
     },[]);
 
-    // Firebase real-time listener — ONLY updates subs, never touches collapsing.
-    // Collapsing is purely local/day-based. Conflicts only evaluated at day boundary.
+    // Firebase real-time listener — updates subs AND the fbSubsRef ground truth.
     useEffect(()=>{
         const handler=subsRef.on('value', snap=>{
-            setSubs(snap.val()||{});
+            const data=snap.val()||{};
+            fbSubsRef.current=data; // ground truth, never optimistically modified
+            setSubs(data);
         });
         return ()=>subsRef.off('value',handler);
     },[]);
@@ -492,6 +493,10 @@ function App(){
 
     const getSub=id=>subs[id]||{};
     const myPick=id=>getSubValue(getSub(id),user);
+    // fbSubs: ground truth from Firebase only, never optimistically updated.
+    // Used to evaluate the OTHER user's state so optimistic writes don't affect their count.
+    const fbSubsRef=useRef({});
+    const getFbSub=id=>fbSubsRef.current[id]||{};
 
     const isToday=(txKey)=>parseInt(txKey)===simDelta;
     const isPast=(txKey)=>parseInt(txKey)<simDelta;
@@ -512,45 +517,60 @@ function App(){
 
     const isAutoConf=(id)=>isAutoConfirmed(getSub(id),id,simNow);
 
+    // fbIsConflict / fbIsUnsurePinned: same logic as isConflict/isUnsurePinned
+    // but reads from fbSubsRef (ground truth Firebase) instead of subs (optimistic).
+    // Used exclusively for evaluating the OTHER user's remaining count so that
+    // optimistic local writes by the current user don't affect the other user's count.
+    const fbAnyoneUnsure=(id)=>USERS.some(u=>getFbSub(id)[u]?.value==='Unsure');
+    const fbIsConflict=(id,txKey)=>{
+        if(!isPast(txKey))return false;
+        if(fbAnyoneUnsure(id))return false;
+        const vals=USERS.map(u=>getFbSub(id)[u]?.value).filter(v=>v&&v!=='Unsure');
+        return vals.length>1&&new Set(vals).size>1;
+    };
+    const fbIsUnsurePinned=(id,txKey)=>isPast(txKey)&&fbAnyoneUnsure(id);
+
     // remainingFor(u, tx, txKey): does user U still have work on this tx?
     //
-    // TODAY: done once they've picked anything.
+    // TODAY: done once they've picked anything (one tap = done).
     //
     // PAST DAY:
-    //   - No pick → remaining
-    //   - Picked Unsure → remaining (needs real answer)
-    //   - Has a real pick AND no conflict/unsure → done
-    //   - Has a real pick AND conflict/unsure exists:
-    //       For the CURRENT USER (this device): use the local `resolved` set for
-    //       immediate feedback after they tap. This avoids waiting for Firebase round-trip.
-    //       For the OTHER USER: derive purely from Firebase data. A conflict/unsure is
-    //       resolved for them when isConflict and isUnsurePinned both return false —
-    //       which happens automatically once their new pick clears the conflict in Firebase.
+    //   No pick → remaining.
+    //   Picked Unsure → remaining (needs real answer).
+    //   Has a real pick:
+    //     No conflict/unsure → done.
+    //     Conflict/unsure exists:
+    //       CURRENT USER → use local `resolved` set for immediate post-tap feedback.
+    //       OTHER USER   → use Firebase ground truth (fbSub) so optimistic writes
+    //                      by the current user don't falsely clear their count.
+    //                      They are done when Firebase shows the conflict/unsure is gone
+    //                      OR when their Firebase pick is a real value on an unsure tx.
     const remainingFor=(u,tx,txKey)=>{
         if(isAutoConf(tx.id))return false;
-        const pick=getSubValue(getSub(tx.id),u);
         if(isToday(txKey)){
+            const pick=getSubValue(getSub(tx.id),u);
             return !pick;
         }
-        // Past day
+        // Past day — use Firebase ground truth for pick value
+        const pick=getFbSub(tx.id)[u]?.value??null;
         if(!pick)return true;
         if(pick==='Unsure')return true;
-        // Has a real pick — check if conflict/unsure still exists in Firebase
-        const hasConflict=isConflict(tx.id,txKey);
-        const hasUnsure=isUnsurePinned(tx.id,txKey);
-        if(!hasConflict&&!hasUnsure)return false;
-        // Conflict or unsure exists in Firebase data.
-        // For the current user: trust local resolved set for immediate feedback.
-        if(u===user)return !resolved.has(tx.id);
-        // For the other user: they are remaining until Firebase data shows no conflict/unsure.
-        // But we need to detect if THEY have re-tapped their pick.
-        // After they re-tap, their pick in Firebase updates. If that new pick
-        // resolves the conflict (both agree), isConflict returns false above → done.
-        // If they re-pick but conflict persists (still disagree), they're still remaining.
-        // If it's an unsure situation and they've picked a real non-Unsure value,
-        // they've done their part — check if their pick is real.
-        if(hasUnsure&&pick!=='Unsure')return false; // they picked real value on unsure → done for them
-        return true;
+        // Has a real pick on a past day
+        if(u===user){
+            // Current user: use optimistic subs for conflict check + local resolved set
+            const hasConflict=isConflict(tx.id,txKey);
+            const hasUnsure=isUnsurePinned(tx.id,txKey);
+            if(!hasConflict&&!hasUnsure)return false;
+            return !resolved.has(tx.id);
+        } else {
+            // Other user: use Firebase ground truth exclusively
+            const hasConflict=fbIsConflict(tx.id,txKey);
+            const hasUnsure=fbIsUnsurePinned(tx.id,txKey);
+            if(!hasConflict&&!hasUnsure)return false;
+            // Unsure exists but they have a real pick → they've done their part
+            if(hasUnsure&&pick!=='Unsure')return false;
+            return true;
+        }
     };
 
     // isVisible: should this card show on screen for the current user?
@@ -665,7 +685,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r2':'offline'
+connected===null?'connecting…':connected?'synced r2.1':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

@@ -510,21 +510,25 @@ function App(){
 
     const isToday=(txKey)=>parseInt(txKey)===simDelta;
 
-    // Pure per-user remaining — based on data only, no animation state
+    // Pure per-user remaining — based on data only, no animation state.
+    // Rule: a tx is remaining for user U if U hasn't picked it yet.
+    // Exception: if U picked Unsure, it stays remaining (needs real decision).
+    // Conflicts/unsures on past days count as remaining ONLY for users who haven't picked,
+    // or who picked Unsure. Once you've picked a real value, it's done for you.
     const remainingFor=(u,tx,txKey)=>{
         if(isAutoConf(tx.id))return false;
         const pick=getSubValue(getSub(tx.id),u);
-        if(isToday(txKey))return !pick;
-        // Past day: conflict and unsure always need attention
-        if(isConflict(tx.id,txKey))return true;
-        if(isUnsurePinned(tx.id,txKey))return true;
-        return !pick;
+        // No pick at all → always remaining
+        if(!pick)return true;
+        // Picked Unsure → still remaining (needs a real decision)
+        if(pick==='Unsure')return true;
+        // Picked a real value → done for this user, regardless of conflict
+        return false;
     };
 
-        // isVisible: determines if a card shows on screen for the current user.
-    // Uses remainingFor so it stays consistent with the stats count.
+        // isVisible = remainingFor the current user, plus animation guard
     const isVisible=(tx,txKey)=>{
-        if(collapsing.has(tx.id))return true;  // keep rendered during animation
+        if(collapsing.has(tx.id))return true;
         return remainingFor(user,tx,txKey);
     };
 
@@ -541,18 +545,16 @@ function App(){
         // PAST DAY → collapse only if not a conflict/unsure after this pick
         //            (if still conflicted, card stays visible for re-resolution)
         const timer=setTimeout(()=>{
+            // Always collapse for the current user after they tap.
+            // - Today: always collapses (one tap = done for the day)
+            // - Past day conflict: collapses for ME after I re-pick.
+            //   It will reappear tomorrow if still unresolved.
+            //   The OTHER user still sees it from their device.
+            // - Unsure: stays visible (needs explicit resolution)
             const sub=newSubs[txId]||{};
-            const isThisDayPast=parseInt(txKey)<simDelta;
-            if(!isThisDayPast){
-                setCol(c=>new Set([...c,txId]));
-                return;
-            }
-            const anyUnsureNow=USERS.some(u=>sub[u]?.value==='Unsure');
-            const nonUnsureVals=USERS.map(u=>sub[u]?.value).filter(v=>v&&v!=='Unsure');
-            const stillConflict=!anyUnsureNow&&nonUnsureVals.length>1&&new Set(nonUnsureVals).size>1;
-            if(!stillConflict&&!anyUnsureNow){
-                setCol(c=>new Set([...c,txId]));
-            }
+            const myNewPick=sub[user]?.value;
+            if(myNewPick==='Unsure') return; // unsure stays visible
+            setCol(c=>new Set([...c,txId]));
         },220);
         collapseTimers.current.push(timer);
     };
@@ -634,13 +636,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-                (()=>{
-                    // Revision = number of individual user picks stored in Firebase
-                    // Each tap by either user adds 1
-                    const rev=Object.values(subs).reduce((a,tx)=>
-                        a+USERS.filter(u=>tx[u]?.value!=null).length,0);
-                    return connected===null?'connecting…':connected?'synced r'+rev:'offline';
-                })()
+connected===null?'connecting…':connected?'synced r1':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

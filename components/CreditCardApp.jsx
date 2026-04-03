@@ -4,21 +4,27 @@ import Papa from 'papaparse';
 export default function CreditCardApp() {
   const [transactions, setTransactions] = useState([]);
   const [submissions, setSubmissions] = useState({});
-  const [currentUser, setCurrentUser] = useState('Tony');
+  const [currentUser, setCurrentUser] = useState(null);
   const [editingTx, setEditingTx] = useState(null);
   const [csvFile, setCsvFile] = useState(null);
+  const [csvDate, setCsvDate] = useState(null);
   const USERS = ['Tony', 'Nugs'];
   const STORAGE_KEY = 'cc_submissions';
+  const CSV_DATE_KEY = 'cc_csv_date';
 
   // Load from local storage on mount
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
+    const savedCsvDate = localStorage.getItem(CSV_DATE_KEY);
     if (saved) {
       try {
         setSubmissions(JSON.parse(saved));
       } catch (e) {
         console.log('Failed to load submissions');
       }
+    }
+    if (savedCsvDate) {
+      setCsvDate(savedCsvDate);
     }
   }, []);
 
@@ -47,6 +53,10 @@ export default function CreditCardApp() {
 
         setTransactions(parsed);
         setCsvFile(file.name);
+        // Store today's date as CSV upload date
+        const today = new Date().toISOString().split('T')[0];
+        setCsvDate(today);
+        localStorage.setItem(CSV_DATE_KEY, today);
       },
       error: (err) => alert(`Error parsing CSV: ${err.message}`),
     });
@@ -65,8 +75,17 @@ export default function CreditCardApp() {
     setEditingTx(null);
   };
 
-  // Detect conflicts
+  // Detect conflicts (only after 24 hours from CSV upload)
   const hasConflict = (txId) => {
+    if (!csvDate) return false;
+    
+    const csvUploadDate = new Date(csvDate);
+    const now = new Date();
+    const hoursDiff = (now - csvUploadDate) / (1000 * 60 * 60);
+    
+    // Only show conflicts if more than 24 hours have passed
+    if (hoursDiff < 24) return false;
+
     const sub = submissions[txId];
     if (!sub) return false;
     const userAssignments = Object.entries(sub)
@@ -106,13 +125,51 @@ export default function CreditCardApp() {
     return aStatus - bStatus;
   });
 
+  // Check if it's been 24 hours since CSV upload
+  const isConflictPhase = csvDate && ((new Date() - new Date(csvDate)) / (1000 * 60 * 60)) >= 24;
+
+  // If no user selected, show landing page
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-center p-6">
+        <div className="max-w-md w-full text-center">
+          <h1 className="text-5xl font-bold mb-2">💳</h1>
+          <h2 className="text-4xl font-bold mb-6">Credit Card</h2>
+          <p className="text-slate-300 mb-8">Who are you?</p>
+          
+          <div className="space-y-3">
+            {USERS.map((user) => (
+              <button
+                key={user}
+                onClick={() => setCurrentUser(user)}
+                className="w-full px-8 py-4 bg-blue-600 hover:bg-blue-700 rounded-lg transition text-lg font-medium"
+              >
+                {user}
+              </button>
+            ))}
+          </div>
+          
+          <p className="text-slate-400 text-sm mt-8">Upload a CSV to get started</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">💳 Credit Card Consolidation</h1>
-          <p className="text-slate-300">Assign transactions and resolve conflicts</p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-4xl font-bold mb-2">💳 Credit Card Consolidation</h1>
+            <p className="text-slate-300">Logged in as: <span className="text-blue-400 font-bold">{currentUser}</span></p>
+          </div>
+          <button
+            onClick={() => setCurrentUser(null)}
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm"
+          >
+            Switch User
+          </button>
         </div>
 
         {/* Upload Section */}
@@ -153,25 +210,14 @@ export default function CreditCardApp() {
               ))}
             </div>
 
-            {/* User Selection */}
-            <div className="bg-slate-800 rounded-lg p-4 mb-6 border border-slate-700">
-              <p className="text-sm mb-2">Current User:</p>
-              <div className="flex gap-2">
-                {USERS.map((user) => (
-                  <button
-                    key={user}
-                    onClick={() => setCurrentUser(user)}
-                    className={`px-6 py-2 rounded transition ${
-                      currentUser === user
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                    }`}
-                  >
-                    {user}
-                  </button>
-                ))}
+            {/* Show conflict phase message if 24 hours have passed */}
+            {isConflictPhase && stats.conflicts > 0 && (
+              <div className="bg-red-900/30 border border-red-500 rounded-lg p-4 mb-6">
+                <p className="text-red-200">
+                  <strong>⚠️ Conflict Phase:</strong> Both users have submitted. {stats.conflicts} conflict(s) detected. Work together to resolve them.
+                </p>
               </div>
-            </div>
+            )}
 
             {/* Transactions List */}
             <div className="space-y-3">
@@ -213,25 +259,40 @@ export default function CreditCardApp() {
                       </div>
                     </div>
 
-                    {/* Submissions Display */}
+                    {/* Submissions Display - Only show other user during conflict phase */}
                     <div className="bg-slate-900 rounded p-3 mb-3 text-sm">
-                      <p className="text-slate-400 mb-2">User Assignments:</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {USERS.map((user) => {
-                          const assignment = submissions[tx.id]?.[user];
-                          return (
-                            <div key={user} className="bg-slate-800 rounded p-2">
-                              <p className="text-xs text-slate-400">{user}:</p>
-                              <p className="font-mono text-sm">
-                                {assignment ? (
-                                  <span className="text-blue-300">{assignment}</span>
-                                ) : (
-                                  <span className="text-slate-500">—</span>
-                                )}
-                              </p>
-                            </div>
-                          );
-                        })}
+                      <p className="text-slate-400 mb-2">
+                        {isConflictPhase ? 'User Assignments:' : `${currentUser}'s Assignment:`}
+                      </p>
+                      <div className={isConflictPhase ? 'grid grid-cols-2 gap-2' : ''}>
+                        {isConflictPhase ? (
+                          USERS.map((user) => {
+                            const assignment = submissions[tx.id]?.[user];
+                            return (
+                              <div key={user} className="bg-slate-800 rounded p-2">
+                                <p className="text-xs text-slate-400">{user}:</p>
+                                <p className="font-mono text-sm">
+                                  {assignment ? (
+                                    <span className="text-blue-300">{assignment}</span>
+                                  ) : (
+                                    <span className="text-slate-500">—</span>
+                                  )}
+                                </p>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="bg-slate-800 rounded p-2">
+                            <p className="text-xs text-slate-400">{currentUser}:</p>
+                            <p className="font-mono text-sm">
+                              {userSub ? (
+                                <span className="text-blue-300">{userSub}</span>
+                              ) : (
+                                <span className="text-slate-500">Not yet assigned</span>
+                              )}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -262,11 +323,6 @@ export default function CreditCardApp() {
                         >
                           {userSub ? '✏️ Edit' : '➕ Assign'}
                         </button>
-                        {userSub && (
-                          <span className="px-3 py-2 text-sm bg-slate-700 rounded">
-                            You: <span className="text-blue-300">{userSub}</span>
-                          </span>
-                        )}
                       </div>
                     )}
                   </div>

@@ -596,15 +596,28 @@ function App(){
         return {txKey,list,visible,active,past,label,date:isoDate(rel)};
     }).filter(g=>g.active.length>0);
 
-    // Stats: remaining = transactions I haven't tapped yet across all loaded days.
-    // Simple rule: if I've picked it → it's done for me. No re-adding for conflicts.
-    // Conflicts will resurface as fresh tasks the next day.
+    // Stats: remaining = exactly what's visible on screen right now (source of truth).
+    // If a card is showing (active, not collapsing), it counts as remaining for that user.
+    // This naturally includes conflicts, unsures, and unpicked — whatever isVisible returns.
     let myRemaining=0,otherRemaining=0;
     loadedKeys.forEach(txKey=>{
+        const today=parseInt(txKey)===simDelta;
         (TX[txKey]||[]).forEach(tx=>{
             if(isAutoConf(tx.id))return;
-            if(!myPick(tx.id))myRemaining++;
-            if(!getSubValue(getSub(tx.id),otherUser))otherRemaining++;
+            if(collapsing.has(tx.id))return; // mid-animation, don't count
+            if(today){
+                // Today: counts if I haven't picked yet
+                if(!myPick(tx.id))myRemaining++;
+                if(!getSubValue(getSub(tx.id),otherUser))otherRemaining++;
+            } else {
+                // Past days: counts if the card is actually visible (conflict/unsure/unpicked)
+                if(isVisible(tx,txKey))myRemaining++;
+                // For other user: visible to them means conflict/unsure/they-haven't-picked
+                const conflict=isConflict(tx.id,txKey);
+                const unsure=isUnsurePinned(tx.id,txKey);
+                const otherPick=getSubValue(getSub(tx.id),otherUser);
+                if(conflict||unsure||!otherPick)otherRemaining++;
+            }
         });
     });
 

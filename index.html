@@ -9,613 +9,370 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,300;9..144,600&display=swap');
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0a0d12; color: #e8e6e1; font-family: 'DM Mono', monospace; min-height: 100vh; }
 
-        body {
-            background: #0a0d12;
-            color: #e8e6e1;
-            font-family: 'DM Mono', monospace;
-            min-height: 100vh;
-        }
-
-        /* Landing page */
+        /* ── Landing ── */
         .landing {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem;
+            min-height: 100vh; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; padding: 2rem;
             background: radial-gradient(ellipse at 30% 20%, rgba(59,130,246,0.08) 0%, transparent 60%),
-                        radial-gradient(ellipse at 80% 80%, rgba(99,102,241,0.06) 0%, transparent 60%),
-                        #0a0d12;
+                        radial-gradient(ellipse at 80% 80%, rgba(99,102,241,0.06) 0%, transparent 60%), #0a0d12;
         }
-
-        .landing-card {
-            width: 100%;
-            max-width: 360px;
-            text-align: center;
-        }
-
-        .landing-eyebrow {
-            font-size: 0.65rem;
-            letter-spacing: 0.25em;
-            text-transform: uppercase;
-            color: #4b5563;
-            margin-bottom: 1.5rem;
-        }
-
-        .landing-title {
-            font-family: 'Fraunces', serif;
-            font-size: 2.4rem;
-            font-weight: 300;
-            color: #f1f0ec;
-            line-height: 1.15;
-            margin-bottom: 0.5rem;
-        }
-
-        .landing-sub {
-            font-size: 0.72rem;
-            color: #4b5563;
-            margin-bottom: 3rem;
-            letter-spacing: 0.05em;
-        }
-
-        .who-label {
-            font-size: 0.65rem;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            color: #6b7280;
-            margin-bottom: 1rem;
-        }
-
+        .landing-card { width: 100%; max-width: 360px; text-align: center; }
+        .landing-eyebrow { font-size: 0.65rem; letter-spacing: 0.25em; text-transform: uppercase; color: #4b5563; margin-bottom: 1.5rem; }
+        .landing-title { font-family: 'Fraunces', serif; font-size: 2.4rem; font-weight: 300; color: #f1f0ec; line-height: 1.15; margin-bottom: 0.5rem; }
+        .landing-sub { font-size: 0.72rem; color: #4b5563; margin-bottom: 3rem; letter-spacing: 0.05em; }
+        .who-label { font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase; color: #6b7280; margin-bottom: 1rem; }
         .user-btn {
-            display: block;
-            width: 100%;
-            padding: 1rem 1.5rem;
-            margin-bottom: 0.75rem;
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 8px;
-            color: #e8e6e1;
-            font-family: 'Fraunces', serif;
-            font-size: 1.4rem;
-            font-weight: 300;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            text-align: left;
-            letter-spacing: 0.02em;
+            display: block; width: 100%; padding: 1rem 1.5rem; margin-bottom: 0.75rem;
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px; color: #e8e6e1; font-family: 'Fraunces', serif;
+            font-size: 1.4rem; font-weight: 300; cursor: pointer; transition: all 0.2s ease; text-align: left;
         }
-
-        .user-btn:hover {
-            background: rgba(59,130,246,0.1);
-            border-color: rgba(59,130,246,0.3);
-            transform: translateX(4px);
+        .user-btn:hover { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.3); transform: translateX(4px); }
+        .user-initial {
+            display: inline-block; width: 32px; height: 32px;
+            background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.25);
+            border-radius: 50%; text-align: center; line-height: 32px; font-size: 0.9rem;
+            margin-right: 0.75rem; vertical-align: middle; font-family: 'DM Mono', monospace; color: #60a5fa;
         }
+        .landing-footer { margin-top: 3rem; font-size: 0.6rem; color: #374151; letter-spacing: 0.1em; }
 
-        .user-btn .user-initial {
-            display: inline-block;
-            width: 32px;
-            height: 32px;
-            background: rgba(59,130,246,0.15);
-            border: 1px solid rgba(59,130,246,0.25);
-            border-radius: 50%;
-            text-align: center;
-            line-height: 32px;
-            font-size: 0.9rem;
-            margin-right: 0.75rem;
-            vertical-align: middle;
-            font-family: 'DM Mono', monospace;
-            color: #60a5fa;
+        /* ── Dev banner ── */
+        .dev-banner {
+            background: rgba(234,179,8,0.07); border-bottom: 1px solid rgba(234,179,8,0.18);
+            padding: 0.4rem 1rem; display: flex; align-items: center; justify-content: center; gap: 0.6rem;
         }
-
-        .landing-footer {
-            margin-top: 3rem;
-            font-size: 0.6rem;
-            color: #374151;
-            letter-spacing: 0.1em;
+        .dev-label { font-size: 0.56rem; letter-spacing: 0.15em; text-transform: uppercase; color: #92400e; }
+        .day-display { font-size: 0.7rem; color: #fbbf24; min-width: 80px; text-align: center; }
+        .day-btn {
+            background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.22);
+            border-radius: 4px; color: #d97706; font-family: 'DM Mono', monospace;
+            font-size: 0.68rem; padding: 0.18rem 0.55rem; cursor: pointer; transition: background 0.15s;
         }
+        .day-btn:hover { background: rgba(234,179,8,0.18); }
+        .day-btn.reset { color: #6b7280; border-color: rgba(107,114,128,0.2); }
 
-        /* Main app */
-        .app {
-            max-width: 480px;
-            margin: 0 auto;
-            padding: 1.25rem 1rem 5rem;
+        /* ── Tally bar ── */
+        .tally-bar {
+            background: rgba(255,255,255,0.015); border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex;
         }
+        .tally-item {
+            flex: 1; display: flex; flex-direction: column; align-items: center;
+            padding: 0.55rem 0.5rem; border-right: 1px solid rgba(255,255,255,0.05);
+        }
+        .tally-item:last-child { border-right: none; }
+        .tally-name { font-size: 0.55rem; letter-spacing: 0.18em; text-transform: uppercase; color: #4b5563; margin-bottom: 0.18rem; }
+        .tally-amount { font-family: 'Fraunces', serif; font-size: 1.05rem; font-weight: 300; color: #93c5fd; }
 
+        /* ── App ── */
+        .app { max-width: 480px; margin: 0 auto; padding: 1rem 1rem 5rem; }
         .app-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 0.9rem; padding-bottom: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.06);
         }
-
-        .app-title {
-            font-family: 'Fraunces', serif;
-            font-size: 1.5rem;
-            font-weight: 300;
-            color: #f1f0ec;
-        }
-
+        .app-title { font-family: 'Fraunces', serif; font-size: 1.4rem; font-weight: 300; color: #f1f0ec; }
         .user-badge {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            font-size: 0.7rem;
-            color: #60a5fa;
-            background: rgba(59,130,246,0.1);
-            border: 1px solid rgba(59,130,246,0.2);
-            border-radius: 20px;
-            padding: 0.3rem 0.75rem;
-            cursor: pointer;
+            display: flex; align-items: center; gap: 0.35rem; font-size: 0.68rem; color: #60a5fa;
+            background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2);
+            border-radius: 20px; padding: 0.28rem 0.7rem; cursor: pointer;
         }
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-        }
+        /* Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; margin-bottom: 0.9rem; }
+        .stat-box { background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06); border-radius: 7px; padding: 0.55rem 0.4rem; text-align: center; }
+        .stat-val { font-family: 'Fraunces', serif; font-size: 1.25rem; font-weight: 300; color: #f1f0ec; line-height: 1; }
+        .stat-label { font-size: 0.5rem; letter-spacing: 0.12em; text-transform: uppercase; color: #4b5563; margin-top: 0.22rem; }
 
-        .stat-box {
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 8px;
-            padding: 0.75rem 0.5rem;
-            text-align: center;
-        }
+        /* Cards */
+        .tx-card { border-radius: 10px; padding: 0.75rem; margin-bottom: 0.4rem; border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.02); transition: border-color 0.2s; }
+        .tx-card.conflict { border-color: rgba(239,68,68,0.4);  background: rgba(239,68,68,0.04); }
+        .tx-card.resolved { border-color: rgba(34,197,94,0.28); background: rgba(34,197,94,0.03); }
+        .tx-card.pending  { border-color: rgba(234,179,8,0.28); background: rgba(234,179,8,0.02); }
 
-        .stat-val {
-            font-family: 'Fraunces', serif;
-            font-size: 1.5rem;
-            font-weight: 300;
-            color: #f1f0ec;
-            line-height: 1;
-        }
+        .tx-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; }
+        .tx-desc { font-size: 0.76rem; color: #d1cfc9; margin-bottom: 0.22rem; }
+        .tx-meta { display: flex; gap: 0.3rem; align-items: center; }
+        .tx-date { font-size: 0.56rem; color: #374151; background: rgba(255,255,255,0.04); padding: 0.1rem 0.4rem; border-radius: 3px; }
+        .badge { font-size: 0.56rem; padding: 0.1rem 0.4rem; border-radius: 3px; }
+        .badge-conflict { background: rgba(239,68,68,0.18); color: #f87171; }
+        .badge-ok       { background: rgba(34,197,94,0.18);  color: #4ade80; }
+        .badge-pending  { background: rgba(234,179,8,0.12);  color: #fbbf24; }
+        .tx-amount { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 300; color: #93c5fd; white-space: nowrap; padding-left: 0.5rem; }
 
-        .stat-label {
-            font-size: 0.55rem;
-            letter-spacing: 0.15em;
-            text-transform: uppercase;
-            color: #4b5563;
-            margin-top: 0.3rem;
-        }
-
-        .tx-card {
-            background: rgba(255,255,255,0.02);
+        /* One-tap assign */
+        .assign-row { display: flex; gap: 0.3rem; align-items: center; }
+        .assign-label { font-size: 0.52rem; color: #2d3748; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; padding-right: 0.1rem; }
+        .tap-btn {
+            flex: 1; padding: 0.38rem 0.4rem; border-radius: 5px;
             border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 10px;
-            padding: 0.85rem;
-            margin-bottom: 0.5rem;
-            transition: border-color 0.2s;
+            background: rgba(255,255,255,0.03); color: #6b7280;
+            font-family: 'DM Mono', monospace; font-size: 0.7rem;
+            cursor: pointer; transition: all 0.12s; text-align: center;
         }
+        .tap-btn:hover { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.28); color: #d1d5db; }
+        .tap-btn.active { background: rgba(59,130,246,0.18); border-color: rgba(59,130,246,0.45); color: #93c5fd; }
 
-        .tx-card.conflict {
-            border-color: rgba(239,68,68,0.4);
-            background: rgba(239,68,68,0.04);
-        }
-
-        .tx-card.resolved {
-            border-color: rgba(34,197,94,0.3);
-            background: rgba(34,197,94,0.03);
-        }
-
-        .tx-card.pending {
-            border-color: rgba(234,179,8,0.3);
-            background: rgba(234,179,8,0.03);
-        }
-
-        .tx-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 0.6rem;
-        }
-
-        .tx-desc {
-            font-size: 0.8rem;
-            color: #d1cfc9;
-            margin-bottom: 0.2rem;
-            font-weight: 500;
-        }
-
-        .tx-meta {
-            display: flex;
-            gap: 0.4rem;
-            align-items: center;
-        }
-
-        .tx-date {
-            font-size: 0.6rem;
-            color: #4b5563;
-            background: rgba(255,255,255,0.04);
-            padding: 0.15rem 0.5rem;
-            border-radius: 4px;
-            letter-spacing: 0.05em;
-        }
-
-        .badge {
-            font-size: 0.6rem;
-            padding: 0.15rem 0.5rem;
-            border-radius: 4px;
-        }
-
-        .badge-conflict { background: rgba(239,68,68,0.2); color: #f87171; }
-        .badge-ok { background: rgba(34,197,94,0.2); color: #4ade80; }
-        .badge-pending { background: rgba(234,179,8,0.15); color: #fbbf24; }
-
-        .tx-amount {
-            font-family: 'Fraunces', serif;
-            font-size: 1.1rem;
-            font-weight: 300;
-            color: #93c5fd;
-            white-space: nowrap;
-        }
-
-        .assignments {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.4rem;
-            margin-bottom: 0.6rem;
-            background: rgba(0,0,0,0.2);
-            border-radius: 6px;
-            padding: 0.5rem;
-        }
-
-        .assignment-cell {
-            background: rgba(255,255,255,0.03);
-            border-radius: 4px;
-            padding: 0.35rem 0.5rem;
-        }
-
-        .assignment-name {
-            font-size: 0.58rem;
-            color: #4b5563;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-        }
-
-        .assignment-val {
-            font-size: 0.75rem;
-            color: #9ca3af;
-            margin-top: 0.1rem;
-        }
-
-        .assign-btn {
-            width: 100%;
-            padding: 0.5rem;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 6px;
-            color: #9ca3af;
-            font-family: 'DM Mono', monospace;
-            font-size: 0.72rem;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-
-        .assign-btn:hover {
-            background: rgba(59,130,246,0.1);
-            border-color: rgba(59,130,246,0.25);
-            color: #e8e6e1;
-        }
-
-        .option-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.4rem;
-        }
-
-        .option-btn {
-            padding: 0.5rem;
-            border-radius: 6px;
-            border: 1px solid rgba(59,130,246,0.25);
-            background: rgba(59,130,246,0.1);
-            color: #93c5fd;
-            font-family: 'DM Mono', monospace;
-            font-size: 0.72rem;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-
-        .option-btn:hover {
-            background: rgba(59,130,246,0.2);
-        }
-
-        .cancel-btn {
-            grid-column: span 2;
-            padding: 0.4rem;
-            border-radius: 6px;
-            border: 1px solid rgba(255,255,255,0.07);
-            background: transparent;
-            color: #4b5563;
-            font-family: 'DM Mono', monospace;
-            font-size: 0.68rem;
-            cursor: pointer;
-        }
-
-        .conflict-note {
-            font-size: 0.65rem;
-            color: #6b7280;
-            text-align: center;
-            padding: 0.4rem;
-            font-style: italic;
-        }
-
-        /* Switch user overlay */
-        .switch-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.85);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-            padding: 2rem;
-        }
-
-        .switch-card {
-            background: #0f1318;
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 16px;
-            padding: 2rem;
-            width: 100%;
-            max-width: 320px;
-            text-align: center;
-        }
-
-        .switch-title {
-            font-family: 'Fraunces', serif;
-            font-size: 1.2rem;
-            font-weight: 300;
-            margin-bottom: 0.5rem;
-            color: #f1f0ec;
-        }
-
-        .switch-sub {
-            font-size: 0.65rem;
-            color: #4b5563;
-            margin-bottom: 1.5rem;
-            letter-spacing: 0.05em;
-        }
+        /* Switch overlay */
+        .switch-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 2rem; }
+        .switch-card { background: #0f1318; border: 1px solid rgba(255,255,255,0.09); border-radius: 14px; padding: 2rem; width: 100%; max-width: 320px; text-align: center; }
+        .switch-title { font-family: 'Fraunces', serif; font-size: 1.2rem; font-weight: 300; margin-bottom: 0.35rem; color: #f1f0ec; }
+        .switch-sub { font-size: 0.62rem; color: #4b5563; margin-bottom: 1.5rem; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+<div id="root"></div>
+<script>
+const { useState, useEffect } = React;
 
-    <script>
-        const { useState, useEffect } = React;
+const USERS       = ['Tony', 'Nugs'];
+const STORAGE_KEY = 'cc_submissions';
+const USER_KEY    = 'cc_current_user';
 
-        const USERS = ['Tony', 'Nugs'];
-        const STORAGE_KEY = 'cc_submissions';
-        const USER_KEY = 'cc_current_user';
+// Transactions with relative-day offsets so the simulator works naturally
+const RAW_TX = [
+    { id: 'd0',  dOff: 0,  amount: 75.00,   description: 'VELOCITY REWARDS FEE' },
+    { id: 'd1',  dOff: 0,  amount: 295.00,  description: 'CARD FEE' },
+    { id: 'd2',  dOff: 0,  amount: 32.21,   description: 'ALIEXPRESS North Sydney' },
+    { id: 'd3',  dOff: -1, amount: 1468.00, description: 'FOREIGN FEE AUD 8.01' },
+    { id: 'd4',  dOff: -1, amount: 275.05,  description: 'KICKSTARTER.COM Tsimshatsui' },
+    { id: 'd5',  dOff: -1, amount: 18.50,   description: 'UBER EATS Sydney' },
+    { id: 'd6',  dOff: -2, amount: 98.00,   description: 'GU HEALTH REWARDS Camberwell' },
+    { id: 'd7',  dOff: -2, amount: 12.90,   description: 'MCDONALDS Sunshine' },
+    { id: 'd8',  dOff: -2, amount: 54.40,   description: 'SPOTIFY PREMIUM' },
+    { id: 'd9',  dOff: -3, amount: 89.50,   description: 'COLES Footscray' },
+    { id: 'd10', dOff: -3, amount: 45.00,   description: 'BUNNINGS Warehouse' },
+    { id: 'd11', dOff: -3, amount: 22.30,   description: 'ALDI Stores West' },
+    { id: 'd12', dOff: -4, amount: 210.00,  description: 'ELECTRICITY BILL AGL' },
+    { id: 'd13', dOff: -4, amount: 9.99,    description: 'NETFLIX.COM' },
+    { id: 'd14', dOff: -5, amount: 65.00,   description: 'INTERNET BILL Aussie BB' },
+];
 
-        function isNextDay(txDateStr) {
-            // Conflict only visible if tx date is strictly before today
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const txDate = new Date(txDateStr);
-            txDate.setHours(0, 0, 0, 0);
-            return txDate < today;
-        }
+function isoDate(offsetFromToday) {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetFromToday);
+    return d.toISOString().slice(0, 10);
+}
 
-        function LandingPage({ onSelect }) {
-            return React.createElement('div', { className: 'landing' },
-                React.createElement('div', { className: 'landing-card' },
-                    React.createElement('p', { className: 'landing-eyebrow' }, '💳 Credit Card'),
-                    React.createElement('h1', { className: 'landing-title' }, 'Who are\nyou?'),
-                    React.createElement('p', { className: 'landing-sub' }, 'Select your name to get started'),
-                    React.createElement('p', { className: 'who-label' }, 'I am...'),
-                    ...USERS.map(user =>
-                        React.createElement('button', {
-                            key: user,
-                            className: 'user-btn',
-                            onClick: () => onSelect(user)
-                        },
-                            React.createElement('span', { className: 'user-initial' }, user[0]),
-                            user
-                        )
-                    ),
-                    React.createElement('p', { className: 'landing-footer' }, 'Westpac • Transaction reconciliation')
+// Build transactions with dates relative to simulated "today" offset
+function buildTransactions(simDelta) {
+    return RAW_TX.map(t => ({ ...t, date: isoDate(t.dOff) }));
+}
+
+// A tx's date is "before" the simulated today if its offset < simDelta
+function isBeforeSim(txDayOff, simDelta) {
+    return txDayOff < simDelta;
+}
+
+// ── Landing ──────────────────────────────────────────────
+function LandingPage({ onSelect }) {
+    return React.createElement('div', { className: 'landing' },
+        React.createElement('div', { className: 'landing-card' },
+            React.createElement('p', { className: 'landing-eyebrow' }, '💳 Credit Card'),
+            React.createElement('h1', { className: 'landing-title' }, 'Who are\nyou?'),
+            React.createElement('p', { className: 'landing-sub' }, 'Select your name to continue'),
+            React.createElement('p', { className: 'who-label' }, 'I am…'),
+            ...USERS.map(u =>
+                React.createElement('button', { key: u, className: 'user-btn', onClick: () => onSelect(u) },
+                    React.createElement('span', { className: 'user-initial' }, u[0]), u
                 )
-            );
-        }
+            ),
+            React.createElement('p', { className: 'landing-footer' }, 'Westpac • Transaction reconciliation')
+        )
+    );
+}
 
-        function SwitchOverlay({ currentUser, onSelect, onClose }) {
-            return React.createElement('div', { className: 'switch-overlay', onClick: onClose },
-                React.createElement('div', { className: 'switch-card', onClick: e => e.stopPropagation() },
-                    React.createElement('p', { className: 'switch-title' }, 'Switch user'),
-                    React.createElement('p', { className: 'switch-sub' }, 'Currently: ' + currentUser),
-                    ...USERS.map(user =>
-                        React.createElement('button', {
-                            key: user,
-                            className: 'user-btn',
-                            style: { opacity: user === currentUser ? 0.4 : 1 },
-                            onClick: () => { onSelect(user); onClose(); }
-                        },
-                            React.createElement('span', { className: 'user-initial' }, user[0]),
-                            user
-                        )
-                    )
-                )
-            );
-        }
+// ── Switch overlay ────────────────────────────────────────
+function SwitchOverlay({ currentUser, onSelect, onClose }) {
+    return React.createElement('div', { className: 'switch-overlay', onClick: onClose },
+        React.createElement('div', { className: 'switch-card', onClick: e => e.stopPropagation() },
+            React.createElement('p', { className: 'switch-title' }, 'Switch user'),
+            React.createElement('p', { className: 'switch-sub' }, 'Signed in as ' + currentUser),
+            ...USERS.map(u =>
+                React.createElement('button', {
+                    key: u, className: 'user-btn',
+                    style: { opacity: u === currentUser ? 0.3 : 1 },
+                    onClick: () => { onSelect(u); onClose(); }
+                }, React.createElement('span', { className: 'user-initial' }, u[0]), u)
+            )
+        )
+    );
+}
 
-        function CreditCardApp() {
-            const [currentUser, setCurrentUser] = useState(null);
-            const [transactions, setTransactions] = useState([]);
-            const [submissions, setSubmissions] = useState({});
-            const [editingTx, setEditingTx] = useState(null);
-            const [showSwitch, setShowSwitch] = useState(false);
+// ── App ───────────────────────────────────────────────────
+function CreditCardApp() {
+    const [currentUser, setCurrentUser] = useState(null);
+    const [submissions, setSubmissions]  = useState({});
+    const [showSwitch, setShowSwitch]    = useState(false);
+    const [simDelta, setSimDelta]        = useState(0); // dev: simulated day offset vs real today
 
-            useEffect(() => {
-                // Restore saved user
-                const savedUser = localStorage.getItem(USER_KEY);
-                if (savedUser && USERS.includes(savedUser)) {
-                    setCurrentUser(savedUser);
-                }
+    useEffect(() => {
+        const u = localStorage.getItem(USER_KEY);
+        if (u && USERS.includes(u)) setCurrentUser(u);
+        try { const s = localStorage.getItem(STORAGE_KEY); if (s) setSubmissions(JSON.parse(s)); } catch(e){}
+    }, []);
 
-                const saved = localStorage.getItem(STORAGE_KEY);
-                if (saved) {
-                    try { setSubmissions(JSON.parse(saved)); } catch (e) {}
-                }
+    useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions)); }, [submissions]);
 
-                setTransactions([
-                    { id: '2026-04-03-0', date: '2026-04-03', amount: 75.0,    description: 'VELOCITY REWARDS FEE' },
-                    { id: '2026-04-03-1', date: '2026-04-03', amount: 295.0,   description: 'CARD FEE' },
-                    { id: '2026-04-03-2', date: '2026-04-03', amount: 32.21,   description: 'aliexpress North Sydney' },
-                    { id: '2026-04-02-0', date: '2026-04-02', amount: 1468.0,  description: 'FOREIGN FEE AUD 8.01' },
-                    { id: '2026-04-02-1', date: '2026-04-02', amount: 275.05,  description: 'KICKSTARTER.COM TSIMSHATSUI' },
-                    { id: '2026-04-01-0', date: '2026-04-01', amount: 98.0,    description: 'gu health rewards GR CAMBERWELL' },
-                    { id: '2026-04-01-1', date: '2026-04-01', amount: 12.9,    description: 'McDonalds 950055 SUNSHINE' },
-                    { id: '2026-03-31-0', date: '2026-03-31', amount: 89.5,    description: 'Coles Supermarket Footscray' },
-                    { id: '2026-03-31-1', date: '2026-03-31', amount: 45.0,    description: 'Bunnings Warehouse' },
-                    { id: '2026-03-30-0', date: '2026-03-30', amount: 22.3,    description: 'ALDI STORES WEST' },
-                ]);
-            }, []);
+    const selectUser = u => { setCurrentUser(u); localStorage.setItem(USER_KEY, u); };
 
-            useEffect(() => {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions));
-            }, [submissions]);
+    const assign = (txId, txDayOff, assignTo) => {
+        setSubmissions(prev => ({ ...prev, [txId]: { ...prev[txId], [currentUser]: assignTo } }));
+    };
 
-            const selectUser = (user) => {
-                setCurrentUser(user);
-                localStorage.setItem(USER_KEY, user);
-            };
+    // Conflict = both submitted different answers AND the tx date is before simulated today
+    const hasConflict = tx => {
+        if (!isBeforeSim(tx.dOff, simDelta)) return false;
+        const sub = submissions[tx.id];
+        if (!sub) return false;
+        const vals = USERS.map(u => sub[u]).filter(v => v != null);
+        return vals.length > 1 && new Set(vals).size > 1;
+    };
 
-            const submitAssignment = (txId, assignTo) => {
-                setSubmissions(prev => ({
-                    ...prev,
-                    [txId]: { ...prev[txId], [currentUser]: assignTo }
-                }));
-                setEditingTx(null);
-            };
+    // Both submitted but conflict not visible yet (same day)
+    const hasPendingConflict = tx => {
+        if (isBeforeSim(tx.dOff, simDelta)) return false;
+        const sub = submissions[tx.id];
+        if (!sub) return false;
+        const vals = USERS.map(u => sub[u]).filter(v => v != null);
+        return vals.length > 1 && new Set(vals).size > 1;
+    };
 
-            const hasConflict = (tx) => {
-                if (!isNextDay(tx.date)) return false; // only show conflicts after the day
-                const sub = submissions[tx.id];
-                if (!sub) return false;
-                const vals = USERS.map(u => sub[u]).filter(v => v != null);
-                return vals.length > 1 && new Set(vals).size > 1;
-            };
+    const allSubmitted = txId => {
+        const sub = submissions[txId];
+        return sub && USERS.every(u => sub[u] != null);
+    };
 
-            const allSubmitted = (txId) => {
-                const sub = submissions[txId];
-                if (!sub) return false;
-                return USERS.every(u => sub[u] != null);
-            };
-
-            const getCurrentSubmission = (txId) => submissions[txId]?.[currentUser] || null;
-
-            if (!currentUser) {
-                return React.createElement(LandingPage, { onSelect: selectUser });
+    // Tallies: sum amounts for each user from resolved (non-conflict) transactions
+    const tallies = Object.fromEntries(USERS.map(u => [u, 0]));
+    RAW_TX.forEach(tx => {
+        if (allSubmitted(tx.id) && !hasConflict(tx)) {
+            const sub = submissions[tx.id];
+            if (sub[USERS[0]] === sub[USERS[1]]) { // both agree
+                const to = sub[USERS[0]];
+                if (to in tallies) tallies[to] += tx.amount;
             }
-
-            const stats = {
-                total: transactions.length,
-                assigned: transactions.filter(tx => allSubmitted(tx.id) && !hasConflict(tx)).length,
-                conflicts: transactions.filter(tx => hasConflict(tx)).length,
-                pending: transactions.filter(tx => !allSubmitted(tx.id) || hasConflict(tx)).length,
-            };
-
-            const sorted = [...transactions].sort((a, b) => {
-                const score = tx => hasConflict(tx) ? 0 : !allSubmitted(tx.id) ? 1 : 2;
-                return score(a) - score(b);
-            });
-
-            return React.createElement('div', null,
-                showSwitch && React.createElement(SwitchOverlay, {
-                    currentUser,
-                    onSelect: selectUser,
-                    onClose: () => setShowSwitch(false)
-                }),
-
-                React.createElement('div', { className: 'app' },
-                    // Header
-                    React.createElement('div', { className: 'app-header' },
-                        React.createElement('h1', { className: 'app-title' }, '💳 Transactions'),
-                        React.createElement('button', {
-                            className: 'user-badge',
-                            onClick: () => setShowSwitch(true)
-                        }, currentUser[0], ' ', currentUser, ' ↕')
-                    ),
-
-                    // Stats
-                    React.createElement('div', { className: 'stats-grid' },
-                        [
-                            { label: 'Total',    value: stats.total },
-                            { label: 'Done',     value: stats.assigned },
-                            { label: 'Issues',   value: stats.conflicts },
-                            { label: 'Pending',  value: stats.pending },
-                        ].map(s => React.createElement('div', { key: s.label, className: 'stat-box' },
-                            React.createElement('div', { className: 'stat-val' }, s.value),
-                            React.createElement('div', { className: 'stat-label' }, s.label)
-                        ))
-                    ),
-
-                    // Transactions
-                    React.createElement('div', null,
-                        sorted.map(tx => {
-                            const conflict = hasConflict(tx);
-                            const submitted = allSubmitted(tx.id);
-                            const userSub = getCurrentSubmission(tx.id);
-                            const isEditing = editingTx === tx.id;
-                            const bothSubmitted = submitted;
-                            const conflictTomorrow = bothSubmitted && !conflict && !isNextDay(tx.date) &&
-                                USERS.map(u => submissions[tx.id]?.[u]).filter(Boolean).length > 1 &&
-                                new Set(USERS.map(u => submissions[tx.id]?.[u]).filter(Boolean)).size > 1;
-
-                            const cardClass = 'tx-card' + (conflict ? ' conflict' : submitted && !conflictTomorrow ? ' resolved' : ' pending');
-
-                            return React.createElement('div', { key: tx.id, className: cardClass },
-                                React.createElement('div', { className: 'tx-top' },
-                                    React.createElement('div', null,
-                                        React.createElement('div', { className: 'tx-meta', style: { marginBottom: '0.3rem' } },
-                                            React.createElement('span', { className: 'tx-date' }, tx.date),
-                                            conflict && React.createElement('span', { className: 'badge badge-conflict' }, '⚠ conflict'),
-                                            submitted && !conflict && !conflictTomorrow && React.createElement('span', { className: 'badge badge-ok' }, '✓ done'),
-                                            conflictTomorrow && React.createElement('span', { className: 'badge badge-pending' }, '⏳ check tomorrow'),
-                                        ),
-                                        React.createElement('p', { className: 'tx-desc' }, tx.description)
-                                    ),
-                                    React.createElement('span', { className: 'tx-amount' }, '$' + tx.amount.toFixed(2))
-                                ),
-
-                                React.createElement('div', { className: 'assignments' },
-                                    USERS.map(u => React.createElement('div', { key: u, className: 'assignment-cell' },
-                                        React.createElement('div', { className: 'assignment-name' }, u),
-                                        React.createElement('div', { className: 'assignment-val' }, submissions[tx.id]?.[u] || '—')
-                                    ))
-                                ),
-
-                                isEditing
-                                    ? React.createElement('div', { className: 'option-grid' },
-                                        USERS.map(option => React.createElement('button', {
-                                            key: option,
-                                            className: 'option-btn',
-                                            onClick: () => submitAssignment(tx.id, option)
-                                        }, option)),
-                                        React.createElement('button', {
-                                            className: 'cancel-btn',
-                                            onClick: () => setEditingTx(null)
-                                        }, 'cancel')
-                                    )
-                                    : React.createElement('button', {
-                                        className: 'assign-btn',
-                                        onClick: () => setEditingTx(tx.id)
-                                    }, userSub ? '✏ ' + userSub : '＋ assign')
-                            );
-                        })
-                    )
-                )
-            );
         }
+    });
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(CreditCardApp));
-    </script>
+    if (!currentUser) return React.createElement(LandingPage, { onSelect: selectUser });
+
+    const transactions = buildTransactions(simDelta);
+
+    const stats = {
+        total:     transactions.length,
+        assigned:  transactions.filter(tx => allSubmitted(tx.id) && !hasConflict(tx)).length,
+        conflicts: transactions.filter(tx => hasConflict(tx)).length,
+        pending:   transactions.filter(tx => !allSubmitted(tx.id) || hasConflict(tx)).length,
+    };
+
+    const sorted = [...transactions].sort((a, b) => {
+        const score = tx => hasConflict(tx) ? 0 : !allSubmitted(tx.id) ? 1 : 2;
+        return score(a) - score(b);
+    });
+
+    const simLabel = simDelta === 0 ? 'today (real)'
+        : simDelta > 0 ? `tomorrow +${simDelta}d`
+        : `yesterday ${simDelta}d`;
+
+    return React.createElement('div', null,
+
+        showSwitch && React.createElement(SwitchOverlay, {
+            currentUser, onSelect: selectUser, onClose: () => setShowSwitch(false)
+        }),
+
+        // Dev banner
+        React.createElement('div', { className: 'dev-banner' },
+            React.createElement('span', { className: 'dev-label' }, '🛠 dev'),
+            React.createElement('button', { className: 'day-btn', onClick: () => setSimDelta(d => d - 1) }, '◀ prev day'),
+            React.createElement('span', { className: 'day-display' }, simLabel),
+            React.createElement('button', { className: 'day-btn', onClick: () => setSimDelta(d => d + 1) }, 'next day ▶'),
+            React.createElement('button', { className: 'day-btn reset', onClick: () => setSimDelta(0) }, 'reset'),
+        ),
+
+        // Tally bar
+        React.createElement('div', { className: 'tally-bar' },
+            USERS.flatMap((u, i) => [
+                i > 0 ? React.createElement('div', { key: 'sep'+i, style: { width: '1px', background: 'rgba(255,255,255,0.05)' } }) : null,
+                React.createElement('div', { key: u, className: 'tally-item' },
+                    React.createElement('div', { className: 'tally-name' }, u),
+                    React.createElement('div', { className: 'tally-amount' }, '$' + (tallies[u] || 0).toFixed(2))
+                )
+            ]).filter(Boolean)
+        ),
+
+        React.createElement('div', { className: 'app' },
+
+            // Header
+            React.createElement('div', { className: 'app-header' },
+                React.createElement('h1', { className: 'app-title' }, '💳 Transactions'),
+                React.createElement('button', { className: 'user-badge', onClick: () => setShowSwitch(true) },
+                    currentUser[0], ' ', currentUser, ' ↕'
+                )
+            ),
+
+            // Stats
+            React.createElement('div', { className: 'stats-grid' },
+                [
+                    { label: 'Total',   value: stats.total },
+                    { label: 'Done',    value: stats.assigned },
+                    { label: 'Issues',  value: stats.conflicts },
+                    { label: 'Pending', value: stats.pending },
+                ].map(s => React.createElement('div', { key: s.label, className: 'stat-box' },
+                    React.createElement('div', { className: 'stat-val' }, s.value),
+                    React.createElement('div', { className: 'stat-label' }, s.label)
+                ))
+            ),
+
+            // Transactions
+            React.createElement('div', null,
+                sorted.map(tx => {
+                    const conflict        = hasConflict(tx);
+                    const submitted       = allSubmitted(tx.id);
+                    const pendingConflict = hasPendingConflict(tx);
+                    const userSub         = submissions[tx.id]?.[currentUser];
+
+                    const cardClass = 'tx-card' + (
+                        conflict                           ? ' conflict' :
+                        submitted && !pendingConflict      ? ' resolved' :
+                        ' pending'
+                    );
+
+                    return React.createElement('div', { key: tx.id, className: cardClass },
+                        React.createElement('div', { className: 'tx-top' },
+                            React.createElement('div', null,
+                                React.createElement('div', { className: 'tx-meta', style: { marginBottom: '0.2rem' } },
+                                    React.createElement('span', { className: 'tx-date' }, tx.date),
+                                    conflict        && React.createElement('span', { className: 'badge badge-conflict' }, '⚠ conflict'),
+                                    submitted && !conflict && !pendingConflict && React.createElement('span', { className: 'badge badge-ok' }, '✓ done'),
+                                    pendingConflict && React.createElement('span', { className: 'badge badge-pending' }, '⏳ tomorrow'),
+                                ),
+                                React.createElement('p', { className: 'tx-desc' }, tx.description)
+                            ),
+                            React.createElement('span', { className: 'tx-amount' }, '$' + tx.amount.toFixed(2))
+                        ),
+
+                        // One-tap assign — always visible, no expand needed
+                        React.createElement('div', { className: 'assign-row' },
+                            React.createElement('span', { className: 'assign-label' }, 'assign'),
+                            ...USERS.map(option =>
+                                React.createElement('button', {
+                                    key: option,
+                                    className: 'tap-btn' + (userSub === option ? ' active' : ''),
+                                    onClick: () => assign(tx.id, tx.dOff, option)
+                                }, option)
+                            )
+                        )
+                    );
+                })
+            )
+        )
+    );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(CreditCardApp));
+</script>
 </body>
 </html>

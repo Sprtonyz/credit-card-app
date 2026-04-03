@@ -668,7 +668,9 @@ function App(){
                         const otherR=remainingFor(otherUser,tx,txKey);
                         const conf=isConflict(tx.id,txKey);
                         const uns=isUnsurePinned(tx.id,txKey);
-                        return tx.id+'[T:'+tPick+' N:'+nPick+' conf:'+conf+' uns:'+uns+' myR:'+myR+' otherR:'+otherR+']';
+                            const auto=isAutoConf(tx.id);
+                        const rawSub=JSON.stringify(getSub(tx.id)).slice(0,80);
+                        return tx.id+'[T:'+tPick+' N:'+nPick+' conf:'+conf+' uns:'+uns+' auto:'+!!auto+' myR:'+myR+' otherR:'+otherR+'] raw:'+rawSub;
                     }).join(' | ')
                 )
             )

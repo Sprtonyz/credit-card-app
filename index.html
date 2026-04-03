@@ -653,30 +653,68 @@ function App(){
         ),
 
         // Debug panel — remove before go-live
-        React.createElement('div',{style:{background:'rgba(0,0,0,0.7)',borderBottom:'1px solid rgba(255,255,0,0.2)',padding:'0.4rem 0.75rem',fontSize:'0.52rem',fontFamily:'monospace',color:'#fef08a',lineHeight:1.6}},
-            React.createElement('div',null,'👤 logged in as: '+user+' | simDelta: '+simDelta),
-            React.createElement('div',null,'📊 myRemaining: '+myRemaining+' | '+otherUser+'Remaining: '+otherRemaining),
-            React.createElement('div',null,'🔑 subs keys: '+Object.keys(subs).join(', ')||'(none)'),
+        React.createElement('div',{style:{background:'rgba(0,0,0,0.85)',borderBottom:'1px solid rgba(255,255,0,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.5rem',fontFamily:'monospace',color:'#fef08a',lineHeight:1.7}},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'0.3rem'}},
+                React.createElement('span',null,'🐛 DEBUG'),
+                React.createElement('button',{
+                    style:{fontSize:'0.5rem',padding:'0.15rem 0.5rem',background:'rgba(255,255,0,0.15)',border:'1px solid rgba(255,255,0,0.3)',borderRadius:'4px',color:'#fef08a',cursor:'pointer',fontFamily:'monospace'},
+                    onClick:()=>{
+                        const lines=[
+                            'user:'+user+' simDelta:'+simDelta+' simNowOffset:'+(simNow-Date.now())+'ms',
+                            'myRemaining:'+myRemaining+' '+otherUser+'Remaining:'+otherRemaining,
+                            'subsKeys:'+Object.keys(subs).join(','),
+                            'RAW_SUBS:'+JSON.stringify(subs),
+                            ...loadedKeys.map(txKey=>'day'+txKey+':'+
+                                (TX[txKey]||[]).map(tx=>{
+                                    const sub=getSub(tx.id);
+                                    return tx.id+
+                                        '[T:'+getSubValue(sub,'Tony')+
+                                        ' Tts:'+(sub.Tony?.ts?Math.round((simNow-sub.Tony.ts)/3600000)+'h':'null')+
+                                        ' N:'+getSubValue(sub,'Nugs')+
+                                        ' Nts:'+(sub.Nugs?.ts?Math.round((simNow-sub.Nugs.ts)/3600000)+'h':'null')+
+                                        ' auto:'+!!isAutoConf(tx.id)+
+                                        ' conf:'+isConflict(tx.id,txKey)+
+                                        ' uns:'+isUnsurePinned(tx.id,txKey)+
+                                        ' myR:'+remainingFor(user,tx,txKey)+
+                                        ' otherR:'+remainingFor(otherUser,tx,txKey)+']';
+                                }).join('|')
+                            )
+                        ];
+                        navigator.clipboard.writeText(lines.join('\n')).then(()=>alert('Copied to clipboard!')).catch(()=>alert(lines.join('\n')));
+                    }
+                },'📋 copy log')
+            ),
+            React.createElement('div',null,'👤 '+user+' | simDelta:'+simDelta+' | simNow+'+(simNow-Date.now())+'ms'),
+            React.createElement('div',null,'📊 myR:'+myRemaining+' | '+otherUser+'R:'+otherRemaining),
+            React.createElement('div',null,'subs:'+Object.keys(subs).join(',')),
             ...loadedKeys.map(txKey=>
-                React.createElement('div',{key:txKey},
-                    'day '+txKey+': '+
-                    (TX[txKey]||[]).map(tx=>{
+                React.createElement('div',{key:txKey,style:{borderTop:'1px solid rgba(255,255,0,0.1)',paddingTop:'0.2rem',marginTop:'0.2rem'}},
+                    React.createElement('span',{style:{color:'#a3a3a3'}},'DAY '+txKey+':'),
+                    ...(TX[txKey]||[]).map(tx=>{
                         const sub=getSub(tx.id);
                         const tPick=getSubValue(sub,'Tony');
                         const nPick=getSubValue(sub,'Nugs');
-                        const myR=remainingFor(user,tx,txKey);
-                        const otherR=remainingFor(otherUser,tx,txKey);
+                        const tTs=sub.Tony?.ts;
+                        const nTs=sub.Nugs?.ts;
+                        const auto=isAutoConf(tx.id);
                         const conf=isConflict(tx.id,txKey);
                         const uns=isUnsurePinned(tx.id,txKey);
-                            const auto=isAutoConf(tx.id);
-                        const rawSub=JSON.stringify(getSub(tx.id)).slice(0,80);
-                        return tx.id+'[T:'+tPick+' N:'+nPick+' conf:'+conf+' uns:'+uns+' auto:'+!!auto+' myR:'+myR+' otherR:'+otherR+'] raw:'+rawSub;
-                    }).join(' | ')
+                        const myR=remainingFor(user,tx,txKey);
+                        const otherR=remainingFor(otherUser,tx,txKey);
+                        const color=auto?'#9ca3af':conf?'#f87171':uns?'#fbbf24':(!myR&&!otherR)?'#4b5563':'#fef08a';
+                        return React.createElement('div',{key:tx.id,style:{paddingLeft:'0.4rem',color}},
+                            tx.id+
+                            ' T:'+tPick+'('+(tTs?Math.round((simNow-tTs)/3600000)+'h':'null')+')'+
+                            ' N:'+nPick+'('+(nTs?Math.round((simNow-nTs)/3600000)+'h':'null')+')'+
+                            ' auto:'+!!auto+' conf:'+conf+' uns:'+uns+
+                            ' myR:'+myR+' otherR:'+otherR
+                        );
+                    })
                 )
             )
         ),
 
-        // Dev banner
+                // Dev banner
         React.createElement('div',{className:'dev-banner'},
             React.createElement('span',{className:'dev-label'},'🛠 dev'),
             React.createElement('span',{className:'day-display'},simLabel+(simHours>0?' +'+simHours+'h':'')),

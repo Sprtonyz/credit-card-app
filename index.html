@@ -510,19 +510,16 @@ function App(){
     const isToday=(txKey)=>parseInt(txKey)===simDelta;
 
     const isVisible=(tx,txKey)=>{
-        // Mid-animation — keep rendered until transition finishes
         if(collapsing.has(tx.id))return true;
-        // Auto-confirmed — never show
         if(isAutoConf(tx.id))return false;
-        // TODAY: one tap and it's gone for the day. No repopulation ever.
-        // Conflicts/unsure from today are NOT evaluated until the day lapses.
         if(isToday(txKey)){
+            // Today: one tap = gone. Never repopulate same day.
             return !myPick(tx.id);
         }
-        // PAST DAYS: evaluate status now that day has passed
+        // Past days: conflict and unsure always show regardless of prior pick
         if(isConflict(tx.id,txKey))return true;
         if(isUnsurePinned(tx.id,txKey))return true;
-        // Past day, I've already re-resolved it today → hide
+        // Past day, clean (no conflict/unsure) and I've picked → done
         if(myPick(tx.id))return false;
         return true;
     };
@@ -531,13 +528,31 @@ function App(){
         const prev=myPick(txId);
         setUndo(s=>[...s,{txId,u:user,prev,prevSub:getSub(txId)[user]}]);
         const ts=simNow;
-        // Write to Firebase
         save(txId,{[user]:{value:opt,ts}});
-        // Update local subs immediately for snappy UI
-        setSubs(cur=>({...cur,[txId]:{...(cur[txId]||{}),[user]:{value:opt,ts}}}));
-        // Collapse unconditionally — today's cards never repopulate.
-        // Past-day cards also collapse; they only reappear AFTER the next day boundary.
-        setTimeout(()=>setCol(c=>new Set([...c,txId])),220);
+        // Optimistic local update
+        const newSubs={...subs,[txId]:{...(subs[txId]||{}),[user]:{value:opt,ts}}};
+        setSubs(newSubs);
+        // Collapse logic:
+        // TODAY → always collapse immediately (one tap = done)
+        // PAST DAY → collapse only if not a conflict/unsure after this pick
+        //            (if still conflicted, card stays visible for re-resolution)
+        const collapseIt=()=>{
+            const sub=newSubs[txId]||{};
+            const isThisDayPast=parseInt(txKey)<simDelta;
+            if(!isThisDayPast){
+                setCol(c=>new Set([...c,txId]));
+                return;
+            }
+            // Past day: check if conflict/unsure remains after my new pick
+            const anyUnsureNow=USERS.some(u=>sub[u]?.value==='Unsure');
+            const nonUnsureVals=USERS.map(u=>sub[u]?.value).filter(v=>v&&v!=='Unsure');
+            const stillConflict=!anyUnsureNow&&nonUnsureVals.length>1&&new Set(nonUnsureVals).size>1;
+            if(!stillConflict&&!anyUnsureNow){
+                setCol(c=>new Set([...c,txId]));
+            }
+            // else: leave visible so user sees it's still conflicted
+        };
+        setTimeout(collapseIt,220);
     };
 
     const undo=()=>{
@@ -596,26 +611,23 @@ function App(){
         return {txKey,list,visible,active,past,label,date:isoDate(rel)};
     }).filter(g=>g.active.length>0);
 
-    // Stats: remaining = exactly what's visible on screen right now (source of truth).
-    // If a card is showing (active, not collapsing), it counts as remaining for that user.
-    // This naturally includes conflicts, unsures, and unpicked — whatever isVisible returns.
+    // Stats: use isVisible as the single source of truth for MY remaining.
+    // For other user: same logic but from their perspective.
     let myRemaining=0,otherRemaining=0;
     loadedKeys.forEach(txKey=>{
-        const today=parseInt(txKey)===simDelta;
+        const today=isToday(txKey);
         (TX[txKey]||[]).forEach(tx=>{
             if(isAutoConf(tx.id))return;
-            if(collapsing.has(tx.id))return; // mid-animation, don't count
+            if(collapsing.has(tx.id))return;
+            // My remaining: card is visible to me
+            if(isVisible(tx,txKey))myRemaining++;
+            // Other user's remaining: today=they haven't picked, past=conflict/unsure/unpicked
+            const otherPick=getSubValue(getSub(tx.id),otherUser);
             if(today){
-                // Today: counts if I haven't picked yet
-                if(!myPick(tx.id))myRemaining++;
-                if(!getSubValue(getSub(tx.id),otherUser))otherRemaining++;
+                if(!otherPick)otherRemaining++;
             } else {
-                // Past days: counts if the card is actually visible (conflict/unsure/unpicked)
-                if(isVisible(tx,txKey))myRemaining++;
-                // For other user: visible to them means conflict/unsure/they-haven't-picked
                 const conflict=isConflict(tx.id,txKey);
                 const unsure=isUnsurePinned(tx.id,txKey);
-                const otherPick=getSubValue(getSub(tx.id),otherUser);
                 if(conflict||unsure||!otherPick)otherRemaining++;
             }
         });
@@ -634,8 +646,10 @@ function App(){
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
                 (()=>{
+                    // Revision = number of individual user picks stored in Firebase
+                    // Each tap by either user adds 1
                     const rev=Object.values(subs).reduce((a,tx)=>
-                        a+USERS.filter(u=>tx[u]?.value).length,0);
+                        a+USERS.filter(u=>tx[u]?.value!=null).length,0);
                     return connected===null?'connecting…':connected?'synced r'+rev:'offline';
                 })()
             ),

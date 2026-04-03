@@ -317,12 +317,12 @@ function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
     const otherSub=getSubValue(sub,otherUser);
     const autoConf=isAutoConfirmed(sub,tx.id,nowMs);
 
-    // Unsure overrides everything — if anyone marked Unsure, the whole tx is unsure
+    // past = this tx's day is before simDelta (next-day reveal applies)
     const anyUnsure=past&&USERS.some(u=>getSubValue(sub,u)==='Unsure');
     const unsureMarkedBy=USERS.filter(u=>getSubValue(sub,u)==='Unsure');
-    // Conflict only when no one said Unsure
     const nonUnsureVals=USERS.map(u=>getSubValue(sub,u)).filter(v=>v&&v!=='Unsure');
-    const isConflict=past&&!anyUnsure&&nonUnsureVals.length>1&&new Set(nonUnsureVals).size>1;
+    // Conflict: past day, no Unsure, both users picked differently
+    const isConflict=past&&!anyUnsure&&nonUnsureVals.length===USERS.length&&new Set(nonUnsureVals).size>1;
     const isCollapsing=collapsing.has(tx.id);
 
     const cardCls=['tx-card',isConflict?'conflict':'',isCollapsing?'collapsing':''].filter(Boolean).join(' ');
@@ -490,45 +490,48 @@ function App(){
     const getSub=id=>subs[id]||{};
     const myPick=id=>getSubValue(getSub(id),user);
 
-    // KEY LOGIC: A card is visible to ME if:
-    // - I haven't picked yet for today's day
-    // - OR it's a past day AND there's a conflict/unsure visible today
-    //   BUT: if I assign a past-day conflict TODAY, it clears from my view immediately.
-    //   It will re-surface tomorrow if the other person disagrees.
-    // In practice: card visible = I have no pick OR (past & conflict & I haven't re-assigned today)
-    // Unsure takes priority: if ANY user marked Unsure, the whole tx is "unsure" next day
+    const isToday=(txKey)=>parseInt(txKey)===simDelta;
+    const isPast=(txKey)=>parseInt(txKey)<simDelta;
+
+    // Helper: does anyone have Unsure on this tx?
     const anyoneUnsure=(id)=>USERS.some(u=>getSubValue(getSub(id),u)==='Unsure');
-    const isUnsurePinned=(id,txKey)=>conflictVisible(txKey,simDelta)&&anyoneUnsure(id);
-    // Conflict only applies when no one said Unsure
+
+    // Unsure is only surfaced on past days (next-day reveal)
+    const isUnsurePinned=(id,txKey)=>isPast(txKey)&&anyoneUnsure(id);
+
+    // Conflict: past day, no one said Unsure, and the two picks differ
     const isConflict=(id,txKey)=>{
-        if(!conflictVisible(txKey,simDelta))return false;
-        if(anyoneUnsure(id))return false; // unsure overrides conflict
+        if(!isPast(txKey))return false;
+        if(anyoneUnsure(id))return false;
         const vals=USERS.map(u=>getSubValue(getSub(id),u)).filter(v=>v&&v!=='Unsure');
         return vals.length>1&&new Set(vals).size>1;
     };
+
     const isAutoConf=(id)=>isAutoConfirmed(getSub(id),id,simNow);
 
-    const isToday=(txKey)=>parseInt(txKey)===simDelta;
-
-    // Pure per-user remaining — based on data only, no animation state.
-    // Rule: a tx is remaining for user U if U hasn't picked it yet.
-    // Exception: if U picked Unsure, it stays remaining (needs real decision).
-    // Conflicts/unsures on past days count as remaining ONLY for users who haven't picked,
-    // or who picked Unsure. Once you've picked a real value, it's done for you.
+    // remainingFor(u): has user U still got work to do on this tx?
+    // Today: remaining if no pick yet
+    // Past day: remaining if no pick, OR picked Unsure (needs real answer),
+    //           OR there's a conflict/unsure that needs re-resolution from this user
     const remainingFor=(u,tx,txKey)=>{
         if(isAutoConf(tx.id))return false;
         const pick=getSubValue(getSub(tx.id),u);
-        // No pick at all → always remaining
-        if(!pick)return true;
-        // Picked Unsure → still remaining (needs a real decision)
-        if(pick==='Unsure')return true;
-        // Picked a real value → done for this user, regardless of conflict
-        return false;
+        if(isToday(txKey)){
+            return !pick; // today: one tap = done
+        }
+        // Past day
+        if(!pick)return true;           // never picked → remaining
+        if(pick==='Unsure')return true; // Unsure = needs real decision
+        // Has a real pick — check if conflict or unsure exists
+        // If conflict: this user needs to re-evaluate
+        if(isConflict(tx.id,txKey))return true;
+        if(isUnsurePinned(tx.id,txKey))return true;
+        return false; // real pick, no conflict/unsure → done
     };
 
-        // isVisible = remainingFor the current user, plus animation guard
+    // isVisible: should this card show on screen for the current user?
     const isVisible=(tx,txKey)=>{
-        if(collapsing.has(tx.id))return true;
+        if(collapsing.has(tx.id))return true; // mid-animation
         return remainingFor(user,tx,txKey);
     };
 
@@ -545,15 +548,11 @@ function App(){
         // PAST DAY → collapse only if not a conflict/unsure after this pick
         //            (if still conflicted, card stays visible for re-resolution)
         const timer=setTimeout(()=>{
-            // Always collapse for the current user after they tap.
-            // - Today: always collapses (one tap = done for the day)
-            // - Past day conflict: collapses for ME after I re-pick.
-            //   It will reappear tomorrow if still unresolved.
-            //   The OTHER user still sees it from their device.
-            // - Unsure: stays visible (needs explicit resolution)
-            const sub=newSubs[txId]||{};
-            const myNewPick=sub[user]?.value;
-            if(myNewPick==='Unsure') return; // unsure stays visible
+            const myNewPick=newSubs[txId]?.[user]?.value;
+            const thisDayIsPast=isPast(txKey);
+            // Past day + Unsure → keep visible (needs a real answer)
+            if(thisDayIsPast && myNewPick==='Unsure') return;
+            // Everything else → collapse for this user
             setCol(c=>new Set([...c,txId]));
         },220);
         collapseTimers.current.push(timer);

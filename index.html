@@ -509,19 +509,22 @@ function App(){
 
     const isToday=(txKey)=>parseInt(txKey)===simDelta;
 
-    const isVisible=(tx,txKey)=>{
-        if(collapsing.has(tx.id))return true;
+    // Pure per-user remaining function — user-agnostic, used by both isVisible and stats
+    const remainingFor=(u,tx,txKey)=>{
         if(isAutoConf(tx.id))return false;
-        if(isToday(txKey)){
-            // Today: one tap = gone. Never repopulate same day.
-            return !myPick(tx.id);
-        }
-        // Past days: conflict and unsure always show regardless of prior pick
+        if(collapsing.has(tx.id))return false;
+        const pick=getSubValue(getSub(tx.id),u);
+        if(isToday(txKey))return !pick;
         if(isConflict(tx.id,txKey))return true;
         if(isUnsurePinned(tx.id,txKey))return true;
-        // Past day, clean (no conflict/unsure) and I've picked → done
-        if(myPick(tx.id))return false;
-        return true;
+        return !pick;
+    };
+
+        // isVisible: determines if a card shows on screen for the current user.
+    // Uses remainingFor so it stays consistent with the stats count.
+    const isVisible=(tx,txKey)=>{
+        if(collapsing.has(tx.id))return true;  // keep rendered during animation
+        return remainingFor(user,tx,txKey);
     };
 
     const assign=(txId,txKey,opt)=>{
@@ -611,25 +614,11 @@ function App(){
         return {txKey,list,visible,active,past,label,date:isoDate(rel)};
     }).filter(g=>g.active.length>0);
 
-    // Stats: use isVisible as the single source of truth for MY remaining.
-    // For other user: same logic but from their perspective.
     let myRemaining=0,otherRemaining=0;
     loadedKeys.forEach(txKey=>{
-        const today=isToday(txKey);
         (TX[txKey]||[]).forEach(tx=>{
-            if(isAutoConf(tx.id))return;
-            if(collapsing.has(tx.id))return;
-            // My remaining: card is visible to me
-            if(isVisible(tx,txKey))myRemaining++;
-            // Other user's remaining: today=they haven't picked, past=conflict/unsure/unpicked
-            const otherPick=getSubValue(getSub(tx.id),otherUser);
-            if(today){
-                if(!otherPick)otherRemaining++;
-            } else {
-                const conflict=isConflict(tx.id,txKey);
-                const unsure=isUnsurePinned(tx.id,txKey);
-                if(conflict||unsure||!otherPick)otherRemaining++;
-            }
+            if(remainingFor(user,tx,txKey))myRemaining++;
+            if(remainingFor(otherUser,tx,txKey))otherRemaining++;
         });
     });
 

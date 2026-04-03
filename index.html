@@ -421,6 +421,7 @@ function App(){
     const [simDelta,setSim]   =useState(0);
     const [collapsing,setCol] = useState(new Set());
     const collapseTimers      = useRef([]);
+    const [sessRes,setSessRes]   = useState(new Set());
     const [undoStack,setUndo] =useState([]);
     const [showSwitch,setSwitch]=useState(false);
     const [showMac,setShowMac]=useState(false);
@@ -483,7 +484,7 @@ function App(){
 
     const login=u=>{
         setUser(u);localStorage.setItem(UK,u);
-        setCol(new Set()); setUndo([]); setSwitch(false);
+        setCol(new Set()); setSessRes(new Set()); setUndo([]); setSwitch(false);
     };
 
     const resetCache=()=>{
@@ -510,34 +511,50 @@ function App(){
     const isUnsurePinned  = (id, txKey) => isPast(txKey) && anyoneUnsure(id);
 
     // Conflict: past day, no unsure, both users have picked, and their picks differ.
-    // Any pick counts — Tony, Nugs, or Macquarie. If they both picked Macquarie → agree → no conflict.
+    // ALL pick values can conflict — Tony, Nugs, Macquarie. Any mismatch = conflict.
     const isConflict = (id, txKey) => {
         if (!isPast(txKey)) return false;
-        if (anyoneUnsure(id)) return false;   // unsure overrides conflict
+        if (anyoneUnsure(id)) return false;
         const picks = USERS.map(u => getPick(id, u)).filter(Boolean);
         return picks.length === USERS.length && new Set(picks).size > 1;
     };
 
-    // remainingFor(u, tx, txKey): does user U still need to action this tx?
-    // Rules:
-    //   Auto-confirmed              → false (done for everyone)
-    //   Today + no pick             → true  (needs assignment)
-    //   Today + has any pick        → false (done for today)
-    //   Past + no pick              → true  (missed it)
-    //   Past + picked Unsure        → true  (needs real decision)
-    //   Past + real pick + no issue → false (clean, done)
-    //   Past + real pick + conflict → true  (disagreement, both must re-resolve)
-    //   Past + real pick + unsure   → true  (flagged, both must re-resolve)
-    // This function is IDENTICAL for both users and both devices.
+    // remainingFor(u, tx, txKey):
+    //
+    // Core rules confirmed with user:
+    //   1. Every tap closes the card — always. N tasks = N taps to clear.
+    //   2. MY remaining decrements on each tap (uses sessRes for instant feedback).
+    //   3. Other user's remaining = their unpicked cards + past-day conflicts/unsures.
+    //   4. Conflicts are invisible same day. Only surface next day.
+    //   5. Once conflict surfaces (next day), it counts as remaining for BOTH users
+    //      until they each tap to re-resolve it this session.
+    //
+    // "Surfaced" conflict/unsure = isPast AND conflict/unsure exists in Firebase.
+    // Both users need to re-tap to clear it from their remaining.
+    // We track current user's taps via sessRes (local). Other user's taps tracked
+    // by whether Firebase shows them having picked AFTER the conflict surfaced —
+    // but since we can't timestamp the conflict surface, we use: if the other user
+    // has a real pick AND the conflict still exists → they're still remaining.
+    // When they re-tap, their Firebase pick updates → if still conflict, remains.
+    // This means other user's remaining only drops when conflict fully resolves.
+    //
+    // Simpler: for other user, remaining = no pick OR Unsure OR conflict/unsure exists.
+    // For current user, remaining = same but sessRes gives instant local drop.
     const remainingFor = (u, tx, txKey) => {
         if (isAutoConf(tx.id)) return false;
         const pick = getPick(tx.id, u);
+        // TODAY: one tap = done
         if (isToday(txKey)) return !pick;
+        // PAST DAY
         if (!pick) return true;
         if (pick === 'Unsure') return true;
-        if (isConflict(tx.id, txKey)) return true;
-        if (isUnsurePinned(tx.id, txKey)) return true;
-        return false;
+        // Has a real pick — check if conflict/unsure surfaced
+        const conflict = isConflict(tx.id, txKey);
+        const unsure   = isUnsurePinned(tx.id, txKey);
+        if (!conflict && !unsure) return false; // clean, done
+        // Conflict/unsure surfaced — needs re-resolution from this user
+        if (u === user) return !sessRes.has(tx.id); // instant local feedback
+        return true; // other user: always remaining until Firebase shows resolved
     };
 
     // isVisible: card shown on screen if remaining for current user OR mid-animation
@@ -549,6 +566,7 @@ function App(){
     const assign = (txId, txKey, opt) => {
         setUndo(s => [...s, {txId, u:user, prev:getPick(txId,user), prevSub:getSub(txId)[user]}]);
         save(txId, {[user]: {value:opt, ts:simNow}});
+        if (isPast(txKey)) setSessRes(r => new Set([...r, txId]));
         const timer = setTimeout(() => setCol(c => new Set([...c, txId])), 220);
         collapseTimers.current.push(timer);
     };
@@ -574,8 +592,8 @@ function App(){
     };
 
     const cancelTimers=()=>{ collapseTimers.current.forEach(clearTimeout); collapseTimers.current=[]; };
-    const stepDay = () => { cancelTimers(); setSim(d=>d+1); setCol(new Set()); setSimNow(simNow+24*60*60*1000); };
-    const resetDay = () => { cancelTimers(); setSim(0);     setCol(new Set()); setSimNow(Date.now()); };
+    const stepDay  = () => { cancelTimers(); setSim(d=>d+1); setCol(new Set()); setSessRes(new Set()); setSimNow(simNow+24*60*60*1000); };
+    const resetDay = () => { cancelTimers(); setSim(0);       setCol(new Set()); setSessRes(new Set()); setSimNow(Date.now()); };
 
     // Tally: always show Tony and Nugs totals (what each assigned to themselves)
     // Macquarie: deduplicated sum of txns anyone assigned to Macquarie
@@ -630,7 +648,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.0':'offline'
+connected===null?'connecting…':connected?'synced r3.1':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

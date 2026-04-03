@@ -543,13 +543,19 @@ function App(){
         const ts=simNow;
         // Write to Firebase — listener updates subs for all devices
         save(txId,{[user]:{value:opt,ts}});
-        // Collapse card visually after brief animation delay.
-        // Counts are always Firebase-derived so they update when listener fires (~100ms).
-        // Past-day Unsure: always collapse — card is gone for today, resurfaces next day.
-        const timer=setTimeout(()=>{
-            setCol(c=>new Set([...c,txId]));
-        },220);
-        collapseTimers.current.push(timer);
+        // Collapse logic:
+        // TODAY: always collapse immediately — one tap = done for today.
+        // PAST DAY conflict/unsure: DO NOT collapse. Card stays visible so the user
+        //   can see it's still a conflict if Firebase confirms it. The card will
+        //   disappear naturally once remainingFor returns false (Firebase resolved).
+        //   isVisible = remainingFor, so when Firebase updates and conflict clears, card hides.
+        if(!isPast(txKey)){
+            const timer=setTimeout(()=>{
+                setCol(c=>new Set([...c,txId]));
+            },220);
+            collapseTimers.current.push(timer);
+        }
+        // Past-day cards: no collapse timer. They hide when Firebase confirms resolution.
     };
 
     const undo=()=>{
@@ -629,7 +635,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r2.4':'offline'
+connected===null?'connecting…':connected?'synced r2.5':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

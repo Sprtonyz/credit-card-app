@@ -430,7 +430,23 @@ function App(){
     // Firebase real-time listener — syncs submissions across all devices instantly
     useEffect(()=>{
         const handler=subsRef.on('value', snap=>{
-            setSubs(snap.val()||{});
+            const data=snap.val()||{};
+            setSubs(data);
+            // If a card that was collapsed is now a conflict (other person disagreed),
+            // remove it from collapsing so it resurfaces
+            setCol(prev=>{
+                const next=new Set(prev);
+                Object.keys(data).forEach(txId=>{
+                    const sub=data[txId]||{};
+                    const vals=USERS.map(u=>sub[u]?.value).filter(v=>v&&v!=='Unsure');
+                    const isConflict=vals.length>1&&new Set(vals).size>1;
+                    const isUnsure=USERS.some(u=>sub[u]?.value==='Unsure');
+                    if((isConflict||isUnsure)&&next.has(txId)){
+                        next.delete(txId); // pop it back out so conflict shows
+                    }
+                });
+                return next;
+            });
         });
         return ()=>subsRef.off('value',handler);
     },[]);
@@ -513,10 +529,10 @@ function App(){
         const prev=myPick(txId);
         setUndo(s=>[...s,{txId,u:user,prev,prevSub:getSub(txId)[user]}]);
         const ts=simNow;
-        // Write just this user's pick to Firebase — other user's pick untouched
+        // Write to Firebase — listener will update subs for all devices
         save(txId,{[user]:{value:opt,ts}});
-        // Optimistically update local state so UI responds immediately
-        setSubs(cur=>({...cur,[txId]:{...cur[txId],[user]:{value:opt,ts}}}));
+        // Also update local subs immediately so UI doesn't wait for round-trip
+        setSubs(cur=>({...cur,[txId]:{...(cur[txId]||{}),[user]:{value:opt,ts}}}));
         if(opt!=='Unsure'){
             setTimeout(()=>setCol(c=>new Set([...c,txId])),220);
         }
@@ -529,12 +545,16 @@ function App(){
         setCol(c=>{const n=new Set(c);n.delete(last.txId);return n;});
         // Restore previous value in Firebase
         if(last.prevSub){
-            save(last.txId,{[last.u]:last.prevSub});
-            setSubs(cur=>({...cur,[last.txId]:{...cur[last.txId],[last.u]:last.prevSub}}));
+            db.ref('submissions/'+last.txId).update({[last.u]:last.prevSub});
+            setSubs(cur=>({...cur,[last.txId]:{...(cur[last.txId]||{}),[last.u]:last.prevSub}}));
         } else {
-            // Was null — remove this user's entry
+            // Was null — remove this user's pick
             db.ref('submissions/'+last.txId+'/'+last.u).remove();
-            setSubs(cur=>{const n={...cur};if(n[last.txId]){const t={...n[last.txId]};delete t[last.u];n[last.txId]=t;}return n;});
+            setSubs(cur=>{
+                const n={...cur};
+                if(n[last.txId]){const t={...n[last.txId]};delete t[last.u];n[last.txId]=t;}
+                return n;
+            });
         }
     };
 

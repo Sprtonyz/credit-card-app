@@ -43,54 +43,59 @@
         .dev-banner {
             background: rgba(234,179,8,0.07); border-bottom: 1px solid rgba(234,179,8,0.18);
             padding: 0.4rem 1rem; display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+            flex-wrap: wrap;
         }
         .dev-label { font-size: 0.56rem; letter-spacing: 0.15em; text-transform: uppercase; color: #92400e; }
-        .day-display { font-size: 0.7rem; color: #fbbf24; min-width: 80px; text-align: center; }
+        .day-display { font-size: 0.68rem; color: #fbbf24; min-width: 90px; text-align: center; }
         .day-btn {
             background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.22);
             border-radius: 4px; color: #d97706; font-family: 'DM Mono', monospace;
             font-size: 0.68rem; padding: 0.18rem 0.55rem; cursor: pointer; transition: background 0.15s;
         }
-        .day-btn:hover { background: rgba(234,179,8,0.18); }
-        .day-btn.reset { color: #6b7280; border-color: rgba(107,114,128,0.2); }
+        .day-btn:hover { background: rgba(234,179,8,0.2); }
+        .day-btn.reset { color: #6b7280; border-color: rgba(107,114,128,0.2); background: transparent; }
 
         /* ── Tally bar ── */
-        .tally-bar {
-            background: rgba(255,255,255,0.015); border-bottom: 1px solid rgba(255,255,255,0.05);
-            display: flex;
-        }
-        .tally-item {
-            flex: 1; display: flex; flex-direction: column; align-items: center;
-            padding: 0.55rem 0.5rem; border-right: 1px solid rgba(255,255,255,0.05);
-        }
+        .tally-bar { background: rgba(255,255,255,0.015); border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; }
+        .tally-item { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 0.55rem 0.5rem; border-right: 1px solid rgba(255,255,255,0.05); }
         .tally-item:last-child { border-right: none; }
         .tally-name { font-size: 0.55rem; letter-spacing: 0.18em; text-transform: uppercase; color: #4b5563; margin-bottom: 0.18rem; }
         .tally-amount { font-family: 'Fraunces', serif; font-size: 1.05rem; font-weight: 300; color: #93c5fd; }
 
         /* ── App ── */
         .app { max-width: 480px; margin: 0 auto; padding: 1rem 1rem 5rem; }
-        .app-header {
-            display: flex; align-items: center; justify-content: space-between;
-            margin-bottom: 0.9rem; padding-bottom: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.06);
-        }
+        .app-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.9rem; padding-bottom: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
         .app-title { font-family: 'Fraunces', serif; font-size: 1.4rem; font-weight: 300; color: #f1f0ec; }
+        .header-right { display: flex; align-items: center; gap: 0.5rem; }
+
         .user-badge {
             display: flex; align-items: center; gap: 0.35rem; font-size: 0.68rem; color: #60a5fa;
             background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2);
             border-radius: 20px; padding: 0.28rem 0.7rem; cursor: pointer;
         }
+        .undo-btn {
+            display: flex; align-items: center; gap: 0.3rem; font-size: 0.65rem;
+            color: #9ca3af; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+            border-radius: 20px; padding: 0.28rem 0.65rem; cursor: pointer; transition: all 0.15s;
+            font-family: 'DM Mono', monospace;
+        }
+        .undo-btn:hover { background: rgba(255,255,255,0.08); color: #e8e6e1; }
+        .undo-btn:disabled { opacity: 0.25; cursor: default; }
 
         /* Stats */
-        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; margin-bottom: 0.9rem; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-bottom: 0.9rem; }
         .stat-box { background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06); border-radius: 7px; padding: 0.55rem 0.4rem; text-align: center; }
         .stat-val { font-family: 'Fraunces', serif; font-size: 1.25rem; font-weight: 300; color: #f1f0ec; line-height: 1; }
         .stat-label { font-size: 0.5rem; letter-spacing: 0.12em; text-transform: uppercase; color: #4b5563; margin-top: 0.22rem; }
 
         /* Cards */
-        .tx-card { border-radius: 10px; padding: 0.75rem; margin-bottom: 0.4rem; border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.02); transition: border-color 0.2s; }
-        .tx-card.conflict { border-color: rgba(239,68,68,0.4);  background: rgba(239,68,68,0.04); }
-        .tx-card.resolved { border-color: rgba(34,197,94,0.28); background: rgba(34,197,94,0.03); }
-        .tx-card.pending  { border-color: rgba(234,179,8,0.28); background: rgba(234,179,8,0.02); }
+        .tx-card {
+            border-radius: 10px; padding: 0.75rem; margin-bottom: 0.4rem;
+            border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.02);
+            transition: all 0.25s ease; overflow: hidden;
+        }
+        .tx-card.conflict { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.04); }
+        .tx-card.pending  { border-color: rgba(255,255,255,0.07); }
 
         .tx-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; }
         .tx-desc { font-size: 0.76rem; color: #d1cfc9; margin-bottom: 0.22rem; }
@@ -98,73 +103,147 @@
         .tx-date { font-size: 0.56rem; color: #374151; background: rgba(255,255,255,0.04); padding: 0.1rem 0.4rem; border-radius: 3px; }
         .badge { font-size: 0.56rem; padding: 0.1rem 0.4rem; border-radius: 3px; }
         .badge-conflict { background: rgba(239,68,68,0.18); color: #f87171; }
-        .badge-ok       { background: rgba(34,197,94,0.18);  color: #4ade80; }
-        .badge-pending  { background: rgba(234,179,8,0.12);  color: #fbbf24; }
         .tx-amount { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 300; color: #93c5fd; white-space: nowrap; padding-left: 0.5rem; }
 
         /* One-tap assign */
         .assign-row { display: flex; gap: 0.3rem; align-items: center; }
         .assign-label { font-size: 0.52rem; color: #2d3748; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; padding-right: 0.1rem; }
         .tap-btn {
-            flex: 1; padding: 0.38rem 0.4rem; border-radius: 5px;
+            flex: 1; padding: 0.42rem 0.4rem; border-radius: 5px;
             border: 1px solid rgba(255,255,255,0.07);
             background: rgba(255,255,255,0.03); color: #6b7280;
-            font-family: 'DM Mono', monospace; font-size: 0.7rem;
+            font-family: 'DM Mono', monospace; font-size: 0.72rem;
             cursor: pointer; transition: all 0.12s; text-align: center;
         }
         .tap-btn:hover { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.28); color: #d1d5db; }
-        .tap-btn.active { background: rgba(59,130,246,0.18); border-color: rgba(59,130,246,0.45); color: #93c5fd; }
+
+        /* Conflict re-assign */
+        .conflict-assign { display: flex; gap: 0.3rem; }
+        .conflict-tap-btn {
+            flex: 1; padding: 0.42rem 0.4rem; border-radius: 5px;
+            border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.08);
+            color: #f87171; font-family: 'DM Mono', monospace; font-size: 0.72rem;
+            cursor: pointer; transition: all 0.12s; text-align: center;
+        }
+        .conflict-tap-btn:hover { background: rgba(239,68,68,0.18); }
 
         /* Switch overlay */
         .switch-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 2rem; }
         .switch-card { background: #0f1318; border: 1px solid rgba(255,255,255,0.09); border-radius: 14px; padding: 2rem; width: 100%; max-width: 320px; text-align: center; }
         .switch-title { font-family: 'Fraunces', serif; font-size: 1.2rem; font-weight: 300; margin-bottom: 0.35rem; color: #f1f0ec; }
         .switch-sub { font-size: 0.62rem; color: #4b5563; margin-bottom: 1.5rem; }
+
+        /* All done */
+        .all-done {
+            text-align: center; padding: 4rem 2rem;
+            animation: fadeUp 0.5s ease forwards;
+        }
+        .all-done-emoji { font-size: 3.5rem; margin-bottom: 1rem; display: block; animation: pop 0.4s ease 0.2s both; }
+        .all-done-title { font-family: 'Fraunces', serif; font-size: 1.8rem; font-weight: 300; color: #f1f0ec; margin-bottom: 0.5rem; }
+        .all-done-sub { font-size: 0.72rem; color: #4b5563; letter-spacing: 0.05em; }
+
+        @keyframes fadeUp { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: translateY(0); } }
+        @keyframes pop { 0%,100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+
+        /* Card slide-out */
+        .tx-card.collapsing {
+            max-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important;
+            margin-bottom: 0 !important; opacity: 0; border-width: 0 !important;
+            transition: all 0.3s ease;
+        }
     </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 const USERS       = ['Tony', 'Nugs'];
 const STORAGE_KEY = 'cc_submissions';
 const USER_KEY    = 'cc_current_user';
 
-// Transactions with relative-day offsets so the simulator works naturally
-const RAW_TX = [
-    { id: 'd0',  dOff: 0,  amount: 75.00,   description: 'VELOCITY REWARDS FEE' },
-    { id: 'd1',  dOff: 0,  amount: 295.00,  description: 'CARD FEE' },
-    { id: 'd2',  dOff: 0,  amount: 32.21,   description: 'ALIEXPRESS North Sydney' },
-    { id: 'd3',  dOff: -1, amount: 1468.00, description: 'FOREIGN FEE AUD 8.01' },
-    { id: 'd4',  dOff: -1, amount: 275.05,  description: 'KICKSTARTER.COM Tsimshatsui' },
-    { id: 'd5',  dOff: -1, amount: 18.50,   description: 'UBER EATS Sydney' },
-    { id: 'd6',  dOff: -2, amount: 98.00,   description: 'GU HEALTH REWARDS Camberwell' },
-    { id: 'd7',  dOff: -2, amount: 12.90,   description: 'MCDONALDS Sunshine' },
-    { id: 'd8',  dOff: -2, amount: 54.40,   description: 'SPOTIFY PREMIUM' },
-    { id: 'd9',  dOff: -3, amount: 89.50,   description: 'COLES Footscray' },
-    { id: 'd10', dOff: -3, amount: 45.00,   description: 'BUNNINGS Warehouse' },
-    { id: 'd11', dOff: -3, amount: 22.30,   description: 'ALDI Stores West' },
-    { id: 'd12', dOff: -4, amount: 210.00,  description: 'ELECTRICITY BILL AGL' },
-    { id: 'd13', dOff: -4, amount: 9.99,    description: 'NETFLIX.COM' },
-    { id: 'd14', dOff: -5, amount: 65.00,   description: 'INTERNET BILL Aussie BB' },
-];
+// ── Per-day transaction sets for the simulator ──────────────
+// Each day key maps to a list of transactions for that simulated day.
+// dOff 0 = "today" in the simulation, -1 = yesterday, etc.
+const TX_BY_DAY = {
+    0: [ // real today
+        { id: 'd0-0', amount: 75.00,   description: 'VELOCITY REWARDS FEE' },
+        { id: 'd0-1', amount: 295.00,  description: 'CARD FEE' },
+        { id: 'd0-2', amount: 32.21,   description: 'ALIEXPRESS North Sydney' },
+        { id: 'd0-3', amount: 18.50,   description: 'UBER EATS Melbourne' },
+        { id: 'd0-4', amount: 12.90,   description: 'MCDONALDS Sunshine' },
+    ],
+    '-1': [ // yesterday
+        { id: 'd1-0', amount: 1468.00, description: 'FOREIGN FEE AUD 8.01' },
+        { id: 'd1-1', amount: 275.05,  description: 'KICKSTARTER.COM Tsimshatsui' },
+        { id: 'd1-2', amount: 54.40,   description: 'SPOTIFY PREMIUM' },
+        { id: 'd1-3', amount: 11.00,   description: 'GOOGLE ONE Storage' },
+    ],
+    '-2': [
+        { id: 'd2-0', amount: 98.00,   description: 'GU HEALTH REWARDS Camberwell' },
+        { id: 'd2-1', amount: 89.50,   description: 'COLES Footscray' },
+        { id: 'd2-2', amount: 45.00,   description: 'BUNNINGS Warehouse' },
+        { id: 'd2-3', amount: 22.30,   description: 'ALDI Stores West' },
+    ],
+    '-3': [
+        { id: 'd3-0', amount: 210.00,  description: 'ELECTRICITY BILL AGL' },
+        { id: 'd3-1', amount: 9.99,    description: 'NETFLIX.COM' },
+        { id: 'd3-2', amount: 65.00,   description: 'INTERNET BILL Aussie BB' },
+        { id: 'd3-3', amount: 42.80,   description: 'SHELL COLES EXPRESS Footscray' },
+    ],
+    '-4': [
+        { id: 'd4-0', amount: 330.00,  description: 'QANTAS AIRWAYS Sydney' },
+        { id: 'd4-1', amount: 15.50,   description: 'PARKING CITY OF MELB' },
+        { id: 'd4-2', amount: 88.00,   description: 'DAN MURPHYS Yarraville' },
+        { id: 'd4-3', amount: 6.50,    description: 'MYKI TOP UP' },
+    ],
+    '-5': [
+        { id: 'd5-0', amount: 124.99,  description: 'AMAZON AU Sydney' },
+        { id: 'd5-1', amount: 37.40,   description: 'WOOLWORTHS Sunshine' },
+        { id: 'd5-2', amount: 200.00,  description: 'TRANSFER WESTPAC' },
+    ],
+    '1': [ // tomorrow
+        { id: 'df1-0', amount: 55.00,  description: 'MEDICARE REFUND' },
+        { id: 'df1-1', amount: 149.00, description: 'OFFICEWORKS Footscray' },
+        { id: 'df1-2', amount: 28.90,  description: 'THAI ORCHID Restaurant' },
+    ],
+    '2': [
+        { id: 'df2-0', amount: 499.00, description: 'JB HIFI Melbourne CBD' },
+        { id: 'df2-1', amount: 19.99,  description: 'ADOBE CREATIVE CLOUD' },
+        { id: 'df2-2', amount: 72.00,  description: 'RACV MEMBERSHIP' },
+    ],
+};
 
-function isoDate(offsetFromToday) {
+function isoDate(offset) {
     const d = new Date();
-    d.setDate(d.getDate() + offsetFromToday);
+    d.setDate(d.getDate() + offset);
     return d.toISOString().slice(0, 10);
 }
 
-// Build transactions with dates relative to simulated "today" offset
-function buildTransactions(simDelta) {
-    return RAW_TX.map(t => ({ ...t, date: isoDate(t.dOff) }));
+// Get transactions for the simulated "today" (simDelta = how many days ahead/behind)
+function getTransactionsForSim(simDelta) {
+    const key = String(simDelta);
+    const pool = TX_BY_DAY[key] || TX_BY_DAY['0'];
+    return pool.map(t => ({ ...t, date: isoDate(simDelta) }));
 }
 
-// A tx's date is "before" the simulated today if its offset < simDelta
-function isBeforeSim(txDayOff, simDelta) {
-    return txDayOff < simDelta;
+// A conflict is visible only after the simulated "today" passes the tx date.
+// Since all tx in the sim are from the same day (simDelta), conflicts are always
+// visible when simDelta < 0 (we've moved to a "later" day).
+// We keep this simple: conflicts show once both users have submitted differently.
+// The "next day" reveal is simulated by stepping simDelta forward (+1).
+function isConflictVisible(simDelta) {
+    // Conflicts from simDelta day become visible when you advance to simDelta+1
+    // We track this via a separate "conflictRevealDelta" passed in
+    return true; // conflicts always visible in this set — use next day btn to see new day
 }
+
+const DONE_MESSAGES = [
+    { emoji: '🎉', title: "That's all for today!", sub: 'Nothing left to assign. Nice work.' },
+    { emoji: '✅', title: 'All sorted!', sub: 'You two are on top of it.' },
+    { emoji: '🙌', title: 'Clean slate!', sub: 'Every transaction is assigned.' },
+    { emoji: '💪', title: 'Done and dusted!', sub: "Nothing left. Go enjoy your day." },
+];
 
 // ── Landing ──────────────────────────────────────────────
 function LandingPage({ onSelect }) {
@@ -201,12 +280,15 @@ function SwitchOverlay({ currentUser, onSelect, onClose }) {
     );
 }
 
-// ── App ───────────────────────────────────────────────────
+// ── Main App ──────────────────────────────────────────────
 function CreditCardApp() {
     const [currentUser, setCurrentUser] = useState(null);
     const [submissions, setSubmissions]  = useState({});
     const [showSwitch, setShowSwitch]    = useState(false);
-    const [simDelta, setSimDelta]        = useState(0); // dev: simulated day offset vs real today
+    const [simDelta, setSimDelta]        = useState(0);
+    const [collapsing, setCollapsing]    = useState(new Set()); // txIds mid-animation
+    const [history, setHistory]          = useState([]); // undo stack: [{txId, user, prev}]
+    const doneMsg = useRef(DONE_MESSAGES[Math.floor(Math.random() * DONE_MESSAGES.length)]);
 
     useEffect(() => {
         const u = localStorage.getItem(USER_KEY);
@@ -216,66 +298,94 @@ function CreditCardApp() {
 
     useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions)); }, [submissions]);
 
+    // Reset submissions + collapsing when day changes (new day = new transactions)
+    useEffect(() => {
+        setCollapsing(new Set());
+    }, [simDelta]);
+
     const selectUser = u => { setCurrentUser(u); localStorage.setItem(USER_KEY, u); };
 
-    const assign = (txId, txDayOff, assignTo) => {
-        setSubmissions(prev => ({ ...prev, [txId]: { ...prev[txId], [currentUser]: assignTo } }));
-    };
+    const transactions = getTransactionsForSim(simDelta);
 
-    // Conflict = both submitted different answers AND the tx date is before simulated today
-    const hasConflict = tx => {
-        if (!isBeforeSim(tx.dOff, simDelta)) return false;
-        const sub = submissions[tx.id];
-        if (!sub) return false;
-        const vals = USERS.map(u => sub[u]).filter(v => v != null);
-        return vals.length > 1 && new Set(vals).size > 1;
-    };
-
-    // Both submitted but conflict not visible yet (same day)
-    const hasPendingConflict = tx => {
-        if (isBeforeSim(tx.dOff, simDelta)) return false;
-        const sub = submissions[tx.id];
-        if (!sub) return false;
-        const vals = USERS.map(u => sub[u]).filter(v => v != null);
-        return vals.length > 1 && new Set(vals).size > 1;
-    };
-
-    const allSubmitted = txId => {
+    const hasConflict = txId => {
         const sub = submissions[txId];
-        return sub && USERS.every(u => sub[u] != null);
+        if (!sub) return false;
+        const vals = USERS.map(u => sub[u]).filter(v => v != null);
+        return vals.length > 1 && new Set(vals).size > 1;
     };
 
-    // Tallies: sum amounts for each user from resolved (non-conflict) transactions
+    const mySubmission = txId => submissions[txId]?.[currentUser];
+
+    // Assign with undo tracking + collapse animation
+    const assign = (txId, assignTo) => {
+        const prev = submissions[txId]?.[currentUser] ?? null;
+
+        // Push to undo history
+        setHistory(h => [...h, { txId, user: currentUser, prev, next: assignTo }]);
+
+        setSubmissions(prev => ({
+            ...prev,
+            [txId]: { ...prev[txId], [currentUser]: assignTo }
+        }));
+
+        // After a short delay, collapse the card (only if no conflict)
+        // We check conflict after state update via setTimeout
+        setTimeout(() => {
+            setSubmissions(current => {
+                const sub = current[txId] || {};
+                const vals = USERS.map(u => sub[u]).filter(v => v != null);
+                const isConflict = vals.length > 1 && new Set(vals).size > 1;
+                if (!isConflict) {
+                    setCollapsing(c => new Set([...c, txId]));
+                }
+                return current;
+            });
+        }, 300);
+    };
+
+    const undo = () => {
+        if (history.length === 0) return;
+        const last = history[history.length - 1];
+        setHistory(h => h.slice(0, -1));
+        setCollapsing(c => { const n = new Set(c); n.delete(last.txId); return n; });
+        setSubmissions(prev => ({
+            ...prev,
+            [last.txId]: { ...prev[last.txId], [last.user]: last.prev }
+        }));
+    };
+
+    // Tallies from resolved (non-conflict, both agreed) transactions across ALL days
     const tallies = Object.fromEntries(USERS.map(u => [u, 0]));
-    RAW_TX.forEach(tx => {
-        if (allSubmitted(tx.id) && !hasConflict(tx)) {
-            const sub = submissions[tx.id];
-            if (sub[USERS[0]] === sub[USERS[1]]) { // both agree
-                const to = sub[USERS[0]];
-                if (to in tallies) tallies[to] += tx.amount;
-            }
+    Object.values(TX_BY_DAY).flat().forEach(tx => {
+        const sub = submissions[tx.id];
+        if (!sub) return;
+        const vals = USERS.map(u => sub[u]).filter(v => v != null);
+        const allAgree = vals.length === USERS.length && new Set(vals).size === 1;
+        if (allAgree) {
+            const to = sub[USERS[0]];
+            if (to in tallies) tallies[to] += tx.amount;
         }
     });
 
     if (!currentUser) return React.createElement(LandingPage, { onSelect: selectUser });
 
-    const transactions = buildTransactions(simDelta);
-
-    const stats = {
-        total:     transactions.length,
-        assigned:  transactions.filter(tx => allSubmitted(tx.id) && !hasConflict(tx)).length,
-        conflicts: transactions.filter(tx => hasConflict(tx)).length,
-        pending:   transactions.filter(tx => !allSubmitted(tx.id) || hasConflict(tx)).length,
-    };
-
-    const sorted = [...transactions].sort((a, b) => {
-        const score = tx => hasConflict(tx) ? 0 : !allSubmitted(tx.id) ? 1 : 2;
-        return score(a) - score(b);
+    // Visible = pending (no my submission) OR conflict — exclude collapsing ones
+    const visible = transactions.filter(tx => {
+        if (collapsing.has(tx.id)) return true; // still visible during animation
+        const conflict = hasConflict(tx.id);
+        const mySub = mySubmission(tx.id);
+        return conflict || !mySub;
     });
 
-    const simLabel = simDelta === 0 ? 'today (real)'
-        : simDelta > 0 ? `tomorrow +${simDelta}d`
-        : `yesterday ${simDelta}d`;
+    const conflictCount = transactions.filter(tx => hasConflict(tx.id)).length;
+    const pendingCount  = transactions.filter(tx => !mySubmission(tx.id) && !hasConflict(tx.id)).length;
+    const doneCount     = transactions.filter(tx => mySubmission(tx.id) && !hasConflict(tx.id)).length;
+
+    const allDone = visible.filter(tx => !collapsing.has(tx.id)).length === 0;
+
+    const simLabel = simDelta === 0 ? 'today'
+        : simDelta > 0 ? `+${simDelta}d ahead`
+        : `${Math.abs(simDelta)}d ago`;
 
     return React.createElement('div', null,
 
@@ -295,10 +405,10 @@ function CreditCardApp() {
         // Tally bar
         React.createElement('div', { className: 'tally-bar' },
             USERS.flatMap((u, i) => [
-                i > 0 ? React.createElement('div', { key: 'sep'+i, style: { width: '1px', background: 'rgba(255,255,255,0.05)' } }) : null,
+                i > 0 ? React.createElement('div', { key: 'sep'+i, style: { width:'1px', background:'rgba(255,255,255,0.05)' } }) : null,
                 React.createElement('div', { key: u, className: 'tally-item' },
                     React.createElement('div', { className: 'tally-name' }, u),
-                    React.createElement('div', { className: 'tally-amount' }, '$' + (tallies[u] || 0).toFixed(2))
+                    React.createElement('div', { className: 'tally-amount' }, '$' + (tallies[u]||0).toFixed(2))
                 )
             ]).filter(Boolean)
         ),
@@ -308,66 +418,88 @@ function CreditCardApp() {
             // Header
             React.createElement('div', { className: 'app-header' },
                 React.createElement('h1', { className: 'app-title' }, '💳 Transactions'),
-                React.createElement('button', { className: 'user-badge', onClick: () => setShowSwitch(true) },
-                    currentUser[0], ' ', currentUser, ' ↕'
+                React.createElement('div', { className: 'header-right' },
+                    React.createElement('button', {
+                        className: 'undo-btn',
+                        disabled: history.length === 0,
+                        onClick: undo
+                    }, '↩ undo'),
+                    React.createElement('button', { className: 'user-badge', onClick: () => setShowSwitch(true) },
+                        currentUser[0], ' ', currentUser, ' ↕'
+                    )
                 )
             ),
 
-            // Stats
+            // Stats — 3 boxes, no "done" section
             React.createElement('div', { className: 'stats-grid' },
                 [
-                    { label: 'Total',   value: stats.total },
-                    { label: 'Done',    value: stats.assigned },
-                    { label: 'Issues',  value: stats.conflicts },
-                    { label: 'Pending', value: stats.pending },
+                    { label: 'Total',    value: transactions.length },
+                    { label: 'Pending',  value: pendingCount },
+                    { label: 'Conflicts',value: conflictCount },
                 ].map(s => React.createElement('div', { key: s.label, className: 'stat-box' },
                     React.createElement('div', { className: 'stat-val' }, s.value),
                     React.createElement('div', { className: 'stat-label' }, s.label)
                 ))
             ),
 
-            // Transactions
-            React.createElement('div', null,
-                sorted.map(tx => {
-                    const conflict        = hasConflict(tx);
-                    const submitted       = allSubmitted(tx.id);
-                    const pendingConflict = hasPendingConflict(tx);
-                    const userSub         = submissions[tx.id]?.[currentUser];
+            // All done state
+            allDone
+                ? React.createElement('div', { className: 'all-done' },
+                    React.createElement('span', { className: 'all-done-emoji' }, doneMsg.current.emoji),
+                    React.createElement('h2', { className: 'all-done-title' }, doneMsg.current.title),
+                    React.createElement('p', { className: 'all-done-sub' }, doneMsg.current.sub)
+                  )
+                : React.createElement('div', null,
+                    visible.map(tx => {
+                        const conflict = hasConflict(tx.id);
+                        const mySub    = mySubmission(tx.id);
+                        const isCollapsing = collapsing.has(tx.id);
 
-                    const cardClass = 'tx-card' + (
-                        conflict                           ? ' conflict' :
-                        submitted && !pendingConflict      ? ' resolved' :
-                        ' pending'
-                    );
-
-                    return React.createElement('div', { key: tx.id, className: cardClass },
-                        React.createElement('div', { className: 'tx-top' },
-                            React.createElement('div', null,
-                                React.createElement('div', { className: 'tx-meta', style: { marginBottom: '0.2rem' } },
-                                    React.createElement('span', { className: 'tx-date' }, tx.date),
-                                    conflict        && React.createElement('span', { className: 'badge badge-conflict' }, '⚠ conflict'),
-                                    submitted && !conflict && !pendingConflict && React.createElement('span', { className: 'badge badge-ok' }, '✓ done'),
-                                    pendingConflict && React.createElement('span', { className: 'badge badge-pending' }, '⏳ tomorrow'),
+                        return React.createElement('div', {
+                            key: tx.id,
+                            className: 'tx-card' + (conflict ? ' conflict' : ' pending') + (isCollapsing ? ' collapsing' : ''),
+                        },
+                            React.createElement('div', { className: 'tx-top' },
+                                React.createElement('div', null,
+                                    React.createElement('div', { className: 'tx-meta', style: { marginBottom: '0.2rem' } },
+                                        React.createElement('span', { className: 'tx-date' }, tx.date),
+                                        conflict && React.createElement('span', { className: 'badge badge-conflict' }, '⚠ conflict'),
+                                    ),
+                                    React.createElement('p', { className: 'tx-desc' }, tx.description)
                                 ),
-                                React.createElement('p', { className: 'tx-desc' }, tx.description)
+                                React.createElement('span', { className: 'tx-amount' }, '$' + tx.amount.toFixed(2))
                             ),
-                            React.createElement('span', { className: 'tx-amount' }, '$' + tx.amount.toFixed(2))
-                        ),
 
-                        // One-tap assign — always visible, no expand needed
-                        React.createElement('div', { className: 'assign-row' },
-                            React.createElement('span', { className: 'assign-label' }, 'assign'),
-                            ...USERS.map(option =>
-                                React.createElement('button', {
-                                    key: option,
-                                    className: 'tap-btn' + (userSub === option ? ' active' : ''),
-                                    onClick: () => assign(tx.id, tx.dOff, option)
-                                }, option)
-                            )
-                        )
-                    );
-                })
-            )
+                            // Assign buttons — different style for conflict
+                            conflict
+                                ? React.createElement('div', null,
+                                    React.createElement('p', { style: { fontSize:'0.6rem', color:'#6b7280', marginBottom:'0.4rem' } },
+                                        'Your pick: ' + (mySub || '—') + ' — tap to change'
+                                    ),
+                                    React.createElement('div', { className: 'conflict-assign' },
+                                        ...USERS.map(opt =>
+                                            React.createElement('button', {
+                                                key: opt,
+                                                className: 'conflict-tap-btn',
+                                                style: mySub === opt ? { background:'rgba(239,68,68,0.25)', fontWeight:'500' } : {},
+                                                onClick: () => assign(tx.id, opt)
+                                            }, opt)
+                                        )
+                                    )
+                                  )
+                                : React.createElement('div', { className: 'assign-row' },
+                                    React.createElement('span', { className: 'assign-label' }, 'assign'),
+                                    ...USERS.map(opt =>
+                                        React.createElement('button', {
+                                            key: opt,
+                                            className: 'tap-btn',
+                                            onClick: () => assign(tx.id, opt)
+                                        }, opt)
+                                    )
+                                )
+                        );
+                    })
+                  )
         )
     );
 }

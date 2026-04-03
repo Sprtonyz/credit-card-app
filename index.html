@@ -7,6 +7,9 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,300;9..144,600&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -139,6 +142,14 @@
 <canvas id="confetti-canvas" style="display:none;width:100%;height:100%"></canvas>
 <div id="root"></div>
 <script>
+/* ── Firebase init ── */
+// 🔧 REPLACE THIS URL with your Firebase Realtime Database URL
+const FIREBASE_URL = 'https://credit-card-app-96107-default-rtdb.asia-southeast1.firebasedatabase.app';
+
+firebase.initializeApp({ databaseURL: FIREBASE_URL });
+const db = firebase.database();
+const subsRef = db.ref('submissions');
+
 /* ── Confetti ── */
 (function(){
     const cv=document.getElementById('confetti-canvas');
@@ -217,7 +228,9 @@ function isDayPast(txKey,simDelta){return parseInt(txKey)<simDelta;}
 // Conflict visible only the day after (txKey < simDelta)
 function conflictVisible(txKey,simDelta){return parseInt(txKey)<simDelta;}
 
-function loadSubs(){try{const s=localStorage.getItem(SK);return s?JSON.parse(s):{}}catch(e){return{};}}
+// Firebase replaces localStorage for submissions
+// loadSubs is no longer used — we use real-time listener instead
+function loadSubs(){return {};} // kept for undo compatibility
 
 const DONE=[
     {emoji:'🎉',title:"All done!",        sub:'Every transaction sorted. Legends.'},
@@ -386,22 +399,34 @@ function App(){
     // In production this would just be Date.now()
     const [simNow,setSimNow]=useState(Date.now());
 
+    // Load user from localStorage (device-local preference only)
     useEffect(()=>{
         const u=localStorage.getItem(UK);
         if(u&&USERS.includes(u))setUser(u);
-        setSubs(loadSubs());
     },[]);
 
-    const save=s=>{setSubs(s);localStorage.setItem(SK,JSON.stringify(s));};
+    // Firebase real-time listener — syncs submissions across all devices instantly
+    useEffect(()=>{
+        const handler=subsRef.on('value', snap=>{
+            setSubs(snap.val()||{});
+        });
+        return ()=>subsRef.off('value',handler);
+    },[]);
+
+    // Save a single tx submission to Firebase (merge with existing)
+    const save=(txId,txData)=>{
+        db.ref('submissions/'+txId).update(txData);
+    };
 
     const login=u=>{
         setUser(u);localStorage.setItem(UK,u);
-        setSubs(loadSubs());setCol(new Set());setUndo([]);setSwitch(false);
+        setCol(new Set());setUndo([]);setSwitch(false);
     };
 
     const resetCache=()=>{
-        if(!confirm('Reset all data?'))return;
-        localStorage.removeItem(SK);localStorage.removeItem(UK);
+        if(!confirm('Reset all data? This clears ALL devices.'))return;
+        subsRef.remove();
+        localStorage.removeItem(UK);
         setSubs({});setCol(new Set());setUndo([]);setUser(null);setShowMac(false);
     };
 
@@ -439,12 +464,12 @@ function App(){
 
     const assign=(txId,txKey,opt)=>{
         const prev=myPick(txId);
-        setUndo(s=>[...s,{txId,u:user,prev}]);
+        setUndo(s=>[...s,{txId,u:user,prev,prevSub:getSub(txId)[user]}]);
         const ts=simNow;
-        const ns={...subs,[txId]:{...getSub(txId),[user]:{value:opt,ts}}};
-        save(ns);
-        // Always collapse after assign — even past-day conflicts clear for today
-        // They'll reappear tomorrow if other user disagrees
+        // Write just this user's pick to Firebase — other user's pick untouched
+        save(txId,{[user]:{value:opt,ts}});
+        // Optimistically update local state so UI responds immediately
+        setSubs(cur=>({...cur,[txId]:{...cur[txId],[user]:{value:opt,ts}}}));
         if(opt!=='Unsure'){
             setTimeout(()=>setCol(c=>new Set([...c,txId])),220);
         }
@@ -455,9 +480,15 @@ function App(){
         const last=undoStack[undoStack.length-1];
         setUndo(s=>s.slice(0,-1));
         setCol(c=>{const n=new Set(c);n.delete(last.txId);return n;});
-        const prevEntry=last.prev?{value:last.prev,ts:getSubTs(getSub(last.txId),last.u)}:undefined;
-        const ns={...subs,[last.txId]:{...getSub(last.txId),[last.u]:prevEntry}};
-        save(ns);
+        // Restore previous value in Firebase
+        if(last.prevSub){
+            save(last.txId,{[last.u]:last.prevSub});
+            setSubs(cur=>({...cur,[last.txId]:{...cur[last.txId],[last.u]:last.prevSub}}));
+        } else {
+            // Was null — remove this user's entry
+            db.ref('submissions/'+last.txId+'/'+last.u).remove();
+            setSubs(cur=>{const n={...cur};if(n[last.txId]){const t={...n[last.txId]};delete t[last.u];n[last.txId]=t;}return n;});
+        }
     };
 
     const stepDay=()=>{setSim(d=>d+1);setCol(new Set());setSimNow(simNow+24*60*60*1000);};

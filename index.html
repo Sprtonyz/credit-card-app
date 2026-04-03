@@ -9,125 +9,121 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,300;9..144,600&display=swap');
-        * { box-sizing:border-box; margin:0; padding:0; }
-        body { background:#0a0d12; color:#e8e6e1; font-family:'DM Mono',monospace; min-height:100vh; -webkit-tap-highlight-color:transparent; }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{background:#0a0d12;color:#e8e6e1;font-family:'DM Mono',monospace;min-height:100vh;-webkit-tap-highlight-color:transparent;}
 
         /* Landing */
-        .landing { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2rem;
-            background:radial-gradient(ellipse at 30% 20%,rgba(59,130,246,0.08) 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(99,102,241,0.06) 0%,transparent 60%),#0a0d12; }
-        .landing-card { width:100%; max-width:360px; text-align:center; }
-        .landing-eyebrow { font-size:0.65rem; letter-spacing:0.25em; text-transform:uppercase; color:#4b5563; margin-bottom:1.5rem; }
-        .landing-title { font-family:'Fraunces',serif; font-size:2.4rem; font-weight:300; color:#f1f0ec; line-height:1.15; margin-bottom:0.5rem; }
-        .landing-sub { font-size:0.72rem; color:#4b5563; margin-bottom:3rem; letter-spacing:0.05em; }
-        .who-label { font-size:0.65rem; letter-spacing:0.2em; text-transform:uppercase; color:#6b7280; margin-bottom:1rem; }
-        .user-btn { display:block; width:100%; padding:1rem 1.5rem; margin-bottom:0.75rem; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; color:#e8e6e1; font-family:'Fraunces',serif; font-size:1.4rem; font-weight:300; cursor:pointer; transition:all 0.2s; text-align:left; -webkit-tap-highlight-color:transparent; }
-        .user-btn:hover { background:rgba(59,130,246,0.1); border-color:rgba(59,130,246,0.3); transform:translateX(4px); }
-        .user-initial { display:inline-block; width:32px; height:32px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.25); border-radius:50%; text-align:center; line-height:32px; font-size:0.9rem; margin-right:0.75rem; vertical-align:middle; font-family:'DM Mono',monospace; color:#60a5fa; }
-        .landing-footer { margin-top:3rem; font-size:0.6rem; color:#374151; letter-spacing:0.1em; }
+        .landing{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;background:radial-gradient(ellipse at 30% 20%,rgba(59,130,246,0.08) 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(99,102,241,0.06) 0%,transparent 60%),#0a0d12;}
+        .landing-card{width:100%;max-width:360px;text-align:center;}
+        .landing-eyebrow{font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;color:#4b5563;margin-bottom:1.5rem;}
+        .landing-title{font-family:'Fraunces',serif;font-size:2.4rem;font-weight:300;color:#f1f0ec;line-height:1.15;margin-bottom:0.5rem;}
+        .landing-sub{font-size:0.72rem;color:#4b5563;margin-bottom:3rem;letter-spacing:0.05em;}
+        .who-label{font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;color:#6b7280;margin-bottom:1rem;}
+        .user-btn{display:block;width:100%;padding:1rem 1.5rem;margin-bottom:0.75rem;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#e8e6e1;font-family:'Fraunces',serif;font-size:1.4rem;font-weight:300;cursor:pointer;transition:all 0.2s;text-align:left;-webkit-tap-highlight-color:transparent;}
+        .user-btn:hover{background:rgba(59,130,246,0.1);border-color:rgba(59,130,246,0.3);transform:translateX(4px);}
+        .user-initial{display:inline-block;width:32px;height:32px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.25);border-radius:50%;text-align:center;line-height:32px;font-size:0.9rem;margin-right:0.75rem;vertical-align:middle;font-family:'DM Mono',monospace;color:#60a5fa;}
+        .landing-footer{margin-top:3rem;font-size:0.6rem;color:#374151;letter-spacing:0.1em;}
 
         /* Dev banner */
-        .dev-banner { background:rgba(234,179,8,0.06); border-bottom:1px solid rgba(234,179,8,0.15); padding:0.4rem 0.75rem; display:flex; align-items:center; justify-content:center; gap:0.5rem; flex-wrap:wrap; }
-        .dev-label { font-size:0.54rem; letter-spacing:0.15em; text-transform:uppercase; color:#92400e; }
-        .day-display { font-size:0.66rem; color:#fbbf24; min-width:60px; text-align:center; }
-        .day-btn { background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.2); border-radius:4px; color:#d97706; font-family:'DM Mono',monospace; font-size:0.66rem; padding:0.16rem 0.5rem; cursor:pointer; -webkit-tap-highlight-color:transparent; user-select:none; }
-        .reset-btn { background:transparent; border:1px solid rgba(107,114,128,0.2); border-radius:4px; color:#6b7280; font-family:'DM Mono',monospace; font-size:0.66rem; padding:0.16rem 0.5rem; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-        .clear-btn { background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:4px; color:#f87171; font-family:'DM Mono',monospace; font-size:0.66rem; padding:0.16rem 0.5rem; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-        .dev-sep { color:rgba(255,255,255,0.1); }
+        .dev-banner{background:rgba(234,179,8,0.06);border-bottom:1px solid rgba(234,179,8,0.15);padding:0.35rem 0.75rem;display:flex;align-items:center;justify-content:center;gap:0.45rem;flex-wrap:wrap;}
+        .dev-label{font-size:0.52rem;letter-spacing:0.15em;text-transform:uppercase;color:#92400e;}
+        .day-display{font-size:0.64rem;color:#fbbf24;min-width:56px;text-align:center;}
+        .day-btn{background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.2);border-radius:4px;color:#d97706;font-family:'DM Mono',monospace;font-size:0.64rem;padding:0.15rem 0.48rem;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;}
+        .reset-btn{background:transparent;border:1px solid rgba(107,114,128,0.2);border-radius:4px;color:#6b7280;font-family:'DM Mono',monospace;font-size:0.64rem;padding:0.15rem 0.48rem;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+        .clear-btn{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:4px;color:#f87171;font-family:'DM Mono',monospace;font-size:0.64rem;padding:0.15rem 0.48rem;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+        .dev-sep{color:rgba(255,255,255,0.1);}
 
         /* Tally bar */
-        .tally-bar { background:rgba(255,255,255,0.015); border-bottom:1px solid rgba(255,255,255,0.05); display:flex; }
-        .tally-item { flex:1; display:flex; flex-direction:column; align-items:center; padding:0.5rem; border-right:1px solid rgba(255,255,255,0.05); }
-        .tally-item:last-child { border-right:none; }
-        .tally-name { font-size:0.52rem; letter-spacing:0.18em; text-transform:uppercase; color:#4b5563; margin-bottom:0.15rem; }
-        .tally-amount { font-family:'Fraunces',serif; font-size:0.95rem; font-weight:300; color:#93c5fd; }
-        .tally-amount.shared { color:#a78bfa; }
-        .tally-note { font-size:0.44rem; color:#374151; margin-top:0.08rem; }
+        .tally-bar{background:rgba(255,255,255,0.015);border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:stretch;}
+        .tally-main{display:flex;flex:1;}
+        .tally-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:0.5rem;border-right:1px solid rgba(255,255,255,0.05);}
+        .tally-name{font-size:0.5rem;letter-spacing:0.18em;text-transform:uppercase;color:#4b5563;margin-bottom:0.12rem;}
+        .tally-amount{font-family:'Fraunces',serif;font-size:0.95rem;font-weight:300;color:#93c5fd;}
+        .tally-amount.dim{color:#4b5563;font-size:0.8rem;}
+        .tally-amount.mac{color:#a78bfa;}
+        .tally-note{font-size:0.42rem;color:#374151;margin-top:0.06rem;}
+        .mac-toggle{display:flex;align-items:center;justify-content:center;padding:0 0.5rem;cursor:pointer;color:#374151;font-size:0.6rem;border-left:1px solid rgba(255,255,255,0.05);transition:color 0.15s;-webkit-tap-highlight-color:transparent;user-select:none;background:none;border-top:none;border-right:none;border-bottom:none;}
+        .mac-toggle:hover{color:#6b7280;}
+        .mac-panel{border-left:1px solid rgba(167,139,250,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0.5rem 0.75rem;min-width:80px;background:rgba(167,139,250,0.03);animation:slideIn 0.2s ease;}
+        @keyframes slideIn{from{opacity:0;transform:translateX(6px)}to{opacity:1;transform:translateX(0)}}
+
+        /* Stats — two boxes only */
+        .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;margin-bottom:1rem;}
+        .stat-box{background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);border-radius:7px;padding:0.55rem 0.5rem;text-align:center;}
+        .stat-val{font-family:'Fraunces',serif;font-size:1.3rem;font-weight:300;color:#f1f0ec;line-height:1;}
+        .stat-label{font-size:0.46rem;letter-spacing:0.12em;text-transform:uppercase;color:#4b5563;margin-top:0.2rem;}
+        .stat-box.me{border-color:rgba(96,165,250,0.2);background:rgba(96,165,250,0.04);}
 
         /* App */
-        .app { max-width:480px; margin:0 auto; padding:1rem 1rem 5rem; }
-        .app-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.9rem; padding-bottom:0.8rem; border-bottom:1px solid rgba(255,255,255,0.06); }
-        .app-title { font-family:'Fraunces',serif; font-size:1.4rem; font-weight:300; color:#f1f0ec; }
-        .header-right { display:flex; align-items:center; gap:0.45rem; }
-        .user-badge { display:flex; align-items:center; gap:0.3rem; font-size:0.66rem; color:#60a5fa; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.2); border-radius:20px; padding:0.26rem 0.65rem; cursor:pointer; -webkit-tap-highlight-color:transparent; user-select:none; }
-        .undo-btn { font-size:0.64rem; color:#9ca3af; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:0.26rem 0.6rem; cursor:pointer; font-family:'DM Mono',monospace; -webkit-tap-highlight-color:transparent; user-select:none; }
-        .undo-btn:disabled { opacity:0.22; cursor:default; }
-
-        /* Stats */
-        .stats-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:0.4rem; margin-bottom:1rem; }
-        .stat-box { background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.06); border-radius:7px; padding:0.5rem 0.4rem; text-align:center; }
-        .stat-val { font-family:'Fraunces',serif; font-size:1.2rem; font-weight:300; color:#f1f0ec; line-height:1; }
-        .stat-label { font-size:0.48rem; letter-spacing:0.12em; text-transform:uppercase; color:#4b5563; margin-top:0.2rem; }
+        .app{max-width:480px;margin:0 auto;padding:1rem 1rem 5rem;}
+        .app-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.9rem;padding-bottom:0.8rem;border-bottom:1px solid rgba(255,255,255,0.06);}
+        .app-title{font-family:'Fraunces',serif;font-size:1.4rem;font-weight:300;color:#f1f0ec;}
+        .header-right{display:flex;align-items:center;gap:0.45rem;}
+        .user-badge{display:flex;align-items:center;gap:0.3rem;font-size:0.66rem;color:#60a5fa;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);border-radius:20px;padding:0.26rem 0.65rem;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;}
+        .undo-btn{font-size:0.64rem;color:#9ca3af;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:0.26rem 0.6rem;cursor:pointer;font-family:'DM Mono',monospace;-webkit-tap-highlight-color:transparent;user-select:none;}
+        .undo-btn:disabled{opacity:0.22;cursor:default;}
 
         /* Day group */
-        .day-group { margin-bottom:1.1rem; }
-        .day-group-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.45rem; }
-        .day-label-pill { font-size:0.56rem; letter-spacing:0.15em; text-transform:uppercase; white-space:nowrap; }
-        .day-label-pill.today { color:#60a5fa; }
-        .day-label-pill.past { color:#f59e0b; }
-        .attention-dot { width:5px; height:5px; border-radius:50%; background:#f59e0b; flex-shrink:0; }
-        .day-line { flex:1; height:1px; background:rgba(255,255,255,0.05); }
-        .day-line.past { background:rgba(245,158,11,0.2); }
-        .day-date { font-size:0.5rem; white-space:nowrap; color:#2d3748; }
-        .day-date.past { color:rgba(245,158,11,0.45); }
-        .attention-tag { font-size:0.46rem; color:rgba(245,158,11,0.6); letter-spacing:0.08em; text-transform:uppercase; }
+        .day-group{margin-bottom:1.1rem;}
+        .day-group-header{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.45rem;}
+        .day-label-pill{font-size:0.56rem;letter-spacing:0.15em;text-transform:uppercase;white-space:nowrap;}
+        .day-label-pill.today{color:#60a5fa;}
+        .day-label-pill.past{color:#f59e0b;}
+        .attention-dot{width:5px;height:5px;border-radius:50%;background:#f59e0b;flex-shrink:0;}
+        .day-line{flex:1;height:1px;background:rgba(255,255,255,0.05);}
+        .day-line.past{background:rgba(245,158,11,0.2);}
+        .day-date{font-size:0.48rem;white-space:nowrap;color:#2d3748;}
+        .attention-tag{font-size:0.44rem;color:rgba(245,158,11,0.55);letter-spacing:0.08em;text-transform:uppercase;}
 
         /* Cards */
-        .tx-card { border-radius:9px; padding:0.7rem; margin-bottom:0.38rem; border:1px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.02); overflow:hidden; transition:max-height 0.28s ease,opacity 0.22s ease,padding 0.28s,margin 0.28s,border-width 0.28s; max-height:240px; }
-        .tx-card.conflict { border-color:rgba(239,68,68,0.38); background:rgba(239,68,68,0.035); }
-        .tx-card.collapsing { max-height:0!important; padding-top:0!important; padding-bottom:0!important; margin-bottom:0!important; opacity:0; border-width:0!important; }
+        .tx-card{border-radius:9px;padding:0.7rem;margin-bottom:0.38rem;border:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.02);overflow:hidden;transition:max-height 0.28s ease,opacity 0.22s ease,padding 0.28s,margin 0.28s,border-width 0.28s;max-height:260px;}
+        .tx-card.conflict{border-color:rgba(239,68,68,0.38);background:rgba(239,68,68,0.035);}
+        .tx-card.collapsing{max-height:0!important;padding-top:0!important;padding-bottom:0!important;margin-bottom:0!important;opacity:0;border-width:0!important;}
+        .tx-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.45rem;}
+        .tx-desc{font-size:0.75rem;color:#d1cfc9;}
+        .tx-meta{display:flex;gap:0.28rem;align-items:center;margin-bottom:0.18rem;}
+        .badge{font-size:0.5rem;padding:0.06rem 0.35rem;border-radius:3px;}
+        .badge-conflict{background:rgba(239,68,68,0.16);color:#f87171;}
+        .badge-unsure{background:rgba(245,158,11,0.13);color:#fbbf24;}
+        .badge-auto{background:rgba(107,114,128,0.15);color:#9ca3af;}
+        .tx-amount{font-family:'Fraunces',serif;font-size:0.95rem;font-weight:300;color:#93c5fd;white-space:nowrap;padding-left:0.4rem;}
 
-        .tx-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.45rem; }
-        .tx-desc { font-size:0.75rem; color:#d1cfc9; }
-        .tx-meta { display:flex; gap:0.28rem; align-items:center; margin-bottom:0.18rem; }
-        .badge { font-size:0.5rem; padding:0.06rem 0.35rem; border-radius:3px; }
-        .badge-conflict { background:rgba(239,68,68,0.16); color:#f87171; }
-        .badge-unsure { background:rgba(245,158,11,0.13); color:#fbbf24; }
-        .tx-amount { font-family:'Fraunces',serif; font-size:0.95rem; font-weight:300; color:#93c5fd; white-space:nowrap; padding-left:0.4rem; }
+        /* Assign buttons — order: Unsure, Macquarie, Tony, Nugs */
+        .assign-row{display:flex;gap:0.28rem;align-items:center;}
+        .assign-label{font-size:0.46rem;color:#2d3748;letter-spacing:0.1em;text-transform:uppercase;white-space:nowrap;flex-shrink:0;}
+        .tap-btn{flex:1;padding:0.4rem 0.2rem;border-radius:5px;border:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.03);color:#6b7280;font-family:'DM Mono',monospace;font-size:0.62rem;cursor:pointer;text-align:center;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;touch-action:manipulation;outline:none;}
+        .tap-btn.mac-btn{color:#7c6f9e;border-color:rgba(167,139,250,0.12);background:rgba(167,139,250,0.04);}
+        .tap-btn.unsure-btn{color:#6b6047;border-color:rgba(245,158,11,0.1);background:rgba(245,158,11,0.03);}
+        .tap-btn.flash{background:rgba(59,130,246,0.2)!important;border-color:rgba(59,130,246,0.4)!important;color:#93c5fd!important;}
+        .tap-btn.mac-btn.flash{background:rgba(167,139,250,0.2)!important;border-color:rgba(167,139,250,0.4)!important;color:#c4b5fd!important;}
+        .tap-btn.unsure-btn.flash{background:rgba(245,158,11,0.15)!important;border-color:rgba(245,158,11,0.3)!important;color:#fbbf24!important;}
 
-        /* Assign buttons - NO hover, NO sticky state, pointer events only */
-        .assign-row { display:flex; gap:0.28rem; align-items:center; }
-        .assign-label { font-size:0.48rem; color:#2d3748; letter-spacing:0.1em; text-transform:uppercase; white-space:nowrap; flex-shrink:0; }
-        .tap-btn {
-            flex:1; padding:0.4rem 0.25rem; border-radius:5px;
-            border:1px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.03);
-            color:#6b7280; font-family:'DM Mono',monospace; font-size:0.64rem;
-            cursor:pointer; text-align:center;
-            -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none;
-            user-select:none; touch-action:manipulation; outline:none;
-        }
-        .tap-btn.mac-btn { color:#7c6f9e; border-color:rgba(167,139,250,0.12); background:rgba(167,139,250,0.04); font-size:0.6rem; }
-        .tap-btn.unsure-btn { color:#6b6047; border-color:rgba(245,158,11,0.1); background:rgba(245,158,11,0.03); font-size:0.6rem; }
-        .tap-btn.flash { background:rgba(59,130,246,0.18)!important; border-color:rgba(59,130,246,0.4)!important; color:#93c5fd!important; }
-        .tap-btn.mac-btn.flash { background:rgba(167,139,250,0.2)!important; border-color:rgba(167,139,250,0.4)!important; color:#c4b5fd!important; }
-        .tap-btn.unsure-btn.flash { background:rgba(245,158,11,0.15)!important; border-color:rgba(245,158,11,0.3)!important; color:#fbbf24!important; }
-
-        .conflict-note { font-size:0.54rem; color:#6b7280; margin-bottom:0.32rem; }
-        .conflict-row { display:flex; gap:0.28rem; flex-wrap:wrap; }
-        .conflict-tap-btn {
-            flex:1; min-width:55px; padding:0.38rem 0.25rem; border-radius:5px;
-            border:1px solid rgba(239,68,68,0.2); background:rgba(239,68,68,0.06);
-            color:#f87171; font-family:'DM Mono',monospace; font-size:0.64rem;
-            cursor:pointer; text-align:center;
-            -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation; outline:none;
-        }
-        .conflict-tap-btn.flash { background:rgba(239,68,68,0.2)!important; }
+        /* Conflict re-assign */
+        .conflict-note{font-size:0.52rem;color:#6b7280;margin-bottom:0.3rem;}
+        .conflict-row{display:flex;gap:0.28rem;flex-wrap:wrap;}
+        .conflict-tap-btn{flex:1;min-width:52px;padding:0.38rem 0.2rem;border-radius:5px;border:1px solid rgba(239,68,68,0.2);background:rgba(239,68,68,0.06);color:#f87171;font-family:'DM Mono',monospace;font-size:0.62rem;cursor:pointer;text-align:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;outline:none;}
+        .conflict-tap-btn.mac-btn{border-color:rgba(167,139,250,0.2);background:rgba(167,139,250,0.06);color:#c4b5fd;}
+        .conflict-tap-btn.unsure-btn{border-color:rgba(245,158,11,0.15);background:rgba(245,158,11,0.05);color:#fbbf24;}
+        .conflict-tap-btn.flash{opacity:0.6;}
+        .my-pick-note{font-size:0.5rem;color:#6b7280;margin-bottom:0.28rem;}
+        .my-pick-chip{display:inline-block;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);border-radius:4px;padding:0.06rem 0.4rem;color:#60a5fa;font-size:0.52rem;}
 
         /* Switch overlay */
-        .switch-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.82); display:flex; align-items:center; justify-content:center; z-index:100; padding:2rem; }
-        .switch-card { background:#0f1318; border:1px solid rgba(255,255,255,0.09); border-radius:14px; padding:2rem; width:100%; max-width:320px; text-align:center; }
-        .switch-title { font-family:'Fraunces',serif; font-size:1.2rem; font-weight:300; margin-bottom:0.35rem; color:#f1f0ec; }
-        .switch-sub { font-size:0.62rem; color:#4b5563; margin-bottom:1.5rem; }
+        .switch-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.82);display:flex;align-items:center;justify-content:center;z-index:100;padding:2rem;}
+        .switch-card{background:#0f1318;border:1px solid rgba(255,255,255,0.09);border-radius:14px;padding:2rem;width:100%;max-width:320px;text-align:center;}
+        .switch-title{font-family:'Fraunces',serif;font-size:1.2rem;font-weight:300;margin-bottom:0.35rem;color:#f1f0ec;}
+        .switch-sub{font-size:0.62rem;color:#4b5563;margin-bottom:1.5rem;}
 
         /* All done */
-        .all-done { position:relative; text-align:center; padding:3rem 1.5rem 4rem; }
-        .all-done-inner { animation:fadeUp 0.6s ease forwards; }
-        .all-done-emoji { font-size:3.2rem; display:block; margin-bottom:0.8rem; animation:pop 0.5s cubic-bezier(.36,.07,.19,.97) 0.15s both; }
-        .all-done-title { font-family:'Fraunces',serif; font-size:2rem; font-weight:300; color:#f1f0ec; margin-bottom:0.5rem; line-height:1.2; }
-        .all-done-sub { font-size:0.72rem; color:#4b5563; margin-bottom:1.5rem; }
-        .all-done-badge { display:inline-block; font-size:0.6rem; letter-spacing:0.15em; text-transform:uppercase; color:#60a5fa; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.2); border-radius:20px; padding:0.3rem 0.8rem; animation:fadeUp 0.5s ease 0.5s both; }
-        #confetti-canvas { position:fixed; inset:0; pointer-events:none; z-index:200; }
-        @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes pop { 0%{transform:scale(0.4);opacity:0} 60%{transform:scale(1.3)} 80%{transform:scale(0.95)} 100%{transform:scale(1);opacity:1} }
+        .all-done{text-align:center;padding:3rem 1.5rem 4rem;}
+        .all-done-inner{animation:fadeUp 0.6s ease forwards;}
+        .all-done-emoji{font-size:3.2rem;display:block;margin-bottom:0.8rem;animation:pop 0.5s cubic-bezier(.36,.07,.19,.97) 0.15s both;}
+        .all-done-title{font-family:'Fraunces',serif;font-size:2rem;font-weight:300;color:#f1f0ec;margin-bottom:0.5rem;line-height:1.2;}
+        .all-done-sub{font-size:0.72rem;color:#4b5563;margin-bottom:1.5rem;}
+        .all-done-badge{display:inline-block;font-size:0.6rem;letter-spacing:0.15em;text-transform:uppercase;color:#60a5fa;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);border-radius:20px;padding:0.3rem 0.8rem;animation:fadeUp 0.5s ease 0.5s both;}
+        #confetti-canvas{position:fixed;inset:0;pointer-events:none;z-index:200;}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes pop{0%{transform:scale(0.4);opacity:0}60%{transform:scale(1.3)}80%{transform:scale(0.95)}100%{transform:scale(1);opacity:1}}
     </style>
 </head>
 <body>
@@ -141,44 +137,24 @@
     let pts=[],raf=null,on=false;
     const COLS=['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa','#fb923c'];
     const rnd=(a,b)=>Math.random()*(b-a)+a;
-    function spawn(n){
-        for(let i=0;i<n;i++) pts.push({
-            x:rnd(0.15,0.85)*cv.width, y:rnd(-60,-5),
-            vx:rnd(-3,3), vy:rnd(3,8), rot:rnd(0,6.28), rv:rnd(-0.12,0.12),
-            w:rnd(7,14), h:rnd(4,8), col:COLS[Math.floor(Math.random()*COLS.length)], a:1
-        });
-    }
-    function frame(){
-        cv.width=window.innerWidth; cv.height=window.innerHeight;
-        cx.clearRect(0,0,cv.width,cv.height);
-        pts=pts.filter(p=>p.a>0.02);
-        pts.forEach(p=>{
-            p.x+=p.vx; p.y+=p.vy; p.vy+=0.15; p.rot+=p.rv;
-            if(p.y>cv.height*0.65) p.a-=0.022;
-            cx.save(); cx.globalAlpha=p.a; cx.translate(p.x,p.y); cx.rotate(p.rot);
-            cx.fillStyle=p.col; cx.fillRect(-p.w/2,-p.h/2,p.w,p.h); cx.restore();
-        });
-        if(pts.length) raf=requestAnimationFrame(frame);
-        else { cv.style.display='none'; on=false; }
-    }
-    window.launchConfetti=function(){
-        cv.style.display='block'; cv.width=window.innerWidth; cv.height=window.innerHeight;
-        pts=[]; spawn(100); if(!on){on=true;raf=requestAnimationFrame(frame);}
-        setTimeout(()=>spawn(65),350);
-    };
+    function spawn(n){for(let i=0;i<n;i++)pts.push({x:rnd(0.15,0.85)*cv.width,y:rnd(-60,-5),vx:rnd(-3,3),vy:rnd(3,8),rot:rnd(0,6.28),rv:rnd(-0.12,0.12),w:rnd(7,14),h:rnd(4,8),col:COLS[Math.floor(Math.random()*COLS.length)],a:1});}
+    function frame(){cv.width=window.innerWidth;cv.height=window.innerHeight;cx.clearRect(0,0,cv.width,cv.height);pts=pts.filter(p=>p.a>0.02);pts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.15;p.rot+=p.rv;if(p.y>cv.height*0.65)p.a-=0.022;cx.save();cx.globalAlpha=p.a;cx.translate(p.x,p.y);cx.rotate(p.rot);cx.fillStyle=p.col;cx.fillRect(-p.w/2,-p.h/2,p.w,p.h);cx.restore();});if(pts.length)raf=requestAnimationFrame(frame);else{cv.style.display='none';on=false;}}
+    window.launchConfetti=function(){cv.style.display='block';cv.width=window.innerWidth;cv.height=window.innerHeight;pts=[];spawn(100);if(!on){on=true;raf=requestAnimationFrame(frame);}setTimeout(()=>spawn(65),350);};
 })();
 
 /* ── App ── */
-const {useState,useEffect,useRef,useCallback}=React;
+const {useState,useEffect,useRef}=React;
 
-// Real login users
 const USERS=['Tony','Nugs'];
-// All assignable options (Macquarie = shared joint, Unsure = needs review)
-const ASSIGN_OPTS=['Tony','Nugs','Macquarie','Unsure'];
+// Assign options in the requested order: Unsure, Macquarie, Tony, Nugs
+const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
-const SK='cc_v3_subs';  // storage key
-const UK='cc_v3_user';
+const SK='cc_v4_subs';
+const UK='cc_v4_user';
+const AUTO_CONFIRM_MS=72*60*60*1000; // 72 hours in ms
 
+// Transaction data by simulated day index
+// Day 0 = first day loaded ("today"). Day 1 = next day's fresh batch, etc.
 const TX={
     '0':[
         {id:'d0-0',amount:75.00,  desc:'VELOCITY REWARDS FEE'},
@@ -197,7 +173,6 @@ const TX={
         {id:'d2-0',amount:98.00,  desc:'GU HEALTH REWARDS Camberwell'},
         {id:'d2-1',amount:89.50,  desc:'COLES Footscray'},
         {id:'d2-2',amount:45.00,  desc:'BUNNINGS Warehouse'},
-        {id:'d2-3',amount:22.30,  desc:'ALDI Stores West'},
     ],
     '3':[
         {id:'d3-0',amount:210.00, desc:'ELECTRICITY BILL AGL'},
@@ -211,45 +186,57 @@ const TX={
     ],
 };
 
-// simDelta=0 → today's transactions; simDelta=1 → "we're now on day 1, yesterday's conflicts visible" etc.
-// TX keys are relative day index (0=first day loaded, 1=next day, etc.)
-// "today" always shows TX['0']. Stepping forward reveals conflicts from TX['0'] and loads TX['1'] as new day.
+// All TX flat lookup
+const ALL_TX_MAP={};
+Object.values(TX).flat().forEach(t=>{ALL_TX_MAP[t.id]=t;});
 
-function isoDate(daysFromNow){
-    const d=new Date(); d.setDate(d.getDate()+daysFromNow);
-    return d.toISOString().slice(0,10);
+function isoDate(daysFromNow){const d=new Date();d.setDate(d.getDate()+daysFromNow);return d.toISOString().slice(0,10);}
+
+// simDelta: how many days we've advanced. 
+// "today" = TX[simDelta], "yesterday" = TX[simDelta-1], etc.
+// But TX keys are fixed (0,1,2...) — simDelta tells us which TX day is "today"
+function getTodayKey(simDelta){return String(simDelta);}
+function getLoadedKeys(simDelta){
+    const keys=[];
+    for(let i=simDelta;i>=0;i--){if(TX[String(i)])keys.push(String(i));}
+    return keys; // [today, yesterday, ...]
 }
 
-// Returns which TX days are "loaded" and what their labels are given simDelta
-// simDelta=0: only day 0 loaded, no conflicts visible
-// simDelta=1: day 0 conflicts visible, day 1 loaded as "today"
-// simDelta=2: day 0+1 conflicts visible, day 2 loaded as "today"
-function getLoadedDays(simDelta){
-    const days=[];
-    for(let i=simDelta;i>=0;i--){
-        if(TX[String(i)]) days.push(i);
-    }
-    return days; // descending: today first, then older
-}
+// Is this TX day in the past relative to simDelta?
+function isDayPast(txKey,simDelta){return parseInt(txKey)<simDelta;}
 
-function getDayLabel(txDay,simDelta){
-    const rel=txDay-simDelta; // 0=today,-1=yesterday,-2=2 days ago
-    if(rel===0) return {label:'today',past:false};
-    if(rel===-1) return {label:'yesterday',past:true};
-    return {label:Math.abs(rel)+'d ago',past:true};
-}
+// Conflict visible only the day after (txKey < simDelta)
+function conflictVisible(txKey,simDelta){return parseInt(txKey)<simDelta;}
 
-// Conflict/unsure only revealed once that day is in the past (txDay < simDelta)
-function isPast(txDay,simDelta){ return txDay<simDelta; }
-
-function loadSubs(){ try{const s=localStorage.getItem(SK);return s?JSON.parse(s):{}}catch(e){return{};} }
+function loadSubs(){try{const s=localStorage.getItem(SK);return s?JSON.parse(s):{}}catch(e){return{};}}
 
 const DONE=[
-    {emoji:'🎉',title:"All done!",sub:'Every transaction sorted. Legends.'},
-    {emoji:'🏆',title:'Clean sweep!',sub:'Nothing left to action today.'},
+    {emoji:'🎉',title:"All done!",        sub:'Every transaction sorted. Legends.'},
+    {emoji:'🏆',title:'Clean sweep!',     sub:'Nothing left to action today.'},
     {emoji:'✨',title:"That's everything!",sub:"You're both on top of it."},
-    {emoji:'🚀',title:'Done and dusted!',sub:'Go enjoy the rest of your day.'},
+    {emoji:'🚀',title:'Done and dusted!', sub:'Go enjoy the rest of your day.'},
 ];
+
+function getOtherUser(u){return USERS.find(x=>x!==u);}
+
+/* ── Auto-confirm logic ──
+   Each submission stores { value, timestamp }.
+   If only one user has submitted and 72h have elapsed, it's auto-confirmed.
+   We store timestamps alongside values. */
+function getSubValue(sub,user){return sub?.[user]?.value??null;}
+function getSubTs(sub,user){return sub?.[user]?.ts??null;}
+
+function isAutoConfirmed(sub,txId,nowMs){
+    // If only one user has picked and 72h has passed, auto-confirm
+    const picks=USERS.map(u=>({u,val:getSubValue(sub,u),ts:getSubTs(sub,u)})).filter(x=>x.val);
+    if(picks.length===1){
+        const ts=picks[0].ts;
+        if(ts && (nowMs-ts)>=AUTO_CONFIRM_MS){
+            return {user:picks[0].u,value:picks[0].val};
+        }
+    }
+    return null;
+}
 
 /* ── Landing ── */
 function Landing({onSelect}){
@@ -279,201 +266,216 @@ function SwitchOverlay({currentUser,onSelect,onClose}){
     );
 }
 
-/* ── flash helper — pointerDown/Up/Leave only, no CSS hover ── */
-function useTap(onTap){
-    return {
-        onPointerDown:e=>{ e.currentTarget.classList.add('flash'); },
-        onPointerUp:  e=>{ e.currentTarget.classList.remove('flash'); onTap(e); },
-        onPointerLeave:e=>{ e.currentTarget.classList.remove('flash'); },
-        onPointerCancel:e=>{ e.currentTarget.classList.remove('flash'); },
-    };
-}
-
 /* ── TxCard ── */
-function TxCard({tx,txDay,simDelta,currentUser,subs,onAssign,collapsing}){
+function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
     const sub=subs[tx.id]||{};
-    const past=isPast(txDay,simDelta);
+    const past=conflictVisible(txKey,simDelta);
+    const mySub=getSubValue(sub,currentUser);
+    const otherUser=getOtherUser(currentUser);
+    const otherSub=getSubValue(sub,otherUser);
+    const autoConf=isAutoConfirmed(sub,tx.id,nowMs);
 
-    const nonUnsureVals=USERS.map(u=>sub[u]).filter(v=>v&&v!=='Unsure');
-    const isConflict=past && nonUnsureVals.length>1 && new Set(nonUnsureVals).size>1;
-    const anyUnsure=past && USERS.some(u=>sub[u]==='Unsure');
-    const mySub=sub[currentUser]||null;
+    // Conflict: both picked differently, visible only day-after
+    const nonUnsureVals=USERS.map(u=>getSubValue(sub,u)).filter(v=>v&&v!=='Unsure');
+    const isConflict=past&&nonUnsureVals.length>1&&new Set(nonUnsureVals).size>1;
+    const anyUnsure=past&&USERS.some(u=>getSubValue(sub,u)==='Unsure');
     const isCollapsing=collapsing.has(tx.id);
 
     const cardCls=['tx-card',isConflict?'conflict':'',isCollapsing?'collapsing':''].filter(Boolean).join(' ');
 
-    const makeConflictTap=opt=>({
-        onPointerDown:e=>e.currentTarget.classList.add('flash'),
-        onPointerUp:  e=>{e.currentTarget.classList.remove('flash');onAssign(tx.id,txDay,opt);},
-        onPointerLeave:e=>e.currentTarget.classList.remove('flash'),
-        onPointerCancel:e=>e.currentTarget.classList.remove('flash'),
-    });
-
-    const makeTap=opt=>({
-        onPointerDown:e=>e.currentTarget.classList.add('flash'),
-        onPointerUp:  e=>{e.currentTarget.classList.remove('flash');onAssign(tx.id,txDay,opt);},
-        onPointerLeave:e=>e.currentTarget.classList.remove('flash'),
-        onPointerCancel:e=>e.currentTarget.classList.remove('flash'),
-    });
+    function makeTap(opt,baseClass='tap-btn'){
+        return {
+            className:baseClass+(opt==='Macquarie'?' mac-btn':opt==='Unsure'?' unsure-btn':''),
+            onPointerDown:e=>e.currentTarget.classList.add('flash'),
+            onPointerUp:  e=>{e.currentTarget.classList.remove('flash');onAssign(tx.id,txKey,opt);},
+            onPointerLeave:e=>e.currentTarget.classList.remove('flash'),
+            onPointerCancel:e=>e.currentTarget.classList.remove('flash'),
+        };
+    }
 
     return React.createElement('div',{className:cardCls},
         React.createElement('div',{className:'tx-top'},
             React.createElement('div',null,
                 React.createElement('div',{className:'tx-meta'},
-                    isConflict && React.createElement('span',{className:'badge badge-conflict'},'⚠ conflict'),
-                    anyUnsure  && React.createElement('span',{className:'badge badge-unsure'},'? unsure'),
+                    isConflict&&React.createElement('span',{className:'badge badge-conflict'},'⚠ conflict'),
+                    anyUnsure &&React.createElement('span',{className:'badge badge-unsure'},'? unsure'),
+                    autoConf  &&React.createElement('span',{className:'badge badge-auto'},'✓ auto'),
                 ),
                 React.createElement('p',{className:'tx-desc'},tx.desc)
             ),
             React.createElement('span',{className:'tx-amount'},'$'+tx.amount.toFixed(2))
         ),
 
-        (isConflict||anyUnsure)
+        // If auto-confirmed, show read-only
+        autoConf&&!isConflict
+            ? React.createElement('p',{className:'my-pick-note'},
+                'Auto-confirmed → ',React.createElement('span',{className:'my-pick-chip'},autoConf.value))
+
+        // Conflict or unsure: show re-assign
+        : (isConflict||anyUnsure)
             ? React.createElement('div',null,
-                React.createElement('p',{className:'conflict-note'},isConflict?'Tap to update your pick:':'Needs a decision:'),
+                mySub&&React.createElement('p',{className:'my-pick-note'},
+                    'Your pick: ',React.createElement('span',{className:'my-pick-chip'},mySub),' · tap to change'),
                 React.createElement('div',{className:'conflict-row'},
-                    ASSIGN_OPTS.map(opt=>React.createElement('button',{
-                        key:opt,
-                        className:'conflict-tap-btn'+(opt==='Macquarie'?' mac-btn':'')+(opt==='Unsure'?' unsure-btn':''),
-                        ...makeConflictTap(opt)
-                    }, mySub===opt?'✓ '+opt:opt))
+                    ASSIGN_OPTS.map(opt=>React.createElement('button',{key:opt,...makeTap(opt,'conflict-tap-btn')},opt))
                 )
               )
-            : React.createElement('div',{className:'assign-row'},
-                React.createElement('span',{className:'assign-label'},'assign'),
-                React.createElement('button',{className:'tap-btn',...makeTap('Tony')},'Tony'),
-                React.createElement('button',{className:'tap-btn',...makeTap('Nugs')},'Nugs'),
-                React.createElement('button',{className:'tap-btn mac-btn',...makeTap('Macquarie')},'MAC'),
-                React.createElement('button',{className:'tap-btn unsure-btn',...makeTap('Unsure')},'?'),
-              )
+
+        // Normal assign
+        : React.createElement('div',{className:'assign-row'},
+            React.createElement('span',{className:'assign-label'},'assign'),
+            ASSIGN_OPTS.map(opt=>React.createElement('button',{key:opt,...makeTap(opt)},(opt==='Macquarie'?'MAC':opt)))
+          )
     );
 }
 
 /* ── AllDone ── */
 function AllDone({msg}){
-    useEffect(()=>{ window.launchConfetti&&window.launchConfetti(); },[]);
+    useEffect(()=>{window.launchConfetti&&window.launchConfetti();},[]);
     return React.createElement('div',{className:'all-done'},
         React.createElement('div',{className:'all-done-inner'},
             React.createElement('span',{className:'all-done-emoji'},msg.emoji),
-            React.createElement('h2',{className:'all-done-title'},msg.title),
-            React.createElement('p',{className:'all-done-sub'},msg.sub),
+            React.createElement('h2', {className:'all-done-title'},msg.title),
+            React.createElement('p',  {className:'all-done-sub'},msg.sub),
             React.createElement('span',{className:'all-done-badge'},'💳 all transactions assigned')
         )
     );
 }
 
-/* ── Main ── */
+/* ── Main App ── */
 function App(){
-    const [user,setUser]       = useState(null);
-    const [subs,setSubs]       = useState({});
-    const [simDelta,setSimDelta]= useState(0);
-    const [collapsing,setCol]  = useState(new Set());
-    const [undoStack,setUndo]  = useState([]);
-    const [showSwitch,setSwitch]= useState(false);
+    const [user,   setUser]   =useState(null);
+    const [subs,   setSubs]   =useState({});
+    const [simDelta,setSim]   =useState(0);
+    const [collapsing,setCol] =useState(new Set());
+    const [undoStack,setUndo] =useState([]);
+    const [showSwitch,setSwitch]=useState(false);
+    const [showMac,setShowMac]=useState(false);
     const doneMsg=useRef(DONE[Math.floor(Math.random()*DONE.length)]);
+    // For dev: simulate time passing for 72h auto-confirm
+    // In production this would just be Date.now()
+    const [simNow,setSimNow]=useState(Date.now());
 
     useEffect(()=>{
         const u=localStorage.getItem(UK);
-        if(u&&USERS.includes(u)) setUser(u);
+        if(u&&USERS.includes(u))setUser(u);
         setSubs(loadSubs());
     },[]);
 
     const save=s=>{setSubs(s);localStorage.setItem(SK,JSON.stringify(s));};
 
     const login=u=>{
-        setUser(u); localStorage.setItem(UK,u);
-        setSubs(loadSubs()); setCol(new Set()); setUndo([]); setSwitch(false);
+        setUser(u);localStorage.setItem(UK,u);
+        setSubs(loadSubs());setCol(new Set());setUndo([]);setSwitch(false);
     };
 
     const resetCache=()=>{
-        if(!confirm('Reset all data?')) return;
-        localStorage.removeItem(SK); localStorage.removeItem(UK);
-        setSubs({}); setCol(new Set()); setUndo([]); setUser(null);
+        if(!confirm('Reset all data?'))return;
+        localStorage.removeItem(SK);localStorage.removeItem(UK);
+        setSubs({});setCol(new Set());setUndo([]);setUser(null);setShowMac(false);
     };
 
-    const getSub=id=>(subs[id]||{});
-    const myPick=id=>getSub(id)[user]||null;
+    const getSub=id=>subs[id]||{};
+    const myPick=id=>getSubValue(getSub(id),user);
 
-    const isConflict=(id,txDay)=>{
-        if(!isPast(txDay,simDelta)) return false;
-        const vals=USERS.map(u=>getSub(id)[u]).filter(v=>v&&v!=='Unsure');
+    // KEY LOGIC: A card is visible to ME if:
+    // - I haven't picked yet for today's day
+    // - OR it's a past day AND there's a conflict/unsure visible today
+    //   BUT: if I assign a past-day conflict TODAY, it clears from my view immediately.
+    //   It will re-surface tomorrow if the other person disagrees.
+    // In practice: card visible = I have no pick OR (past & conflict & I haven't re-assigned today)
+    const isConflict=(id,txKey)=>{
+        if(!conflictVisible(txKey,simDelta))return false;
+        const vals=USERS.map(u=>getSubValue(getSub(id),u)).filter(v=>v&&v!=='Unsure');
         return vals.length>1&&new Set(vals).size>1;
     };
-    const isUnsure=(id,txDay)=>isPast(txDay,simDelta)&&USERS.some(u=>getSub(id)[u]==='Unsure');
-    const isVisible=(tx,txDay)=>{
-        if(collapsing.has(tx.id)) return true;
-        return isConflict(tx.id,txDay)||isUnsure(tx.id,txDay)||!myPick(tx.id);
+    const isUnsurePinned=(id,txKey)=>conflictVisible(txKey,simDelta)&&USERS.some(u=>getSubValue(getSub(id),u)==='Unsure');
+    const isAutoConf=(id)=>isAutoConfirmed(getSub(id),id,simNow);
+
+    const isVisible=(tx,txKey)=>{
+        if(collapsing.has(tx.id))return true;
+        // If auto-confirmed, not visible (resolved)
+        if(isAutoConf(tx.id))return false;
+        // If I've picked, collapse it (including past-day conflicts where I've re-assigned)
+        if(myPick(tx.id))return false;
+        // If I haven't picked: show it
+        return true;
     };
 
-    const assign=(txId,txDay,opt)=>{
+    const assign=(txId,txKey,opt)=>{
         const prev=myPick(txId);
         setUndo(s=>[...s,{txId,u:user,prev}]);
-        const ns={...subs,[txId]:{...subs[txId],[user]:opt}};
+        const ts=simNow;
+        const ns={...subs,[txId]:{...getSub(txId),[user]:{value:opt,ts}}};
         save(ns);
+        // Always collapse after assign — even past-day conflicts clear for today
+        // They'll reappear tomorrow if other user disagrees
         if(opt!=='Unsure'){
-            setTimeout(()=>{
-                const sub=ns[txId]||{};
-                const vals=USERS.map(u=>sub[u]).filter(v=>v&&v!=='Unsure');
-                const conflict=isPast(txDay,simDelta)&&vals.length>1&&new Set(vals).size>1;
-                const unsure=isPast(txDay,simDelta)&&USERS.some(u=>sub[u]==='Unsure');
-                if(!conflict&&!unsure) setCol(c=>new Set([...c,txId]));
-            },220);
+            setTimeout(()=>setCol(c=>new Set([...c,txId])),220);
         }
     };
 
     const undo=()=>{
-        if(!undoStack.length) return;
+        if(!undoStack.length)return;
         const last=undoStack[undoStack.length-1];
         setUndo(s=>s.slice(0,-1));
         setCol(c=>{const n=new Set(c);n.delete(last.txId);return n;});
-        const ns={...subs,[last.txId]:{...subs[last.txId],[last.u]:last.prev}};
+        const prevEntry=last.prev?{value:last.prev,ts:getSubTs(getSub(last.txId),last.u)}:undefined;
+        const ns={...subs,[last.txId]:{...getSub(last.txId),[last.u]:prevEntry}};
         save(ns);
     };
 
-    const stepDay=()=>{ setSimDelta(d=>d+1); setCol(new Set()); };
-    const resetDay=()=>{ setSimDelta(0); setCol(new Set()); };
+    const stepDay=()=>{setSim(d=>d+1);setCol(new Set());setSimNow(simNow+24*60*60*1000);};
+    const resetDay=()=>{setSim(0);setCol(new Set());setSimNow(Date.now());};
 
-    // Tally: Tony & Nugs = sum of txns each assigned to themselves
-    //        Macquarie  = sum of distinct txns anyone assigned to Macquarie
-    const tallyTony={},tallyNugs={},macSet=new Set();
-    Object.entries(TX).forEach(([,list])=>{
-        list.forEach(tx=>{
-            const sub=getSub(tx.id);
-            if(sub.Tony==='Tony') tallyTony[tx.id]=tx.amount;
-            if(sub.Nugs==='Nugs') tallyNugs[tx.id]=tx.amount;
-            USERS.forEach(u=>{ if(sub[u]==='Macquarie') macSet.add(tx.id+':'+tx.amount); });
+    // Tally: profile-local — show MY total (txns I assigned to myself)
+    // Macquarie: txns anyone assigned to Macquarie (deduplicated)
+    const myTally=Object.values(ALL_TX_MAP).reduce((acc,tx)=>{
+        const pick=getSubValue(getSub(tx.id),user);
+        if(pick===user)acc+=tx.amount;
+        return acc;
+    },0);
+
+    const macSet=new Set();
+    Object.values(ALL_TX_MAP).forEach(tx=>{
+        USERS.forEach(u=>{
+            if(getSubValue(getSub(tx.id),u)==='Macquarie')macSet.add(tx.id);
         });
     });
-    const tTony=Object.values(tallyTony).reduce((a,b)=>a+b,0);
-    const tNugs=Object.values(tallyNugs).reduce((a,b)=>a+b,0);
-    const tMac=[...macSet].reduce((a,s)=>a+parseFloat(s.split(':')[1]),0);
+    const macTally=[...macSet].reduce((a,id)=>a+(ALL_TX_MAP[id]?.amount||0),0);
 
-    if(!user) return React.createElement(Landing,{onSelect:login});
+    if(!user)return React.createElement(Landing,{onSelect:login});
 
-    const loadedDays=getLoadedDays(simDelta);
+    const otherUser=getOtherUser(user);
+    const loadedKeys=getLoadedKeys(simDelta);
 
-    // Build groups
-    const groups=loadedDays.map(txDay=>{
-        const list=(TX[String(txDay)]||[]).map(tx=>({...tx,txDay,date:isoDate(txDay-simDelta)}));
-        const visible=list.filter(tx=>isVisible(tx,txDay));
+    // Build groups — only show today and past days with unresolved items
+    const groups=loadedKeys.map(txKey=>{
+        const list=(TX[txKey]||[]);
+        const visible=list.filter(tx=>isVisible(tx,txKey));
         const active=visible.filter(tx=>!collapsing.has(tx.id));
-        const {label,past}=getDayLabel(txDay,simDelta);
-        return {txDay,visible,active,label,past};
+        const past=isDayPast(txKey,simDelta);
+        const rel=parseInt(txKey)-simDelta; // 0=today,-1=yesterday
+        const label=rel===0?'today':rel===-1?'yesterday':Math.abs(rel)+'d ago';
+        return {txKey,list,visible,active,past,label,date:isoDate(rel)};
     }).filter(g=>g.active.length>0);
 
-    // Stats from all loaded days
-    let totalTx=0,totalPending=0,totalConflicts=0;
-    loadedDays.forEach(txDay=>{
-        const list=TX[String(txDay)]||[];
-        totalTx+=list.length;
-        list.forEach(tx=>{
-            if(isConflict(tx.id,txDay)) totalConflicts++;
-            else if(!myPick(tx.id)) totalPending++;
+    // Stats: how many TX I still need to action vs how many other user needs
+    // "Need to action" = no pick from that user (and not auto-confirmed)
+    let myRemaining=0,otherRemaining=0;
+    loadedKeys.forEach(txKey=>{
+        (TX[txKey]||[]).forEach(tx=>{
+            if(!isAutoConf(tx.id)){
+                if(!myPick(tx.id))myRemaining++;
+                if(!getSubValue(getSub(tx.id),otherUser))otherRemaining++;
+            }
         });
     });
 
     const anyVisible=groups.length>0;
     const simLabel=simDelta===0?'today':'+'+simDelta+'d';
+    // Dev: also allow simulating 72h for auto-confirm
+    const simHours=Math.round((simNow-Date.now())/3600000);
 
     return React.createElement('div',null,
         showSwitch&&React.createElement(SwitchOverlay,{currentUser:user,onSelect:login,onClose:()=>setSwitch(false)}),
@@ -481,31 +483,33 @@ function App(){
         // Dev banner
         React.createElement('div',{className:'dev-banner'},
             React.createElement('span',{className:'dev-label'},'🛠 dev'),
-            React.createElement('span',{className:'day-display'},simLabel),
+            React.createElement('span',{className:'day-display'},simLabel+(simHours>0?' +'+simHours+'h':'')),
             React.createElement('button',{className:'day-btn',onClick:stepDay},'next day ▶'),
+            React.createElement('button',{className:'day-btn',style:{fontSize:'0.6rem'},
+                onClick:()=>setSimNow(n=>n+24*60*60*1000),title:'advance 24h for auto-confirm test'},'+24h'),
             React.createElement('button',{className:'reset-btn',onClick:resetDay},'reset'),
             React.createElement('span',{className:'dev-sep'},'|'),
             React.createElement('button',{className:'clear-btn',onClick:resetCache},'🗑 clear'),
         ),
 
-        // Tally
+        // Tally bar — profile local: shows MY total + Macquarie toggle
         React.createElement('div',{className:'tally-bar'},
-            React.createElement('div',{className:'tally-item'},
-                React.createElement('div',{className:'tally-name'},'Tony'),
-                React.createElement('div',{className:'tally-amount'},'$'+tTony.toFixed(2)),
-                React.createElement('div',{className:'tally-note'},'your picks')
+            React.createElement('div',{className:'tally-main'},
+                React.createElement('div',{className:'tally-item'},
+                    React.createElement('div',{className:'tally-name'},user),
+                    React.createElement('div',{className:'tally-amount'},'$'+myTally.toFixed(2)),
+                    React.createElement('div',{className:'tally-note'},'your assignments')
+                )
             ),
-            React.createElement('div',{style:{width:'1px',background:'rgba(255,255,255,0.05)'}}),
-            React.createElement('div',{className:'tally-item'},
-                React.createElement('div',{className:'tally-name'},'Nugs'),
-                React.createElement('div',{className:'tally-amount'},'$'+tNugs.toFixed(2)),
-                React.createElement('div',{className:'tally-note'},'your picks')
-            ),
-            React.createElement('div',{style:{width:'1px',background:'rgba(255,255,255,0.05)'}}),
-            React.createElement('div',{className:'tally-item'},
+            // Macquarie panel (conditionally shown)
+            showMac&&React.createElement('div',{className:'mac-panel'},
                 React.createElement('div',{className:'tally-name'},'Macquarie'),
-                React.createElement('div',{className:'tally-amount shared'},'$'+tMac.toFixed(2)),
+                React.createElement('div',{className:'tally-amount mac'},'$'+macTally.toFixed(2)),
                 React.createElement('div',{className:'tally-note'},'shared')
+            ),
+            // Toggle arrow
+            React.createElement('button',{className:'mac-toggle',onClick:()=>setShowMac(v=>!v),title:'Toggle Macquarie'},
+                showMac?'›':'‹'
             )
         ),
 
@@ -519,30 +523,34 @@ function App(){
                 )
             ),
 
+            // Stats: just two boxes
             React.createElement('div',{className:'stats-grid'},
-                [{label:'Total',value:totalTx},{label:'Pending',value:totalPending},{label:'Conflicts',value:totalConflicts}]
-                .map(s=>React.createElement('div',{key:s.label,className:'stat-box'},
-                    React.createElement('div',{className:'stat-val'},s.value),
-                    React.createElement('div',{className:'stat-label'},s.label)
-                ))
+                React.createElement('div',{className:'stat-box me'},
+                    React.createElement('div',{className:'stat-val'},myRemaining),
+                    React.createElement('div',{className:'stat-label'},'my remaining')
+                ),
+                React.createElement('div',{className:'stat-box'},
+                    React.createElement('div',{className:'stat-val'},otherRemaining),
+                    React.createElement('div',{className:'stat-label'},otherUser+'\'s remaining')
+                )
             ),
 
             !anyVisible
                 ? React.createElement(AllDone,{msg:doneMsg.current})
                 : React.createElement('div',null,
-                    groups.map(({txDay,visible,label,past})=>
-                        React.createElement('div',{key:txDay,className:'day-group'},
+                    groups.map(({txKey,visible,past,label,date})=>
+                        React.createElement('div',{key:txKey,className:'day-group'},
                             React.createElement('div',{className:'day-group-header'},
                                 past&&React.createElement('span',{className:'attention-dot'}),
                                 React.createElement('span',{className:'day-label-pill '+(past?'past':'today')},label),
                                 React.createElement('div',{className:'day-line '+(past?'past':'')}),
                                 past
-                                    ? React.createElement('span',{className:'attention-tag'},'attention · '+isoDate(txDay-simDelta))
-                                    : React.createElement('span',{className:'day-date'},isoDate(txDay-simDelta))
+                                    ? React.createElement('span',{className:'attention-tag'},'attention · '+date)
+                                    : React.createElement('span',{className:'day-date'},date)
                             ),
                             visible.map(tx=>React.createElement(TxCard,{
-                                key:tx.id,tx,txDay,simDelta,currentUser:user,
-                                subs,onAssign:assign,collapsing
+                                key:tx.id,tx,txKey,simDelta,currentUser:user,
+                                subs,onAssign:assign,collapsing,nowMs:simNow
                             }))
                         )
                     )

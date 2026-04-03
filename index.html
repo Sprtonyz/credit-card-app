@@ -517,57 +517,69 @@ function App(){
 
     const isAutoConf=(id)=>isAutoConfirmed(getSub(id),id,simNow);
 
-    // fbIsConflict / fbIsUnsurePinned: same logic as isConflict/isUnsurePinned
-    // but reads from fbSubsRef (ground truth Firebase) instead of subs (optimistic).
-    // Used exclusively for evaluating the OTHER user's remaining count so that
-    // optimistic local writes by the current user don't affect the other user's count.
-    const fbAnyoneUnsure=(id)=>USERS.some(u=>getFbSub(id)[u]?.value==='Unsure');
-    const fbIsConflict=(id,txKey)=>{
+    // mixedIsConflict / mixedIsUnsurePinned: for evaluating the OTHER user's remaining.
+    // Uses optimistic subs for the CURRENT user's pick (since it's immediately accurate)
+    // but Firebase ground truth (getFbSub) for the OTHER user's pick.
+    // This correctly handles the case where Tony just changed to Unsure — the optimistic
+    // subs reflects that immediately, so Nugs' remaining is correctly marked as pending.
+    const mixedGetPick=(txId,u)=>
+        u===user
+            ? (getSub(txId)[u]?.value??null)      // current user: use optimistic subs
+            : (getFbSub(txId)[u]?.value??null);    // other user: use Firebase ground truth
+
+    const mixedAnyoneUnsure=(id)=>USERS.some(u=>mixedGetPick(id,u)==='Unsure');
+    const mixedIsConflict=(id,txKey)=>{
         if(!isPast(txKey))return false;
-        if(fbAnyoneUnsure(id))return false;
-        const vals=USERS.map(u=>getFbSub(id)[u]?.value).filter(v=>v&&v!=='Unsure');
+        if(mixedAnyoneUnsure(id))return false;
+        const vals=USERS.map(u=>mixedGetPick(id,u)).filter(v=>v&&v!=='Unsure');
         return vals.length>1&&new Set(vals).size>1;
     };
-    const fbIsUnsurePinned=(id,txKey)=>isPast(txKey)&&fbAnyoneUnsure(id);
+    const mixedIsUnsurePinned=(id,txKey)=>isPast(txKey)&&mixedAnyoneUnsure(id);
 
     // remainingFor(u, tx, txKey): does user U still have work on this tx?
     //
     // TODAY: done once they've picked anything (one tap = done).
     //
     // PAST DAY:
-    //   No pick → remaining.
+    //   No pick at all → remaining.
     //   Picked Unsure → remaining (needs real answer).
-    //   Has a real pick:
-    //     No conflict/unsure → done.
-    //     Conflict/unsure exists:
-    //       CURRENT USER → use local `resolved` set for immediate post-tap feedback.
-    //       OTHER USER   → use Firebase ground truth (fbSub) so optimistic writes
-    //                      by the current user don't falsely clear their count.
-    //                      They are done when Firebase shows the conflict/unsure is gone
-    //                      OR when their Firebase pick is a real value on an unsure tx.
+    //   Has a real pick AND no conflict/unsure → done.
+    //   Has a real pick AND conflict/unsure exists:
+    //     CURRENT USER: use local `resolved` set for immediate post-tap feedback.
+    //     OTHER USER: use mixedGet (optimistic for current user, fb-truth for other user)
+    //       so that when current user changes their pick (e.g. to Unsure), the other user's
+    //       remaining correctly reflects that there's now an unsure pending for them.
+    //       Other user is done only when mixedIsConflict and mixedIsUnsurePinned are false
+    //       AND their own pick is a real value.
     const remainingFor=(u,tx,txKey)=>{
         if(isAutoConf(tx.id))return false;
         if(isToday(txKey)){
-            const pick=getSubValue(getSub(tx.id),u);
+            // Today: use optimistic subs for current user, fb-truth for other
+            const pick=u===user
+                ? (getSub(tx.id)[u]?.value??null)
+                : (getFbSub(tx.id)[u]?.value??null);
             return !pick;
         }
-        // Past day — use Firebase ground truth for pick value
-        const pick=getFbSub(tx.id)[u]?.value??null;
+        // Past day
+        const pick=u===user
+            ? (getSub(tx.id)[u]?.value??null)     // current user: optimistic
+            : (getFbSub(tx.id)[u]?.value??null);  // other user: fb ground truth
         if(!pick)return true;
         if(pick==='Unsure')return true;
         // Has a real pick on a past day
         if(u===user){
-            // Current user: use optimistic subs for conflict check + local resolved set
+            // Current user: use optimistic conflict/unsure + local resolved set
             const hasConflict=isConflict(tx.id,txKey);
             const hasUnsure=isUnsurePinned(tx.id,txKey);
             if(!hasConflict&&!hasUnsure)return false;
             return !resolved.has(tx.id);
         } else {
-            // Other user: use Firebase ground truth exclusively
-            const hasConflict=fbIsConflict(tx.id,txKey);
-            const hasUnsure=fbIsUnsurePinned(tx.id,txKey);
+            // Other user: use mixed conflict/unsure detection
+            // (current user's pick = optimistic, other user's pick = fb ground truth)
+            const hasConflict=mixedIsConflict(tx.id,txKey);
+            const hasUnsure=mixedIsUnsurePinned(tx.id,txKey);
             if(!hasConflict&&!hasUnsure)return false;
-            // Unsure exists but they have a real pick → they've done their part
+            // Unsure exists but other user has a real (non-Unsure) pick → done for them
             if(hasUnsure&&pick!=='Unsure')return false;
             return true;
         }
@@ -685,7 +697,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r2.1':'offline'
+connected===null?'connecting…':connected?'synced r2.2':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

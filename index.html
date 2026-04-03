@@ -412,9 +412,6 @@ function App(){
     const [simDelta,setSim]   =useState(0);
     const [collapsing,setCol] =useState(new Set());
     const collapseTimers=useRef([]);
-    // resolved: txIds this user has explicitly re-tapped on during conflict/unsure resolution this session
-    // Cleared on stepDay/resetDay. Used so remainingFor doesn't keep counting after you've re-tapped.
-    const [resolved,setResolved]=useState(new Set());
     const [undoStack,setUndo] =useState([]);
     const [showSwitch,setSwitch]=useState(false);
     const [showMac,setShowMac]=useState(false);
@@ -434,13 +431,10 @@ function App(){
         if(u&&USERS.includes(u))setUser(u);
     },[]);
 
-    // Firebase real-time listener — updates BOTH subs (optimistic base) AND fbSubs (ground truth).
-    // fbSubs is state so any Firebase change triggers a re-render → recalculates other user's remaining.
+    // Firebase real-time listener — single source of truth, no optimistic writes.
     useEffect(()=>{
         const handler=subsRef.on('value', snap=>{
-            const data=snap.val()||{};
-            setFbSubs(data);  // ground truth — triggers re-render for other user's count
-            setSubs(data);    // also reset optimistic subs to Firebase truth
+            setSubs(snap.val()||{});
         });
         return ()=>subsRef.off('value',handler);
     },[]);
@@ -482,7 +476,7 @@ function App(){
 
     const login=u=>{
         setUser(u);localStorage.setItem(UK,u);
-        setCol(new Set());setResolved(new Set());setUndo([]);setSwitch(false);
+        setCol(new Set());setUndo([]);setSwitch(false);
     };
 
     const resetCache=()=>{
@@ -492,98 +486,49 @@ function App(){
         setSubs({});setCol(new Set());setUndo([]);setUser(null);setShowMac(false);
     };
 
+    // ── Single source of truth: Firebase only ──────────────────────────────────
+    // All logic reads purely from `subs` which is always set to Firebase data.
+    // No optimistic writes. No mixed logic. Both users always see the same counts.
+
     const getSub=id=>subs[id]||{};
-    const myPick=id=>getSubValue(getSub(id),user);
-    // fbSubs: ground truth from Firebase, stored as STATE (not ref) so any Firebase
-    // update triggers a re-render and recalculates the other user's remaining count.
-    const [fbSubs,setFbSubs]=useState({});
-    const getFbSub=id=>fbSubs[id]||{};
+    const getPick=(txId,u)=>getSub(txId)[u]?.value??null;
+    const myPick=id=>getPick(id,user); // kept for undo compatibility
 
     const isToday=(txKey)=>parseInt(txKey)===simDelta;
     const isPast=(txKey)=>parseInt(txKey)<simDelta;
 
-    // Helper: does anyone have Unsure on this tx?
-    const anyoneUnsure=(id)=>USERS.some(u=>getSubValue(getSub(id),u)==='Unsure');
+    const isAutoConf=(id)=>isAutoConfirmed(getSub(id),id,simNow);
 
-    // Unsure is only surfaced on past days (next-day reveal)
+    // anyoneUnsure: any user has 'Unsure' in Firebase for this tx
+    const anyoneUnsure=(id)=>USERS.some(u=>getPick(id,u)==='Unsure');
+
+    // isUnsurePinned: unsure is only surfaced on past days
     const isUnsurePinned=(id,txKey)=>isPast(txKey)&&anyoneUnsure(id);
 
-    // Conflict: past day, no one said Unsure, and the two picks differ
+    // isConflict: past day, no unsure, two different real picks
     const isConflict=(id,txKey)=>{
         if(!isPast(txKey))return false;
         if(anyoneUnsure(id))return false;
-        const vals=USERS.map(u=>getSubValue(getSub(id),u)).filter(v=>v&&v!=='Unsure');
-        return vals.length>1&&new Set(vals).size>1;
+        const vals=USERS.map(u=>getPick(id,u)).filter(v=>v&&v!=='Unsure');
+        return vals.length===USERS.length&&new Set(vals).size>1;
     };
 
-    const isAutoConf=(id)=>isAutoConfirmed(getSub(id),id,simNow);
-
-    // mixedIsConflict / mixedIsUnsurePinned: for evaluating the OTHER user's remaining.
-    // Uses optimistic subs for the CURRENT user's pick (since it's immediately accurate)
-    // but Firebase ground truth (getFbSub) for the OTHER user's pick.
-    // This correctly handles the case where Tony just changed to Unsure — the optimistic
-    // subs reflects that immediately, so Nugs' remaining is correctly marked as pending.
-    const mixedGetPick=(txId,u)=>
-        u===user
-            ? (getSub(txId)[u]?.value??null)      // current user: use optimistic subs
-            : (getFbSub(txId)[u]?.value??null);    // other user: use Firebase ground truth
-
-    const mixedAnyoneUnsure=(id)=>USERS.some(u=>mixedGetPick(id,u)==='Unsure');
-    const mixedIsConflict=(id,txKey)=>{
-        if(!isPast(txKey))return false;
-        if(mixedAnyoneUnsure(id))return false;
-        const vals=USERS.map(u=>mixedGetPick(id,u)).filter(v=>v&&v!=='Unsure');
-        return vals.length>1&&new Set(vals).size>1;
-    };
-    const mixedIsUnsurePinned=(id,txKey)=>isPast(txKey)&&mixedAnyoneUnsure(id);
-
-    // remainingFor(u, tx, txKey): does user U still have work on this tx?
-    //
-    // TODAY: done once they've picked anything (one tap = done).
-    //
-    // PAST DAY:
-    //   No pick at all → remaining.
-    //   Picked Unsure → remaining (needs real answer).
-    //   Has a real pick AND no conflict/unsure → done.
-    //   Has a real pick AND conflict/unsure exists:
-    //     CURRENT USER: use local `resolved` set for immediate post-tap feedback.
-    //     OTHER USER: use mixedGet (optimistic for current user, fb-truth for other user)
-    //       so that when current user changes their pick (e.g. to Unsure), the other user's
-    //       remaining correctly reflects that there's now an unsure pending for them.
-    //       Other user is done only when mixedIsConflict and mixedIsUnsurePinned are false
-    //       AND their own pick is a real value.
+    // remainingFor(u, tx, txKey): pure Firebase-derived, identical on both devices.
+    // TODAY:    remaining = user hasn't picked yet
+    // PAST DAY: remaining = no pick, OR picked Unsure (needs real answer),
+    //           OR has real pick but conflict/unsure exists (needs resolution)
+    // COLLAPSE is purely visual — doesn't affect this count.
     const remainingFor=(u,tx,txKey)=>{
         if(isAutoConf(tx.id))return false;
-        if(isToday(txKey)){
-            // Today: use optimistic subs for current user, fb-truth for other
-            const pick=u===user
-                ? (getSub(tx.id)[u]?.value??null)
-                : (getFbSub(tx.id)[u]?.value??null);
-            return !pick;
-        }
+        const pick=getPick(tx.id,u);
+        if(isToday(txKey)) return !pick;
         // Past day
-        const pick=u===user
-            ? (getSub(tx.id)[u]?.value??null)     // current user: optimistic
-            : (getFbSub(tx.id)[u]?.value??null);  // other user: fb ground truth
-        if(!pick)return true;
-        if(pick==='Unsure')return true;
-        // Has a real pick on a past day
-        if(u===user){
-            // Current user: use optimistic conflict/unsure + local resolved set
-            const hasConflict=isConflict(tx.id,txKey);
-            const hasUnsure=isUnsurePinned(tx.id,txKey);
-            if(!hasConflict&&!hasUnsure)return false;
-            return !resolved.has(tx.id);
-        } else {
-            // Other user: use mixed conflict/unsure detection
-            // (current user's pick = optimistic, other user's pick = fb ground truth)
-            const hasConflict=mixedIsConflict(tx.id,txKey);
-            const hasUnsure=mixedIsUnsurePinned(tx.id,txKey);
-            if(!hasConflict&&!hasUnsure)return false;
-            // Unsure exists but other user has a real (non-Unsure) pick → done for them
-            if(hasUnsure&&pick!=='Unsure')return false;
-            return true;
-        }
+        if(!pick) return true;
+        if(pick==='Unsure') return true;
+        // Has a real pick — done unless conflict or unsure exists
+        if(isConflict(tx.id,txKey)) return true;
+        if(isUnsurePinned(tx.id,txKey)) return true;
+        return false;
     };
 
     // isVisible: should this card show on screen for the current user?
@@ -593,29 +538,15 @@ function App(){
     };
 
     const assign=(txId,txKey,opt)=>{
-        const prev=myPick(txId);
+        const prev=getPick(txId,user);
         setUndo(s=>[...s,{txId,u:user,prev,prevSub:getSub(txId)[user]}]);
         const ts=simNow;
+        // Write to Firebase — listener updates subs for all devices
         save(txId,{[user]:{value:opt,ts}});
-        // Optimistic local update
-        const newSubs={...subs,[txId]:{...(subs[txId]||{}),[user]:{value:opt,ts}}};
-        setSubs(newSubs);
-        // Collapse logic:
-        // TODAY → always collapse immediately (one tap = done)
-        // PAST DAY → collapse only if not a conflict/unsure after this pick
-        //            (if still conflicted, card stays visible for re-resolution)
+        // Collapse card visually after brief animation delay.
+        // Counts are always Firebase-derived so they update when listener fires (~100ms).
+        // Past-day Unsure: always collapse — card is gone for today, resurfaces next day.
         const timer=setTimeout(()=>{
-            const myNewPick=newSubs[txId]?.[user]?.value;
-            const thisDayIsPast=isPast(txKey);
-            if(thisDayIsPast && myNewPick==='Unsure'){
-                // Past-day Unsure: mark as re-tapped so count goes down, but keep visible
-                setResolved(r=>new Set([...r,txId]));
-                return;
-            }
-            // All other cases: collapse card + mark resolved (for conflict re-taps)
-            if(thisDayIsPast){
-                setResolved(r=>new Set([...r,txId]));
-            }
             setCol(c=>new Set([...c,txId]));
         },220);
         collapseTimers.current.push(timer);
@@ -642,8 +573,8 @@ function App(){
     };
 
     const cancelTimers=()=>{ collapseTimers.current.forEach(clearTimeout); collapseTimers.current=[]; };
-    const stepDay=()=>{ cancelTimers(); setSim(d=>d+1); setCol(new Set()); setResolved(new Set()); setSimNow(simNow+24*60*60*1000); };
-    const resetDay=()=>{ cancelTimers(); setSim(0); setCol(new Set()); setResolved(new Set()); setSimNow(Date.now()); };
+    const stepDay=()=>{ cancelTimers(); setSim(d=>d+1); setCol(new Set()); setSimNow(simNow+24*60*60*1000); };
+    const resetDay=()=>{ cancelTimers(); setSim(0); setCol(new Set()); setSimNow(Date.now()); };
 
     // Tally: always show Tony and Nugs totals (what each assigned to themselves)
     // Macquarie: deduplicated sum of txns anyone assigned to Macquarie
@@ -698,7 +629,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r2.3':'offline'
+connected===null?'connecting…':connected?'synced r2.4':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

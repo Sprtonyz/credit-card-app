@@ -26,6 +26,8 @@ export default function CreditCardApp() {
     if (savedCsvDate) {
       setCsvDate(savedCsvDate);
     }
+    // Clear demo data - start fresh
+    localStorage.removeItem('cc_submissions_demo');
   }, []);
 
   // Save to local storage whenever submissions change

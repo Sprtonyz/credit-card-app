@@ -428,27 +428,11 @@ function App(){
         if(u&&USERS.includes(u))setUser(u);
     },[]);
 
-    // Firebase real-time listener — syncs submissions across all devices instantly
+    // Firebase real-time listener — ONLY updates subs, never touches collapsing.
+    // Collapsing is purely local/day-based. Conflicts only evaluated at day boundary.
     useEffect(()=>{
         const handler=subsRef.on('value', snap=>{
-            const data=snap.val()||{};
-            setSubs(data);
-            setSyncCount(c=>c+1);
-            // If a card that was collapsed is now a conflict (other person disagreed),
-            // remove it from collapsing so it resurfaces
-            setCol(prev=>{
-                const next=new Set(prev);
-                Object.keys(data).forEach(txId=>{
-                    const sub=data[txId]||{};
-                    const vals=USERS.map(u=>sub[u]?.value).filter(v=>v&&v!=='Unsure');
-                    const isConflict=vals.length>1&&new Set(vals).size>1;
-                    const isUnsure=USERS.some(u=>sub[u]?.value==='Unsure');
-                    if((isConflict||isUnsure)&&next.has(txId)){
-                        next.delete(txId); // pop it back out so conflict shows
-                    }
-                });
-                return next;
-            });
+            setSubs(snap.val()||{});
         });
         return ()=>subsRef.off('value',handler);
     },[]);
@@ -521,13 +505,22 @@ function App(){
     };
     const isAutoConf=(id)=>isAutoConfirmed(getSub(id),id,simNow);
 
+    const isToday=(txKey)=>parseInt(txKey)===simDelta;
+
     const isVisible=(tx,txKey)=>{
+        // Mid-animation — keep rendered until transition finishes
         if(collapsing.has(tx.id))return true;
+        // Auto-confirmed — never show
         if(isAutoConf(tx.id))return false;
-        // Always surface conflicts and unsure once they become visible (next day)
+        // TODAY: one tap and it's gone for the day. No repopulation ever.
+        // Conflicts/unsure from today are NOT evaluated until the day lapses.
+        if(isToday(txKey)){
+            return !myPick(tx.id);
+        }
+        // PAST DAYS: evaluate status now that day has passed
         if(isConflict(tx.id,txKey))return true;
         if(isUnsurePinned(tx.id,txKey))return true;
-        // Hide if I have already picked (and no conflict)
+        // Past day, I've already re-resolved it today → hide
         if(myPick(tx.id))return false;
         return true;
     };
@@ -536,13 +529,13 @@ function App(){
         const prev=myPick(txId);
         setUndo(s=>[...s,{txId,u:user,prev,prevSub:getSub(txId)[user]}]);
         const ts=simNow;
-        // Write to Firebase — listener will update subs for all devices
+        // Write to Firebase
         save(txId,{[user]:{value:opt,ts}});
-        // Also update local subs immediately so UI doesn't wait for round-trip
+        // Update local subs immediately for snappy UI
         setSubs(cur=>({...cur,[txId]:{...(cur[txId]||{}),[user]:{value:opt,ts}}}));
-        if(opt!=='Unsure'){
-            setTimeout(()=>setCol(c=>new Set([...c,txId])),220);
-        }
+        // Collapse unconditionally — today's cards never repopulate.
+        // Past-day cards also collapse; they only reappear AFTER the next day boundary.
+        setTimeout(()=>setCol(c=>new Set([...c,txId])),220);
     };
 
     const undo=()=>{
@@ -601,18 +594,22 @@ function App(){
         return {txKey,list,visible,active,past,label,date:isoDate(rel)};
     }).filter(g=>g.active.length>0);
 
-    // Stats: count ALL unresolved tx per user — includes conflicts, unsures, and unpicked
-    // "Remaining" = anything that isn't auto-confirmed and fully resolved
-    // A tx is resolved for a user if: auto-confirmed OR (they've picked AND no conflict/unsure pending)
+    // Stats: remaining = things I still need to tap today
+    // Today: just unpicked. Past days: unpicked + conflicts + unsures.
     let myRemaining=0,otherRemaining=0;
     loadedKeys.forEach(txKey=>{
+        const today=parseInt(txKey)===simDelta;
         (TX[txKey]||[]).forEach(tx=>{
-            if(isAutoConf(tx.id))return; // auto-confirmed = done for everyone
-            const conflict=isConflict(tx.id,txKey);
-            const unsure=isUnsurePinned(tx.id,txKey);
-            // I still have work if: haven't picked, OR conflict/unsure needs resolution
-            if(!myPick(tx.id)||conflict||unsure)myRemaining++;
-            if(!getSubValue(getSub(tx.id),otherUser)||conflict||unsure)otherRemaining++;
+            if(isAutoConf(tx.id))return;
+            if(today){
+                if(!myPick(tx.id))myRemaining++;
+                if(!getSubValue(getSub(tx.id),otherUser))otherRemaining++;
+            } else {
+                const conflict=isConflict(tx.id,txKey);
+                const unsure=isUnsurePinned(tx.id,txKey);
+                if(!myPick(tx.id)||conflict||unsure)myRemaining++;
+                if(!getSubValue(getSub(tx.id),otherUser)||conflict||unsure)otherRemaining++;
+            }
         });
     });
 

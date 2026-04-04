@@ -151,29 +151,34 @@
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pop{0%{transform:scale(0.4);opacity:0}60%{transform:scale(1.3)}80%{transform:scale(0.95)}100%{transform:scale(1);opacity:1}}
-        @keyframes coinPop{0%{transform:scale(1)}40%{transform:scale(1.4)}100%{transform:scale(1)}}
-        @keyframes petBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+        /* Pet footer — pixel pet walks across */
+        .pet-footer{position:fixed;bottom:0;left:0;right:0;height:54px;background:rgba(8,10,15,0.98);border-top:1px solid rgba(255,255,255,0.055);backdrop-filter:blur(16px);z-index:50;overflow:hidden;}
+        .pet-footer canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;}
 
-        /* Pet footer */
-        .pet-footer{position:sticky;bottom:0;background:rgba(10,13,18,0.97);border-top:1px solid rgba(255,255,255,0.07);padding:0.6rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:0.6rem;backdrop-filter:blur(12px);z-index:50;}
-        .pet-area{display:flex;align-items:center;gap:0.55rem;}
-        .pet-face{font-size:1.7rem;line-height:1;transition:all 0.4s;cursor:default;user-select:none;}
-        .pet-face.bounce{animation:petBounce 0.4s ease;}
-        .pet-info{display:flex;flex-direction:column;gap:0.1rem;}
-        .pet-name{font-size:0.46rem;letter-spacing:0.18em;text-transform:uppercase;color:#374151;}
-        .pet-status{font-size:0.54rem;color:#9ca3af;}
-        .pet-bar{width:44px;height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden;margin-top:0.18rem;}
-        .pet-bar-fill{height:100%;border-radius:2px;transition:width 0.5s ease;background:linear-gradient(90deg,#f87171 0%,#fbbf24 50%,#4ade80 100%);}
-        .pet-actions{display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;justify-content:flex-end;}
-        .pet-stat{font-size:0.58rem;color:#6b7280;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:0.14rem 0.45rem;white-space:nowrap;}
-        .pet-stat.coins{color:#fbbf24;border-color:rgba(251,191,36,0.2);background:rgba(251,191,36,0.04);}
-        .pet-stat.coins.pop{animation:coinPop 0.3s ease;}
-        .pet-btn{font-size:0.54rem;padding:0.28rem 0.5rem;border-radius:6px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.03);color:#6b7280;font-family:'DM Mono',monospace;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all 0.15s;white-space:nowrap;}
-        .pet-btn:disabled{opacity:0.25;cursor:default;}
-        .pet-btn.buy{border-color:rgba(251,191,36,0.22);color:#d97706;background:rgba(251,191,36,0.04);}
-        .pet-btn.buy:not(:disabled):active{background:rgba(251,191,36,0.15);}
-        .pet-btn.feed{border-color:rgba(74,222,128,0.22);color:#4ade80;background:rgba(74,222,128,0.04);}
-        .pet-btn.feed:not(:disabled):active{background:rgba(74,222,128,0.15);}
+        /* Shop panel — fixed right side above footer */
+        .shop-panel{position:fixed;right:0.65rem;bottom:62px;background:rgba(10,13,18,0.96);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:0.45rem 0.5rem;display:flex;flex-direction:column;align-items:center;gap:0.28rem;z-index:45;min-width:66px;backdrop-filter:blur(12px);}
+        .shop-coins{font-size:0.62rem;color:#fbbf24;font-family:'DM Mono',monospace;letter-spacing:0.04em;white-space:nowrap;}
+        .shop-food{font-size:0.56rem;color:#9ca3af;white-space:nowrap;}
+        .shop-divider{width:100%;height:1px;background:rgba(255,255,255,0.05);margin:0.1rem 0;}
+        .shop-btn{width:100%;font-size:0.52rem;padding:0.28rem 0.35rem;border-radius:5px;border:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.03);color:#6b7280;font-family:'DM Mono',monospace;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:center;transition:background 0.12s;user-select:none;touch-action:manipulation;}
+        .shop-btn:disabled{opacity:0.2;cursor:default;}
+        .shop-btn.buy{border-color:rgba(251,191,36,0.22);color:#d97706;background:rgba(251,191,36,0.04);}
+        .shop-btn.buy:not(:disabled):active{background:rgba(251,191,36,0.2);}
+        .shop-btn.feed{border-color:rgba(74,222,128,0.22);color:#4ade80;background:rgba(74,222,128,0.04);}
+        .shop-btn.feed:not(:disabled):active{background:rgba(74,222,128,0.2);}
+
+        /* Pixel coin pop */
+        .coin-pop{position:fixed;pointer-events:none;z-index:500;display:flex;align-items:center;gap:5px;transform:translateX(-50%);animation:coinFloat 0.85s ease-out forwards;}
+        .coin-pop-text{font-size:0.68rem;color:#fef08a;font-family:'DM Mono',monospace;font-weight:500;text-shadow:0 0 8px rgba(254,240,138,0.85);}
+        /* 5×5 pixel coin at 2px scale using box-shadow */
+        .pixel-coin-art{display:inline-block;width:2px;height:2px;background:transparent;flex-shrink:0;position:relative;top:2px;
+            box-shadow:
+                2px 0 0 0 #fbbf24,4px 0 0 0 #d97706,6px 0 0 0 #fbbf24,
+                0px 2px 0 0 #fbbf24,2px 2px 0 0 #fbbf24,4px 2px 0 0 #fef08a,6px 2px 0 0 #fbbf24,8px 2px 0 0 #fbbf24,
+                0px 4px 0 0 #fbbf24,2px 4px 0 0 #d97706,4px 4px 0 0 #fffbeb,6px 4px 0 0 #d97706,8px 4px 0 0 #fbbf24,
+                0px 6px 0 0 #fbbf24,2px 6px 0 0 #fbbf24,4px 6px 0 0 #fef08a,6px 6px 0 0 #fbbf24,8px 6px 0 0 #fbbf24,
+                2px 8px 0 0 #fbbf24,4px 8px 0 0 #d97706,6px 8px 0 0 #fbbf24;}
+        @keyframes coinFloat{0%{transform:translateX(-50%) translateY(0) scale(0.5);opacity:1}18%{transform:translateX(-50%) translateY(-10px) scale(1.2);opacity:1}100%{transform:translateX(-50%) translateY(-52px) scale(1);opacity:0}}
     </style>
 </head>
 <body>
@@ -217,7 +222,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.15';
+const APP_VERSION='r3.16';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -396,7 +401,11 @@ function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
         return {
             className:baseClass+optClass(opt),
             onPointerDown:e=>e.currentTarget.classList.add('flash'),
-            onPointerUp:  e=>{e.currentTarget.classList.remove('flash');onAssign(tx.id,txKey,opt);},
+            onPointerUp:e=>{
+                e.currentTarget.classList.remove('flash');
+                const r=e.currentTarget.getBoundingClientRect();
+                onAssign(tx.id,txKey,opt,{x:r.left+r.width/2,y:r.top+r.height/2});
+            },
             onPointerLeave:e=>e.currentTarget.classList.remove('flash'),
             onPointerCancel:e=>e.currentTarget.classList.remove('flash'),
         };
@@ -453,6 +462,78 @@ function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
     );
 }
 
+/* ── PetCanvas — pixel cat walking back and forth ── */
+function PetCanvas({happiness}){
+    const cvRef=useRef(null);
+    const st=useRef({x:30,dir:1,frame:0,tick:0});
+
+    useEffect(()=>{
+        const cv=cvRef.current;
+        if(!cv)return;
+        const ctx=cv.getContext('2d');
+        const S=3,SW=8,SH=12;
+
+        // Palette: 1=orange body, 2=dark detail, 3=cream, 4=pink, 5=dark eye
+        const PAL={1:'#f59e0b',2:'#b45309',3:'#fde68a',4:'#fda4af',5:'#1a1040'};
+
+        // 2 walk frames (8×12 sprites)
+        const F=[
+            // legs spread
+            [[0,0,1,1,0,0,0,0],[0,2,0,0,2,0,0,0],[0,1,1,1,1,1,0,0],[1,1,5,1,5,1,1,0],[1,1,3,4,3,1,1,0],[1,3,1,1,1,3,1,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[2,0,0,0,0,0,2,0],[2,0,0,0,0,0,2,0]],
+            // legs tucked
+            [[0,0,1,1,0,0,0,0],[0,2,0,0,2,0,0,0],[0,1,1,1,1,1,0,0],[1,1,5,1,5,1,1,0],[1,1,3,4,3,1,1,0],[1,3,1,1,1,3,1,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[0,2,0,0,2,0,0,0],[0,0,2,2,0,0,0,0]],
+        ];
+
+        function resize(){
+            cv.width=cv.parentElement?.clientWidth||window.innerWidth;
+            cv.height=SH*S+8;
+        }
+        resize();
+        window.addEventListener('resize',resize);
+
+        let raf;
+        function draw(){
+            const {x,dir,frame}=st.current;
+            ctx.clearRect(0,0,cv.width,cv.height);
+
+            // Subtle ground line
+            ctx.fillStyle='rgba(255,255,255,0.05)';
+            ctx.fillRect(0,SH*S+2,cv.width,1);
+
+            // Draw sprite (flip horizontally when walking left)
+            ctx.save();
+            if(dir<0){ctx.translate(x+SW*S,0);ctx.scale(-1,1);}
+            else{ctx.translate(x,0);}
+            const rows=F[frame];
+            for(let r=0;r<rows.length;r++){
+                for(let c=0;c<rows[r].length;c++){
+                    const p=rows[r][c];
+                    if(p&&PAL[p]){ctx.fillStyle=PAL[p];ctx.fillRect(c*S,r*S+2,S,S);}
+                }
+            }
+            ctx.restore();
+        }
+
+        function loop(){
+            const s=st.current;
+            s.tick++;
+            if(s.tick%6===0){           // move every 6 frames (~10fps walk)
+                s.x+=s.dir;
+                if(s.tick%12===0) s.frame=1-s.frame; // swap legs every 12 frames
+                const maxX=cv.width-SW*S-12;
+                if(s.x>=maxX){s.x=maxX;s.dir=-1;}
+                else if(s.x<=12){s.x=12;s.dir=1;}
+            }
+            draw();
+            raf=requestAnimationFrame(loop);
+        }
+        raf=requestAnimationFrame(loop);
+        return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',resize);};
+    },[]);
+
+    return React.createElement('canvas',{ref:cvRef,style:{display:'block',width:'100%',imageRendering:'pixelated'}});
+}
+
 /* ── AllDone ── */
 function AllDone({msg}){
     useEffect(()=>{window.launchConfetti&&window.launchConfetti();},[]);
@@ -482,7 +563,7 @@ function App(){
     const [myCoins,setMyCoins]=useState(0);
     const [myFood,setMyFood]=useState(0);
     const [petHappiness,setPetHappiness]=useState(5);
-    const coinStatRef=useRef(null);
+    const [coinPops,setCoinPops]=useState([]);
 
     const doneMsg=useRef(DONE[Math.floor(Math.random()*DONE.length)]);
     // For dev: simulate time passing for 72h auto-confirm
@@ -537,15 +618,7 @@ function App(){
     useEffect(()=>{
         if(!user)return;
         const ref=coinsRef.child(user);
-        const h=ref.on('value',snap=>{
-            setMyCoins(snap.val()||0);
-            // Animate coin stat on change
-            if(coinStatRef.current){
-                coinStatRef.current.classList.remove('pop');
-                void coinStatRef.current.offsetWidth;
-                coinStatRef.current.classList.add('pop');
-            }
-        });
+        const h=ref.on('value',snap=>setMyCoins(snap.val()||0));
         return()=>ref.off('value',h);
     },[user]);
 
@@ -685,13 +758,12 @@ function App(){
     // When starting a new round (day advanced since last _re), snapshot the current
     // _re to _re_prev so effectivePick can still read "last round's pick" even after
     // the new re-pick lands — preventing live status changes on the other user's screen.
-    const assign = (txId, txKey, opt) => {
+    const assign = (txId, txKey, opt, pos) => {
         setUndo(s => [...s, {txId, u:user, prev:getPick(txId,user), prevSub:getSub(txId)[user]}]);
         const updates = {};
         if (isPast(txKey)) {
             const currentRe = getSub(txId)[user+'_re'];
             if (!currentRe || currentRe.day < simDelta) {
-                // New round — snapshot previous _re (or committed pick) to _re_prev
                 updates[user+'_re_prev'] = currentRe ?? getSub(txId)[user] ?? null;
             }
             updates[user+'_re'] = {value:opt, ts:simNow, day:simDelta};
@@ -699,16 +771,20 @@ function App(){
             updates[user] = {value:opt, ts:simNow, day:simDelta};
         }
         save(txId, updates);
-        // Award 1 coin for every task tap
         coinsRef.child(user).transaction(n=>(n||0)+1);
+        if(pos){
+            const id=Date.now()+Math.random();
+            setCoinPops(p=>[...p,{id,x:pos.x,y:pos.y}]);
+            setTimeout(()=>setCoinPops(p=>p.filter(c=>c.id!==id)),900);
+        }
         if (isPast(txKey)) setSessRes(r => new Set([...r, txId]));
         const timer = setTimeout(() => setCol(c => new Set([...c, txId])), 220);
         collapseTimers.current.push(timer);
     };
 
     const buyFood=()=>{
-        if(myCoins<3)return;
-        coinsRef.child(user).transaction(n=>Math.max(0,(n||0)-3));
+        if(myCoins<1)return;
+        coinsRef.child(user).transaction(n=>Math.max(0,(n||0)-1));
         foodRef.child(user).transaction(n=>(n||0)+1);
     };
 
@@ -785,16 +861,6 @@ function App(){
 
     const anyVisible=groups.length>0;
 
-    // Pet display state
-    const PET_STATES=[
-        {min:9,face:'😸',status:'purring…'},
-        {min:7,face:'😺',status:'happy!'},
-        {min:4,face:'🙂',status:'content'},
-        {min:2,face:'😿',status:'hungry…'},
-        {min:0,face:'😾',status:'feed me!!'},
-    ];
-    const petState=PET_STATES.find(s=>petHappiness>=s.min)||PET_STATES[PET_STATES.length-1];
-
     const simLabel=simDelta===0?'today':'+'+simDelta+'d';
     // Dev: also allow simulating 72h for auto-confirm
     const simHours=Math.round((simNow-Date.now())/3600000);
@@ -806,7 +872,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.15':'offline'
+connected===null?'connecting…':connected?'synced r3.16':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>
@@ -921,6 +987,32 @@ connected===null?'connecting…':connected?'synced r3.15':'offline'
             )
         ),
 
+        // Coin pop animations (fixed, over everything)
+        ...coinPops.map(pop=>React.createElement('div',{
+            key:pop.id,className:'coin-pop',
+            style:{left:Math.round(pop.x)+'px',top:Math.round(pop.y)+'px'}
+        },
+            React.createElement('span',{className:'pixel-coin-art'}),
+            React.createElement('span',{className:'coin-pop-text'},'+1')
+        )),
+
+        // Shop panel — fixed right side
+        React.createElement('div',{className:'shop-panel'},
+            React.createElement('div',{className:'shop-coins'},'🪙 '+myCoins),
+            myFood>0&&React.createElement('div',{className:'shop-food'},'🍖 ×'+myFood),
+            React.createElement('div',{className:'shop-divider'}),
+            React.createElement('button',{className:'shop-btn buy',disabled:myCoins<1,
+                onPointerDown:e=>e.currentTarget.style.opacity='0.55',
+                onPointerUp:e=>{e.currentTarget.style.opacity='';buyFood();},
+                onPointerLeave:e=>e.currentTarget.style.opacity='',
+            },'buy food 1🪙'),
+            React.createElement('button',{className:'shop-btn feed',disabled:myFood<1,
+                onPointerDown:e=>e.currentTarget.style.opacity='0.55',
+                onPointerUp:e=>{e.currentTarget.style.opacity='';feedPet();},
+                onPointerLeave:e=>e.currentTarget.style.opacity='',
+            },'feed 🍖')
+        ),
+
         React.createElement('div',{className:'app'},
             React.createElement('div',{className:'app-header'},
                 React.createElement('h1',{className:'app-title'},'💳 Transactions'),
@@ -929,11 +1021,6 @@ connected===null?'connecting…':connected?'synced r3.15':'offline'
                     React.createElement('button',{className:'user-badge',onClick:()=>setSwitch(true)},
                         user[0],' ',user,' ↕')
                 )
-            ),
-            // Coin display in main area
-            React.createElement('div',{style:{display:'flex',alignItems:'center',gap:'0.35rem',marginBottom:'0.75rem'}},
-                React.createElement('span',{ref:coinStatRef,className:'pet-stat coins'},'🪙 '+myCoins+' coins'),
-                myFood>0&&React.createElement('span',{className:'pet-stat'},'🍖 ×'+myFood)
             ),
 
             // Stats: just two boxes
@@ -970,30 +1057,9 @@ connected===null?'connecting…':connected?'synced r3.15':'offline'
                   )
         ),
 
-        // Pet footer
+        // Pixel pet footer — walks back and forth
         React.createElement('div',{className:'pet-footer'},
-            React.createElement('div',{className:'pet-area'},
-                React.createElement('div',{className:'pet-face'},petState.face),
-                React.createElement('div',{className:'pet-info'},
-                    React.createElement('div',{className:'pet-name'},'🐾 buddy'),
-                    React.createElement('div',{className:'pet-status'},petState.status),
-                    React.createElement('div',{className:'pet-bar'},
-                        React.createElement('div',{className:'pet-bar-fill',style:{width:(petHappiness/10*100)+'%'}})
-                    )
-                )
-            ),
-            React.createElement('div',{className:'pet-actions'},
-                React.createElement('button',{className:'pet-btn buy',disabled:myCoins<3,
-                    onPointerDown:e=>e.currentTarget.style.opacity='0.6',
-                    onPointerUp:e=>{e.currentTarget.style.opacity='';buyFood();},
-                    onPointerLeave:e=>e.currentTarget.style.opacity='',
-                },'buy food (3🪙)'),
-                React.createElement('button',{className:'pet-btn feed',disabled:myFood<1,
-                    onPointerDown:e=>e.currentTarget.style.opacity='0.6',
-                    onPointerUp:e=>{e.currentTarget.style.opacity='';feedPet();},
-                    onPointerLeave:e=>e.currentTarget.style.opacity='',
-                },'feed 🍖'+(myFood>0?' ×'+myFood:''))
-            )
+            React.createElement(PetCanvas,{happiness:petHappiness})
         )
     );
 }

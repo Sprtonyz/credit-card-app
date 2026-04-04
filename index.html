@@ -547,18 +547,21 @@ function App(){
     const remainingFor = (u, tx, txKey) => {
         if (isAutoConf(tx.id)) return false;
         const pick = getPick(tx.id, u);
-        // TODAY: one tap = done
+        // TODAY: one tap = done. Doesn't matter what they picked or if it conflicts.
         if (isToday(txKey)) return !pick;
-        // PAST DAY
+        // PAST DAY: no pick = remaining, Unsure = remaining, anything else = done.
+        // Conflicts from past days surface as new cards — handled separately.
         if (!pick) return true;
         if (pick === 'Unsure') return true;
-        // Has a real pick — check if conflict/unsure surfaced
+        // Has any real pick on a past day — check conflict/unsure surfaced THIS session
         const conflict = isConflict(tx.id, txKey);
         const unsure   = isUnsurePinned(tx.id, txKey);
-        if (!conflict && !unsure) return false; // clean, done
-        // Conflict/unsure surfaced — needs re-resolution from this user
-        if (u === user) return !sessRes.has(tx.id); // instant local feedback
-        return true; // other user: always remaining until Firebase shows resolved
+        if (!conflict && !unsure) return false;
+        // Conflict/unsure surfaced — for current user use sessRes for instant feedback,
+        // for other user: they're done once they have ANY pick (same-day rule applies to
+        // re-resolution too — one tap = done for the day)
+        if (u === user) return !sessRes.has(tx.id);
+        return false; // other user: if they have a pick (even conflicting), they're done for today
     };
 
     // isVisible: card shown on screen if remaining for current user OR mid-animation
@@ -652,7 +655,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.2':'offline'
+connected===null?'connecting…':connected?'synced r3.3':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

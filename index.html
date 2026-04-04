@@ -191,7 +191,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.10';
+const APP_VERSION='r3.11';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -596,8 +596,11 @@ function App(){
             if (re && re.day === simDelta) return false;
         }
         // User hasn't re-picked this round yet — are they needed?
-        if (!pick) return true;             // never committed a pick
-        if (pick === 'Unsure') return true; // committed Unsure needs re-resolution
+        // Use effectivePick (committed OR last round's _re) so that users who only
+        // resolved via re-pick (no committed pick written) aren't wrongly kept pending.
+        const effective = getEffectivePick(tx.id, u);
+        if (!effective) return true;             // never picked in any round
+        if (effective === 'Unsure') return true; // effectively Unsure, needs re-resolution
         const conflict = isConflict(tx.id, txKey);
         const unsure   = isUnsurePinned(tx.id, txKey);
         return conflict || unsure;
@@ -708,7 +711,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.10':'offline'
+connected===null?'connecting…':connected?'synced r3.11':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

@@ -191,7 +191,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.8';
+const APP_VERSION='r3.9';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -325,13 +325,19 @@ function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
     const autoConf=isAutoConfirmed(sub,tx.id,nowMs);
 
     // For past-day cards, status (conflict/unsure badge) is based on the PREVIOUS
-    // round's picks — not live re-picks being made today. This prevents Tony's
-    // re-pick from changing Nugs' badge or closing her card on the same day.
-    // effectivePick: for past days, use _re from simDelta-1 if present, else committed.
+    // round's picks — never today's live re-picks.
+    // Priority: _re from simDelta-1 → _re_prev (snapshot before today's re-pick) → committed.
     const effectivePick=u=>{
         if(!past) return getSubValue(sub,u);
         const re=sub[u+'_re'];
-        if(re&&re.day===simDelta-1) return re.value??null;
+        if(re){
+            if(re.day===simDelta-1) return re.value??null;
+            if(re.day===simDelta){
+                // User already re-picked today — use the snapshot saved before they picked
+                const prev=sub[u+'_re_prev'];
+                if(prev) return prev.value??null;
+            }
+        }
         return getSubValue(sub,u);
     };
 
@@ -524,12 +530,17 @@ function App(){
 
     const isAutoConf = id => isAutoConfirmed(getSub(id), id, simNow);
 
-    // getEffectivePick: mirrors TxCard's effectivePick. For past days uses _re from
-    // simDelta-1 if present so that conflict/unsure status is based on the previous
-    // round's picks, not live re-picks being made today.
+    // getEffectivePick: mirrors TxCard's effectivePick.
+    // Priority: _re from simDelta-1 → _re_prev (snapshot before today's re-pick) → committed.
     const getEffectivePick = (id, u) => {
         const re = getSub(id)[u+'_re'];
-        if (re && re.day === simDelta-1) return re.value ?? null;
+        if (re) {
+            if (re.day === simDelta-1) return re.value ?? null;
+            if (re.day === simDelta) {
+                const prev = getSub(id)[u+'_re_prev'];
+                if (prev) return prev.value ?? null;
+            }
+        }
         return getPick(id, u);
     };
 
@@ -594,12 +605,24 @@ function App(){
         collapsing.has(tx.id) || remainingFor(user, tx, txKey);
 
     // assign: write to Firebase, collapse card visually.
-    // Past-day picks go to [user_re] so they don't overwrite committed picks and
-    // don't change the other user's conflict/unsure status until the next day.
+    // Past-day picks go to [user_re] to avoid overwriting committed picks.
+    // When starting a new round (day advanced since last _re), snapshot the current
+    // _re to _re_prev so effectivePick can still read "last round's pick" even after
+    // the new re-pick lands — preventing live status changes on the other user's screen.
     const assign = (txId, txKey, opt) => {
         setUndo(s => [...s, {txId, u:user, prev:getPick(txId,user), prevSub:getSub(txId)[user]}]);
-        const writeKey = isPast(txKey) ? user+'_re' : user;
-        save(txId, {[writeKey]: {value:opt, ts:simNow, day:simDelta}});
+        const updates = {};
+        if (isPast(txKey)) {
+            const currentRe = getSub(txId)[user+'_re'];
+            if (!currentRe || currentRe.day < simDelta) {
+                // New round — snapshot previous _re (or committed pick) to _re_prev
+                updates[user+'_re_prev'] = currentRe ?? getSub(txId)[user] ?? null;
+            }
+            updates[user+'_re'] = {value:opt, ts:simNow, day:simDelta};
+        } else {
+            updates[user] = {value:opt, ts:simNow, day:simDelta};
+        }
+        save(txId, updates);
         if (isPast(txKey)) setSessRes(r => new Set([...r, txId]));
         const timer = setTimeout(() => setCol(c => new Set([...c, txId])), 220);
         collapseTimers.current.push(timer);
@@ -682,7 +705,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.8':'offline'
+connected===null?'connecting…':connected?'synced r3.9':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>
@@ -694,39 +717,41 @@ connected===null?'connecting…':connected?'synced r3.8':'offline'
             )
         ),
 
-        // Debug panel — remove before go-live
+        // Debug panel
         React.createElement('div',{style:{background:'rgba(0,0,0,0.85)',borderBottom:'1px solid rgba(255,255,0,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.5rem',fontFamily:'monospace',color:'#fef08a',lineHeight:1.7}},
-            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'0.3rem'}},
-                React.createElement('span',null,'🐛 DEBUG'),
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.3rem'}},
+                React.createElement('span',null,'🐛 '+user+' | day '+simDelta+' | '+
+                    (lastWriteError?'❌ write err':'✅ synced')+' | '+
+                    'me:'+myRemaining+' '+otherUser+':'+otherRemaining),
                 React.createElement('button',{
                     style:{fontSize:'0.5rem',padding:'0.15rem 0.5rem',background:'rgba(255,255,0,0.15)',border:'1px solid rgba(255,255,0,0.3)',borderRadius:'4px',color:'#fef08a',cursor:'pointer',fontFamily:'monospace'},
                     onClick:()=>{
-                        const lines=[
-                            'user:'+user+' simDelta:'+simDelta+' simNowOffset:'+(simNow-Date.now())+'ms',
-                            'myRemaining:'+myRemaining+' '+otherUser+'Remaining:'+otherRemaining,
-                            'subsKeys:'+Object.keys(subs).join(','),
-                            'RAW_SUBS:'+JSON.stringify(subs),
-                            ...loadedKeys.map(txKey=>'day'+txKey+':'+
+                        const lines=loadedKeys.map(txKey=>{
+                            const rel=parseInt(txKey)-simDelta;
+                            const dayLabel=rel===0?'today':rel===-1?'yesterday':Math.abs(rel)+'d ago';
+                            return 'DAY '+txKey+' ('+dayLabel+'):\n'+
                                 (TX[txKey]||[]).map(tx=>{
                                     const sub=getSub(tx.id);
-                                    return tx.id+
-                                        '[T:'+getSubValue(sub,'Tony')+
-                                        ' Tts:'+(sub.Tony?.ts?Math.round((simNow-sub.Tony.ts)/3600000)+'h':'null')+
-                                        ' N:'+getSubValue(sub,'Nugs')+
-                                        ' Nts:'+(sub.Nugs?.ts?Math.round((simNow-sub.Nugs.ts)/3600000)+'h':'null')+
-                                        ' auto:'+!!isAutoConf(tx.id)+
-                                        ' conf:'+isConflict(tx.id,txKey)+
-                                        ' uns:'+isUnsurePinned(tx.id,txKey)+
-                                        ' myR:'+remainingFor(user,tx,txKey)+
-                                        ' otherR:'+remainingFor(otherUser,tx,txKey)+']';
-                                }).join('|')
-                            )
-                        ];
-                        const text=lines.join('\n');
+                                    const tEff=getEffectivePick(tx.id,'Tony');
+                                    const nEff=getEffectivePick(tx.id,'Nugs');
+                                    const tRe=sub['Tony_re'];
+                                    const nRe=sub['Nugs_re'];
+                                    const conf=isConflict(tx.id,txKey);
+                                    const uns=isUnsurePinned(tx.id,txKey);
+                                    const myR=remainingFor(user,tx,txKey);
+                                    const otherR=remainingFor(otherUser,tx,txKey);
+                                    const status=conf?'CONFLICT':uns?'UNSURE':(!myR&&!otherR)?'done':'pending';
+                                    return '  '+tx.desc+'\n'+
+                                        '    Tony: '+( tEff||'—')+( tRe?' (re-pick: '+tRe.value+' d'+tRe.day+')':'')+'\n'+
+                                        '    Nugs: '+( nEff||'—')+( nRe?' (re-pick: '+nRe.value+' d'+nRe.day+')':'')+'\n'+
+                                        '    status: '+status+' | '+user+' remaining: '+myR+' | '+otherUser+' remaining: '+otherR;
+                                }).join('\n');
+                        });
+                        const text=['📋 Debug log — '+user+' — day '+simDelta,...lines].join('\n\n');
                         try{
                             const ta=document.createElement('textarea');
-                            ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
-                            document.body.appendChild(ta); ta.select();
+                            ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+                            document.body.appendChild(ta);ta.select();
                             document.execCommand('copy');
                             document.body.removeChild(ta);
                             alert('Copied!');
@@ -734,36 +759,36 @@ connected===null?'connecting…':connected?'synced r3.8':'offline'
                     }
                 },'📋 copy log')
             ),
-            React.createElement('div',null,'👤 '+user+' | simDelta:'+simDelta+' | simNow+'+(simNow-Date.now())+'ms'),
-            React.createElement('div',{style:{color:lastWriteError?'#f87171':'#4ade80'}},
-                lastWriteError?'❌ WRITE FAIL: '+lastWriteError : lastWriteOk?'✅ last write ok: '+lastWriteOk:'⏳ no writes yet'),
-            React.createElement('div',null,'📊 myR:'+myRemaining+' | '+otherUser+'R:'+otherRemaining),
-            React.createElement('div',null,'subs:'+Object.keys(subs).join(',')),
-            ...loadedKeys.map(txKey=>
-                React.createElement('div',{key:txKey,style:{borderTop:'1px solid rgba(255,255,0,0.1)',paddingTop:'0.2rem',marginTop:'0.2rem'}},
-                    React.createElement('span',{style:{color:'#a3a3a3'}},'DAY '+txKey+':'),
+            ...loadedKeys.map(txKey=>{
+                const rel=parseInt(txKey)-simDelta;
+                const dayLabel=rel===0?'today':rel===-1?'yesterday':Math.abs(rel)+'d ago';
+                return React.createElement('div',{key:txKey,style:{borderTop:'1px solid rgba(255,255,0,0.08)',paddingTop:'0.2rem',marginTop:'0.2rem'}},
+                    React.createElement('span',{style:{color:'#a3a3a3',letterSpacing:'0.1em'}},dayLabel.toUpperCase()+' '),
                     ...(TX[txKey]||[]).map(tx=>{
                         const sub=getSub(tx.id);
-                        const tPick=getSubValue(sub,'Tony');
-                        const nPick=getSubValue(sub,'Nugs');
-                        const tTs=sub.Tony?.ts;
-                        const nTs=sub.Nugs?.ts;
-                        const auto=isAutoConf(tx.id);
+                        const tEff=getEffectivePick(tx.id,'Tony');
+                        const nEff=getEffectivePick(tx.id,'Nugs');
+                        const tRe=sub['Tony_re'];
+                        const nRe=sub['Nugs_re'];
                         const conf=isConflict(tx.id,txKey);
                         const uns=isUnsurePinned(tx.id,txKey);
                         const myR=remainingFor(user,tx,txKey);
                         const otherR=remainingFor(otherUser,tx,txKey);
-                        const color=auto?'#9ca3af':conf?'#f87171':uns?'#fbbf24':(!myR&&!otherR)?'#4b5563':'#fef08a';
-                        return React.createElement('div',{key:tx.id,style:{paddingLeft:'0.4rem',color}},
-                            tx.id+
-                            ' T:'+tPick+'('+(tTs?Math.round((simNow-tTs)/3600000)+'h':'null')+')'+
-                            ' N:'+nPick+'('+(nTs?Math.round((simNow-nTs)/3600000)+'h':'null')+')'+
-                            ' auto:'+!!auto+' conf:'+conf+' uns:'+uns+
-                            ' myR:'+myR+' otherR:'+otherR
+                        const color=conf?'#f87171':uns?'#fbbf24':(!myR&&!otherR)?'#4b5563':'#fef08a';
+                        const reNote=[];
+                        if(tRe) reNote.push('T→'+tRe.value+'(d'+tRe.day+')');
+                        if(nRe) reNote.push('N→'+nRe.value+'(d'+nRe.day+')');
+                        return React.createElement('div',{key:tx.id,style:{paddingLeft:'0.5rem',color,display:'flex',gap:'0.5rem',flexWrap:'wrap'}},
+                            React.createElement('span',null,tx.desc.slice(0,22)),
+                            React.createElement('span',{style:{color:'#93c5fd'}},'Tony:'+( tEff||'—')),
+                            React.createElement('span',{style:{color:'#f9a8d4'}},'Nugs:'+( nEff||'—')),
+                            reNote.length?React.createElement('span',{style:{color:'#a78bfa','font-style':'italic'}},reNote.join(' ')):null,
+                            React.createElement('span',null,(conf?'⚠conflict':uns?'?unsure':(!myR&&!otherR)?'✓done':'…')+
+                                ' me:'+myR+' '+otherUser+':'+otherR)
                         );
                     })
-                )
-            )
+                );
+            })
         ),
 
                 // Dev banner

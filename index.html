@@ -191,7 +191,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.13';
+const APP_VERSION='r3.14';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -718,7 +718,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.13':'offline'
+connected===null?'connecting…':connected?'synced r3.14':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>
@@ -730,81 +730,69 @@ connected===null?'connecting…':connected?'synced r3.13':'offline'
             )
         ),
 
-        // Debug panel
-        React.createElement('div',{style:{background:'rgba(0,0,0,0.9)',borderBottom:'1px solid rgba(255,255,0,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.5rem',fontFamily:'monospace',color:'#fef08a',lineHeight:1.8}},
-            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.4rem'}},
-                React.createElement('span',{style:{color:'#fbbf24'}},'🐛 '+user+' | day '+simDelta+' | '+(lastWriteError?'❌ err':'✅ ok')+' | me:'+myRemaining+' '+otherUser+':'+otherRemaining),
+        // Debug panel — compact: done rows collapse to one line, broken rows show full detail
+        React.createElement('div',{style:{background:'rgba(0,0,0,0.9)',borderBottom:'1px solid rgba(255,255,0,0.15)',padding:'0.35rem 0.75rem',fontSize:'0.48rem',fontFamily:'monospace',color:'#fef08a',maxHeight:'180px',overflowY:'auto'}},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.25rem'}},
+                React.createElement('span',{style:{color:'#fbbf24'}},'🐛 '+user+' | d'+simDelta+' | '+(lastWriteError?'❌':'✅')+' | me:'+myRemaining+' '+otherUser+':'+otherRemaining),
                 React.createElement('button',{
-                    style:{fontSize:'0.5rem',padding:'0.15rem 0.5rem',background:'rgba(255,255,0,0.15)',border:'1px solid rgba(255,255,0,0.3)',borderRadius:'4px',color:'#fef08a',cursor:'pointer',fontFamily:'monospace'},
+                    style:{fontSize:'0.48rem',padding:'0.1rem 0.4rem',background:'rgba(255,255,0,0.12)',border:'1px solid rgba(255,255,0,0.25)',borderRadius:'3px',color:'#fef08a',cursor:'pointer',fontFamily:'monospace',flexShrink:0},
                     onClick:()=>{
-                        // Helper to format a pick field
-                        const fmt=(f)=>f?f.value+'(d'+f.day+')':'—';
+                        const fmt=f=>f?f.value+'(d'+f.day+')':'—';
                         const lines=loadedKeys.map(txKey=>{
                             const rel=parseInt(txKey)-simDelta;
                             const dayLabel=rel===0?'today':rel===-1?'yesterday':Math.abs(rel)+'d ago';
                             return '[DAY '+txKey+' — '+dayLabel+']\n'+
                                 (TX[txKey]||[]).map(tx=>{
                                     const sub=getSub(tx.id);
-                                    const tCom=sub['Tony'];   const nCom=sub['Nugs'];
-                                    const tRe =sub['Tony_re'];const nRe =sub['Nugs_re'];
-                                    const tPrv=sub['Tony_re_prev'];const nPrv=sub['Nugs_re_prev'];
-                                    const tEff=getEffectivePick(tx.id,'Tony');
-                                    const nEff=getEffectivePick(tx.id,'Nugs');
-                                    const conf=isConflict(tx.id,txKey);
-                                    const uns=isUnsurePinned(tx.id,txKey);
-                                    const myR=remainingFor(user,tx,txKey);
-                                    const otherR=remainingFor(otherUser,tx,txKey);
+                                    const tEff=getEffectivePick(tx.id,'Tony'),nEff=getEffectivePick(tx.id,'Nugs');
+                                    const conf=isConflict(tx.id,txKey),uns=isUnsurePinned(tx.id,txKey);
+                                    const myR=remainingFor(user,tx,txKey),otherR=remainingFor(otherUser,tx,txKey);
                                     const status=conf?'CONFLICT':uns?'UNSURE':(!myR&&!otherR)?'done':'pending';
                                     return '  '+tx.desc+'\n'+
-                                        '    committed : Tony='+fmt(tCom)+' | Nugs='+fmt(nCom)+'\n'+
-                                        '    re        : Tony='+fmt(tRe) +' | Nugs='+fmt(nRe)+'\n'+
-                                        '    re_prev   : Tony='+fmt(tPrv)+' | Nugs='+fmt(nPrv)+'\n'+
-                                        '    effective : Tony='+( tEff||'—')+' | Nugs='+( nEff||'—')+'\n'+
+                                        '    committed : Tony='+fmt(sub['Tony'])  +' | Nugs='+fmt(sub['Nugs'])+'\n'+
+                                        '    re        : Tony='+fmt(sub['Tony_re'])+' | Nugs='+fmt(sub['Nugs_re'])+'\n'+
+                                        '    re_prev   : Tony='+fmt(sub['Tony_re_prev'])+' | Nugs='+fmt(sub['Nugs_re_prev'])+'\n'+
+                                        '    effective : Tony='+(tEff||'—')+' | Nugs='+(nEff||'—')+'\n'+
                                         '    → '+status+' | '+user+':'+myR+' | '+otherUser+':'+otherR;
                                 }).join('\n');
                         });
                         const text=['📋 Debug — '+user+' — day '+simDelta,...lines].join('\n\n');
-                        try{
-                            const ta=document.createElement('textarea');
-                            ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
-                            document.body.appendChild(ta);ta.select();
-                            document.execCommand('copy');
-                            document.body.removeChild(ta);
-                            alert('Copied!');
-                        }catch(e){alert(text);}
+                        try{const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);alert('Copied!');}catch(e){alert(text);}
                     }
-                },'📋 copy log')
+                },'📋 copy')
             ),
             ...loadedKeys.map(txKey=>{
                 const rel=parseInt(txKey)-simDelta;
-                const dayLabel=rel===0?'today':rel===-1?'yesterday':Math.abs(rel)+'d ago';
-                return React.createElement('div',{key:txKey,style:{borderTop:'1px solid rgba(255,255,0,0.08)',paddingTop:'0.25rem',marginTop:'0.25rem'}},
-                    React.createElement('span',{style:{color:'#6b7280',letterSpacing:'0.1em',textTransform:'uppercase'}},dayLabel+' '),
-                    ...(TX[txKey]||[]).map(tx=>{
-                        const sub=getSub(tx.id);
-                        const tCom=sub['Tony'];   const nCom=sub['Nugs'];
-                        const tRe =sub['Tony_re'];const nRe =sub['Nugs_re'];
-                        const tPrv=sub['Tony_re_prev'];const nPrv=sub['Nugs_re_prev'];
-                        const tEff=getEffectivePick(tx.id,'Tony');
-                        const nEff=getEffectivePick(tx.id,'Nugs');
-                        const conf=isConflict(tx.id,txKey);
-                        const uns=isUnsurePinned(tx.id,txKey);
-                        const myR=remainingFor(user,tx,txKey);
-                        const otherR=remainingFor(otherUser,tx,txKey);
-                        const rowColor=conf?'#f87171':uns?'#fbbf24':(!myR&&!otherR)?'#374151':'#fef08a';
-                        const fmt=f=>f?f.value+'(d'+f.day+')':'—';
-                        return React.createElement('div',{key:tx.id,style:{marginLeft:'0.4rem',marginBottom:'0.2rem',borderLeft:'2px solid '+rowColor,paddingLeft:'0.4rem'}},
-                            React.createElement('div',{style:{color:rowColor,fontWeight:'bold'}},
-                                tx.desc.slice(0,28)+' '+(conf?'⚠CONFLICT':uns?'?UNSURE':(!myR&&!otherR)?'✓done':'…pending')+
-                                ' [me:'+myR+' '+otherUser+':'+otherR+']'),
-                            React.createElement('div',{style:{color:'#9ca3af'}},
-                                'committed  T='+fmt(tCom)+' N='+fmt(nCom)),
-                            (tRe||nRe)?React.createElement('div',{style:{color:'#a78bfa'}},
-                                're         T='+fmt(tRe)+' N='+fmt(nRe)):null,
-                            (tPrv||nPrv)?React.createElement('div',{style:{color:'#6b7280'}},
-                                're_prev    T='+fmt(tPrv)+' N='+fmt(nPrv)):null,
-                            React.createElement('div',{style:{color:'#fef08a'}},
-                                'effective  T='+(tEff||'—')+' N='+(nEff||'—'))
+                const dayLabel=rel===0?'today':rel===-1?'yest':Math.abs(rel)+'d ago';
+                const txList=TX[txKey]||[];
+                const fmt=f=>f?f.value+'(d'+f.day+')':'—';
+                // Separate done vs attention-needed for this day
+                const rows=txList.map(tx=>{
+                    const sub=getSub(tx.id);
+                    const tEff=getEffectivePick(tx.id,'Tony'),nEff=getEffectivePick(tx.id,'Nugs');
+                    const conf=isConflict(tx.id,txKey),uns=isUnsurePinned(tx.id,txKey);
+                    const myR=remainingFor(user,tx,txKey),otherR=remainingFor(otherUser,tx,txKey);
+                    const done=!conf&&!uns&&!myR&&!otherR;
+                    return {tx,sub,tEff,nEff,conf,uns,myR,otherR,done};
+                });
+                const doneRows=rows.filter(r=>r.done);
+                const badRows=rows.filter(r=>!r.done);
+                return React.createElement('div',{key:txKey,style:{borderTop:'1px solid rgba(255,255,255,0.05)',paddingTop:'0.15rem',marginTop:'0.15rem'}},
+                    // Day label + done summary on one line
+                    React.createElement('div',{style:{color:'#4b5563',display:'flex',gap:'0.4rem',flexWrap:'wrap'}},
+                        React.createElement('span',null,dayLabel.toUpperCase()),
+                        doneRows.length?React.createElement('span',{style:{color:'#374151'}},
+                            doneRows.map(r=>r.tx.desc.split(' ')[0]).join(' ')+' ✓'):null
+                    ),
+                    // Full detail only for non-done rows
+                    ...badRows.map(({tx,sub,tEff,nEff,conf,uns,myR,otherR})=>{
+                        const color=conf?'#f87171':uns?'#fbbf24':'#fef08a';
+                        return React.createElement('div',{key:tx.id,style:{marginLeft:'0.3rem',marginTop:'0.1rem',borderLeft:'2px solid '+color,paddingLeft:'0.35rem'}},
+                            React.createElement('div',{style:{color}},tx.desc.slice(0,26)+' '+(conf?'⚠CONFLICT':uns?'?UNSURE':'…pending')+' [me:'+myR+' '+otherUser+':'+otherR+']'),
+                            React.createElement('div',{style:{color:'#6b7280'}},'com T='+fmt(sub['Tony'])+' N='+fmt(sub['Nugs'])),
+                            React.createElement('div',{style:{color:'#a78bfa'}},'re  T='+fmt(sub['Tony_re'])+' N='+fmt(sub['Nugs_re'])),
+                            React.createElement('div',{style:{color:'#4b5563'}},'prv T='+fmt(sub['Tony_re_prev'])+' N='+fmt(sub['Nugs_re_prev'])),
+                            React.createElement('div',{style:{color:'#fef08a'}},'eff T='+(tEff||'—')+' N='+(nEff||'—'))
                         );
                     })
                 );

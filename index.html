@@ -191,7 +191,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.7';
+const APP_VERSION='r3.8';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -569,26 +569,24 @@ function App(){
     const remainingFor = (u, tx, txKey) => {
         if (isAutoConf(tx.id)) return false;
         const pick = getPick(tx.id, u);
-        // TODAY: one tap = done. Doesn't matter what they picked or if it conflicts.
+        // TODAY: one tap to committed pick = done.
         if (isToday(txKey)) return !pick;
-        // PAST DAY: no pick = remaining, Unsure = remaining, anything else = done.
-        // Conflicts from past days surface as new cards — handled separately.
-        if (!pick) return true;
-        if (pick === 'Unsure') return true;
-        // Has any real pick on a past day — check conflict/unsure surfaced THIS session
+        // PAST DAY: check re-pick status FIRST before any early returns.
+        // Re-picks go to _re slot; sessRes gives current user instant feedback.
+        // This must come before !pick / Unsure checks so that tapping Unsure
+        // (or tapping with no prior committed pick) still decrements remaining.
+        if (u === user) {
+            if (sessRes.has(tx.id)) return false;
+        } else {
+            const re = getSub(tx.id)[u+'_re'];
+            if (re && re.day === simDelta) return false;
+        }
+        // User hasn't re-picked this round yet — are they needed?
+        if (!pick) return true;             // never committed a pick
+        if (pick === 'Unsure') return true; // committed Unsure needs re-resolution
         const conflict = isConflict(tx.id, txKey);
         const unsure   = isUnsurePinned(tx.id, txKey);
-        if (!conflict && !unsure) return false;
-        // Conflict/unsure surfaced — both users need to re-tap.
-        // Current user: sessRes gives instant visual feedback after tap.
-        // Other user: check if they've re-tapped on the current simDelta day.
-        //   pick.day stores which simDelta day the tap was made. If it's before
-        //   the current day, they haven't resolved it yet this day → remaining.
-        //   Once they tap today their day field updates → no longer remaining.
-        if (u === user) return !sessRes.has(tx.id);
-        // Other user: remaining until they write a _re pick for the current day
-        const otherRe = getSub(tx.id)[u+'_re'];
-        return !(otherRe && otherRe.day === simDelta);
+        return conflict || unsure;
     };
 
     // isVisible: card shown on screen if remaining for current user OR mid-animation
@@ -684,7 +682,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.7':'offline'
+connected===null?'connecting…':connected?'synced r3.8':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

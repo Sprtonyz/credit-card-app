@@ -191,7 +191,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.12';
+const APP_VERSION='r3.13';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -718,7 +718,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.12':'offline'
+connected===null?'connecting…':connected?'synced r3.13':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>
@@ -731,36 +731,39 @@ connected===null?'connecting…':connected?'synced r3.12':'offline'
         ),
 
         // Debug panel
-        React.createElement('div',{style:{background:'rgba(0,0,0,0.85)',borderBottom:'1px solid rgba(255,255,0,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.5rem',fontFamily:'monospace',color:'#fef08a',lineHeight:1.7}},
-            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.3rem'}},
-                React.createElement('span',null,'🐛 '+user+' | day '+simDelta+' | '+
-                    (lastWriteError?'❌ write err':'✅ synced')+' | '+
-                    'me:'+myRemaining+' '+otherUser+':'+otherRemaining),
+        React.createElement('div',{style:{background:'rgba(0,0,0,0.9)',borderBottom:'1px solid rgba(255,255,0,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.5rem',fontFamily:'monospace',color:'#fef08a',lineHeight:1.8}},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.4rem'}},
+                React.createElement('span',{style:{color:'#fbbf24'}},'🐛 '+user+' | day '+simDelta+' | '+(lastWriteError?'❌ err':'✅ ok')+' | me:'+myRemaining+' '+otherUser+':'+otherRemaining),
                 React.createElement('button',{
                     style:{fontSize:'0.5rem',padding:'0.15rem 0.5rem',background:'rgba(255,255,0,0.15)',border:'1px solid rgba(255,255,0,0.3)',borderRadius:'4px',color:'#fef08a',cursor:'pointer',fontFamily:'monospace'},
                     onClick:()=>{
+                        // Helper to format a pick field
+                        const fmt=(f)=>f?f.value+'(d'+f.day+')':'—';
                         const lines=loadedKeys.map(txKey=>{
                             const rel=parseInt(txKey)-simDelta;
                             const dayLabel=rel===0?'today':rel===-1?'yesterday':Math.abs(rel)+'d ago';
-                            return 'DAY '+txKey+' ('+dayLabel+'):\n'+
+                            return '[DAY '+txKey+' — '+dayLabel+']\n'+
                                 (TX[txKey]||[]).map(tx=>{
                                     const sub=getSub(tx.id);
+                                    const tCom=sub['Tony'];   const nCom=sub['Nugs'];
+                                    const tRe =sub['Tony_re'];const nRe =sub['Nugs_re'];
+                                    const tPrv=sub['Tony_re_prev'];const nPrv=sub['Nugs_re_prev'];
                                     const tEff=getEffectivePick(tx.id,'Tony');
                                     const nEff=getEffectivePick(tx.id,'Nugs');
-                                    const tRe=sub['Tony_re'];
-                                    const nRe=sub['Nugs_re'];
                                     const conf=isConflict(tx.id,txKey);
                                     const uns=isUnsurePinned(tx.id,txKey);
                                     const myR=remainingFor(user,tx,txKey);
                                     const otherR=remainingFor(otherUser,tx,txKey);
                                     const status=conf?'CONFLICT':uns?'UNSURE':(!myR&&!otherR)?'done':'pending';
                                     return '  '+tx.desc+'\n'+
-                                        '    Tony: '+( tEff||'—')+( tRe?' (re-pick: '+tRe.value+' d'+tRe.day+')':'')+'\n'+
-                                        '    Nugs: '+( nEff||'—')+( nRe?' (re-pick: '+nRe.value+' d'+nRe.day+')':'')+'\n'+
-                                        '    status: '+status+' | '+user+' remaining: '+myR+' | '+otherUser+' remaining: '+otherR;
+                                        '    committed : Tony='+fmt(tCom)+' | Nugs='+fmt(nCom)+'\n'+
+                                        '    re        : Tony='+fmt(tRe) +' | Nugs='+fmt(nRe)+'\n'+
+                                        '    re_prev   : Tony='+fmt(tPrv)+' | Nugs='+fmt(nPrv)+'\n'+
+                                        '    effective : Tony='+( tEff||'—')+' | Nugs='+( nEff||'—')+'\n'+
+                                        '    → '+status+' | '+user+':'+myR+' | '+otherUser+':'+otherR;
                                 }).join('\n');
                         });
-                        const text=['📋 Debug log — '+user+' — day '+simDelta,...lines].join('\n\n');
+                        const text=['📋 Debug — '+user+' — day '+simDelta,...lines].join('\n\n');
                         try{
                             const ta=document.createElement('textarea');
                             ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
@@ -775,29 +778,33 @@ connected===null?'connecting…':connected?'synced r3.12':'offline'
             ...loadedKeys.map(txKey=>{
                 const rel=parseInt(txKey)-simDelta;
                 const dayLabel=rel===0?'today':rel===-1?'yesterday':Math.abs(rel)+'d ago';
-                return React.createElement('div',{key:txKey,style:{borderTop:'1px solid rgba(255,255,0,0.08)',paddingTop:'0.2rem',marginTop:'0.2rem'}},
-                    React.createElement('span',{style:{color:'#a3a3a3',letterSpacing:'0.1em'}},dayLabel.toUpperCase()+' '),
+                return React.createElement('div',{key:txKey,style:{borderTop:'1px solid rgba(255,255,0,0.08)',paddingTop:'0.25rem',marginTop:'0.25rem'}},
+                    React.createElement('span',{style:{color:'#6b7280',letterSpacing:'0.1em',textTransform:'uppercase'}},dayLabel+' '),
                     ...(TX[txKey]||[]).map(tx=>{
                         const sub=getSub(tx.id);
+                        const tCom=sub['Tony'];   const nCom=sub['Nugs'];
+                        const tRe =sub['Tony_re'];const nRe =sub['Nugs_re'];
+                        const tPrv=sub['Tony_re_prev'];const nPrv=sub['Nugs_re_prev'];
                         const tEff=getEffectivePick(tx.id,'Tony');
                         const nEff=getEffectivePick(tx.id,'Nugs');
-                        const tRe=sub['Tony_re'];
-                        const nRe=sub['Nugs_re'];
                         const conf=isConflict(tx.id,txKey);
                         const uns=isUnsurePinned(tx.id,txKey);
                         const myR=remainingFor(user,tx,txKey);
                         const otherR=remainingFor(otherUser,tx,txKey);
-                        const color=conf?'#f87171':uns?'#fbbf24':(!myR&&!otherR)?'#4b5563':'#fef08a';
-                        const reNote=[];
-                        if(tRe) reNote.push('T→'+tRe.value+'(d'+tRe.day+')');
-                        if(nRe) reNote.push('N→'+nRe.value+'(d'+nRe.day+')');
-                        return React.createElement('div',{key:tx.id,style:{paddingLeft:'0.5rem',color,display:'flex',gap:'0.5rem',flexWrap:'wrap'}},
-                            React.createElement('span',null,tx.desc.slice(0,22)),
-                            React.createElement('span',{style:{color:'#93c5fd'}},'Tony:'+( tEff||'—')),
-                            React.createElement('span',{style:{color:'#f9a8d4'}},'Nugs:'+( nEff||'—')),
-                            reNote.length?React.createElement('span',{style:{color:'#a78bfa','font-style':'italic'}},reNote.join(' ')):null,
-                            React.createElement('span',null,(conf?'⚠conflict':uns?'?unsure':(!myR&&!otherR)?'✓done':'…')+
-                                ' me:'+myR+' '+otherUser+':'+otherR)
+                        const rowColor=conf?'#f87171':uns?'#fbbf24':(!myR&&!otherR)?'#374151':'#fef08a';
+                        const fmt=f=>f?f.value+'(d'+f.day+')':'—';
+                        return React.createElement('div',{key:tx.id,style:{marginLeft:'0.4rem',marginBottom:'0.2rem',borderLeft:'2px solid '+rowColor,paddingLeft:'0.4rem'}},
+                            React.createElement('div',{style:{color:rowColor,fontWeight:'bold'}},
+                                tx.desc.slice(0,28)+' '+(conf?'⚠CONFLICT':uns?'?UNSURE':(!myR&&!otherR)?'✓done':'…pending')+
+                                ' [me:'+myR+' '+otherUser+':'+otherR+']'),
+                            React.createElement('div',{style:{color:'#9ca3af'}},
+                                'committed  T='+fmt(tCom)+' N='+fmt(nCom)),
+                            (tRe||nRe)?React.createElement('div',{style:{color:'#a78bfa'}},
+                                're         T='+fmt(tRe)+' N='+fmt(nRe)):null,
+                            (tPrv||nPrv)?React.createElement('div',{style:{color:'#6b7280'}},
+                                're_prev    T='+fmt(tPrv)+' N='+fmt(nPrv)):null,
+                            React.createElement('div',{style:{color:'#fef08a'}},
+                                'effective  T='+(tEff||'—')+' N='+(nEff||'—'))
                         );
                     })
                 );

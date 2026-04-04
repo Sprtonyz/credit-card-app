@@ -175,6 +175,12 @@
         /* Pet debug row */
         .pet-debug-row{background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.04);padding:0.22rem 0.75rem;display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;}
         @keyframes xpPop{0%{transform:scale(1)}40%{transform:scale(1.3);color:#c4b5fd}100%{transform:scale(1)}}
+        /* Level-up VFX */
+        .levelup-overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:600;}
+        .levelup-badge{font-family:'Fraunces',serif;font-size:2.4rem;font-weight:600;color:#a78bfa;text-align:center;line-height:1.2;animation:levelUpPop 2.4s ease-out forwards;text-shadow:0 0 40px rgba(167,139,250,0.9),0 0 80px rgba(167,139,250,0.4);}
+        .levelup-sub{font-size:0.72rem;color:#c4b5fd;letter-spacing:0.2em;text-transform:uppercase;animation:levelUpFade 2.4s ease-out forwards;margin-top:0.3rem;}
+        @keyframes levelUpPop{0%{transform:scale(0.3) translateY(30px);opacity:0}20%{transform:scale(1.18) translateY(-4px);opacity:1}35%{transform:scale(0.96) translateY(0);opacity:1}65%{transform:scale(1) translateY(0);opacity:1}100%{transform:scale(0.85) translateY(-24px);opacity:0}}
+        @keyframes levelUpFade{0%,15%{opacity:0}30%{opacity:1}65%{opacity:1}100%{opacity:0}}
 
         /* Pixel coin pop */
         .coin-pop{position:fixed;pointer-events:none;z-index:500;display:flex;align-items:center;gap:5px;transform:translateX(-50%);animation:coinFloat 0.85s ease-out forwards;}
@@ -231,7 +237,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.18';
+const APP_VERSION='r3.19';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -601,7 +607,9 @@ function App(){
     const [petType,setPetType]=useState('cat');
     const [coinPops,setCoinPops]=useState([]);
     const [showPetDebug,setShowPetDebug]=useState(false);
+    const [levelUpMsg,setLevelUpMsg]=useState(null); // e.g. 'Level 3!' while animating
     const confettiFiredRef=useRef(false);
+    const prevLevelRef=useRef(1);
 
     const doneMsg=useRef(DONE[Math.floor(Math.random()*DONE.length)]);
     // For dev: simulate time passing for 72h auto-confirm
@@ -668,14 +676,14 @@ function App(){
         return()=>ref.off('value',h);
     },[user]);
 
-    // Per-user pet listener (type + hp + xp)
+    // Per-user pet listener (type + hp + xp) — HP always capped at 100
     useEffect(()=>{
         if(!user)return;
         const ref=petRef.child(user);
         const h=ref.on('value',snap=>{
             const val=snap.val();
             if(val){
-                setPetHp(val.hp??60);
+                setPetHp(Math.min(100,Math.max(0,val.hp??60)));
                 setPetXp(val.xp??0);
                 setPetType(val.type??(user==='Tony'?'cat':'dog'));
             } else {
@@ -685,17 +693,27 @@ function App(){
         return()=>ref.off('value',h);
     },[user]);
 
-    // HP drain when day advances (15 HP per day)
+    // HP drain when day advances (15 HP per day, capped 0–100)
     useEffect(()=>{
         if(!user)return;
         petRef.child(user).transaction(pet=>{
-            if(!pet)return{type:user==='Tony'?'cat':'dog',hp:60,lastDrainDay:simDelta};
+            if(!pet)return{type:user==='Tony'?'cat':'dog',hp:60,xp:0,lastDrainDay:simDelta};
             const last=pet.lastDrainDay??simDelta;
             const days=Math.max(0,simDelta-last);
-            if(days===0)return undefined; // no change
-            return{...pet,hp:Math.max(0,(pet.hp??60)-days*15),lastDrainDay:simDelta};
+            if(days===0)return undefined;
+            return{...pet,hp:Math.min(100,Math.max(0,(pet.hp??60)-days*15)),lastDrainDay:simDelta};
         });
     },[simDelta,user]);
+
+    // Level-up detection — runs whenever XP changes, always at top level (safe re: hooks order)
+    useEffect(()=>{
+        const newLevel=Math.floor(Math.sqrt(petXp/10))+1;
+        if(newLevel>prevLevelRef.current&&prevLevelRef.current>0){
+            setLevelUpMsg('Level '+newLevel+'!');
+            setTimeout(()=>setLevelUpMsg(null),2400);
+        }
+        prevLevelRef.current=newLevel;
+    },[petXp]);
 
     // Save a single tx submission to Firebase (merge with existing)
     const [lastWriteError,setLastWriteError]=useState(null);
@@ -850,8 +868,8 @@ function App(){
     const feedPet=()=>{
         if(myFood<1)return;
         foodRef.child(user).transaction(n=>Math.max(0,(n||0)-1));
-        petRef.child(user+'/hp').transaction(n=>Math.min(100,(n||0)+10));
-        petRef.child(user+'/xp').transaction(n=>(n||0)+10);
+        petRef.child(user+'/hp').transaction(n=>Math.min(100,Math.max(0,(n||0)+10)));
+        petRef.child(user+'/xp').transaction(n=>Math.max(0,(n||0)+10));
     };
 
     const changePetType=type=>{
@@ -942,7 +960,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.18':'offline'
+connected===null?'connecting…':connected?'synced r3.19':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>
@@ -1082,6 +1100,12 @@ connected===null?'connecting…':connected?'synced r3.18':'offline'
             React.createElement('button',{className:'mac-toggle',onClick:()=>setShowMac(v=>!v),title:'Toggle Macquarie'},
                 showMac?'›':'‹'
             )
+        ),
+
+        // Level-up VFX overlay
+        levelUpMsg&&React.createElement('div',{className:'levelup-overlay'},
+            React.createElement('div',{className:'levelup-badge'},'✦ '+levelUpMsg+' ✦'),
+            React.createElement('div',{className:'levelup-sub'},'pet levelled up')
         ),
 
         // Coin pop animations (fixed, over everything)

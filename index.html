@@ -191,7 +191,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.11';
+const APP_VERSION='r3.12';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -324,18 +324,21 @@ function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
     const otherUser=getOtherUser(currentUser);
     const autoConf=isAutoConfirmed(sub,tx.id,nowMs);
 
-    // For past-day cards, status (conflict/unsure badge) is based on the PREVIOUS
-    // round's picks — never today's live re-picks.
-    // Priority: _re from simDelta-1 → _re_prev (snapshot before today's re-pick) → committed.
+    // For past-day cards, status uses the most recent re-pick (any past day), but
+    // never today's live re-pick (to prevent same-day status changes on the other device).
+    // Priority: today's snapshot (_re_prev) → any past _re → committed pick.
     const effectivePick=u=>{
         if(!past) return getSubValue(sub,u);
         const re=sub[u+'_re'];
         if(re){
-            if(re.day===simDelta-1) return re.value??null;
             if(re.day===simDelta){
-                // User already re-picked today — use the snapshot saved before they picked
+                // Today's re-pick: use the snapshot of what was there before
                 const prev=sub[u+'_re_prev'];
                 if(prev) return prev.value??null;
+                // No snapshot yet — fall through to committed
+            } else if(re.day<simDelta){
+                // Any past re-pick: use it directly (fixes tasks re-surfacing after d+2)
+                return re.value??null;
             }
         }
         return getSubValue(sub,u);
@@ -534,14 +537,18 @@ function App(){
     const isAutoConf = id => isAutoConfirmed(getSub(id), id, simNow);
 
     // getEffectivePick: mirrors TxCard's effectivePick.
-    // Priority: _re from simDelta-1 → _re_prev (snapshot before today's re-pick) → committed.
+    // Uses the most recent past re-pick, but never today's live re-pick.
+    // Priority: today's snapshot (_re_prev) → any past _re → committed pick.
     const getEffectivePick = (id, u) => {
         const re = getSub(id)[u+'_re'];
         if (re) {
-            if (re.day === simDelta-1) return re.value ?? null;
             if (re.day === simDelta) {
                 const prev = getSub(id)[u+'_re_prev'];
                 if (prev) return prev.value ?? null;
+                // No snapshot yet — fall through to committed
+            } else if (re.day < simDelta) {
+                // Any past re-pick: use it directly
+                return re.value ?? null;
             }
         }
         return getPick(id, u);
@@ -711,7 +718,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.11':'offline'
+connected===null?'connecting…':connected?'synced r3.12':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

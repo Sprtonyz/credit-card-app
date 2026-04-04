@@ -191,7 +191,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.6';
+const APP_VERSION='r3.7';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -321,16 +321,30 @@ function SwitchOverlay({currentUser,onSelect,onClose}){
 function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
     const sub=subs[tx.id]||{};
     const past=conflictVisible(txKey,simDelta);
-    const mySub=getSubValue(sub,currentUser);
     const otherUser=getOtherUser(currentUser);
-    const otherSub=getSubValue(sub,otherUser);
     const autoConf=isAutoConfirmed(sub,tx.id,nowMs);
 
-    // past = this tx's day is before simDelta (next-day reveal applies)
-    const anyUnsure=past&&USERS.some(u=>getSubValue(sub,u)==='Unsure');
-    const unsureMarkedBy=USERS.filter(u=>getSubValue(sub,u)==='Unsure');
-    const nonUnsureVals=USERS.map(u=>getSubValue(sub,u)).filter(v=>v&&v!=='Unsure');
-    // Conflict: past day, no Unsure, both users picked differently
+    // For past-day cards, status (conflict/unsure badge) is based on the PREVIOUS
+    // round's picks — not live re-picks being made today. This prevents Tony's
+    // re-pick from changing Nugs' badge or closing her card on the same day.
+    // effectivePick: for past days, use _re from simDelta-1 if present, else committed.
+    const effectivePick=u=>{
+        if(!past) return getSubValue(sub,u);
+        const re=sub[u+'_re'];
+        if(re&&re.day===simDelta-1) return re.value??null;
+        return getSubValue(sub,u);
+    };
+
+    // mySub: show my re-pick if I've tapped this round, else committed pick
+    const myRePick=past?sub[currentUser+'_re']:null;
+    const mySub=(myRePick&&myRePick.day===simDelta)?myRePick.value:getSubValue(sub,currentUser);
+    // otherSub: show other user's effective pick from last round (context for conflict note)
+    const otherSub=effectivePick(otherUser);
+
+    const anyUnsure=past&&USERS.some(u=>effectivePick(u)==='Unsure');
+    const unsureMarkedBy=USERS.filter(u=>effectivePick(u)==='Unsure');
+    const nonUnsureVals=USERS.map(u=>effectivePick(u)).filter(v=>v&&v!=='Unsure');
+    // Conflict: past day, no Unsure, both users picked differently (based on last round)
     const isConflict=past&&!anyUnsure&&nonUnsureVals.length===USERS.length&&new Set(nonUnsureVals).size>1;
     const isCollapsing=collapsing.has(tx.id);
 
@@ -510,16 +524,24 @@ function App(){
 
     const isAutoConf = id => isAutoConfirmed(getSub(id), id, simNow);
 
-    // Unsure: any user picked 'Unsure'. Overrides conflict. Only revealed on past days.
-    const anyoneUnsure    = id => USERS.some(u => getPick(id, u) === 'Unsure');
+    // getEffectivePick: mirrors TxCard's effectivePick. For past days uses _re from
+    // simDelta-1 if present so that conflict/unsure status is based on the previous
+    // round's picks, not live re-picks being made today.
+    const getEffectivePick = (id, u) => {
+        const re = getSub(id)[u+'_re'];
+        if (re && re.day === simDelta-1) return re.value ?? null;
+        return getPick(id, u);
+    };
+
+    // Unsure: any user's effective pick is 'Unsure'. Overrides conflict. Only revealed on past days.
+    const anyoneUnsure    = id => USERS.some(u => getEffectivePick(id, u) === 'Unsure');
     const isUnsurePinned  = (id, txKey) => isPast(txKey) && anyoneUnsure(id);
 
-    // Conflict: past day, no unsure, both users have picked, and their picks differ.
-    // ALL pick values can conflict — Tony, Nugs, Macquarie. Any mismatch = conflict.
+    // Conflict: past day, no unsure, both users have picked differently (last round's picks).
     const isConflict = (id, txKey) => {
         if (!isPast(txKey)) return false;
         if (anyoneUnsure(id)) return false;
-        const picks = USERS.map(u => getPick(id, u)).filter(Boolean);
+        const picks = USERS.map(u => getEffectivePick(id, u)).filter(Boolean);
         return picks.length === USERS.length && new Set(picks).size > 1;
     };
 
@@ -564,8 +586,9 @@ function App(){
         //   the current day, they haven't resolved it yet this day → remaining.
         //   Once they tap today their day field updates → no longer remaining.
         if (u === user) return !sessRes.has(tx.id);
-        const otherPickDay = getSub(tx.id)[u]?.day ?? -1;
-        return otherPickDay < simDelta;
+        // Other user: remaining until they write a _re pick for the current day
+        const otherRe = getSub(tx.id)[u+'_re'];
+        return !(otherRe && otherRe.day === simDelta);
     };
 
     // isVisible: card shown on screen if remaining for current user OR mid-animation
@@ -573,10 +596,12 @@ function App(){
         collapsing.has(tx.id) || remainingFor(user, tx, txKey);
 
     // assign: write to Firebase, collapse card visually.
-    // Count updates come from Firebase listener firing (~100-200ms later).
+    // Past-day picks go to [user_re] so they don't overwrite committed picks and
+    // don't change the other user's conflict/unsure status until the next day.
     const assign = (txId, txKey, opt) => {
         setUndo(s => [...s, {txId, u:user, prev:getPick(txId,user), prevSub:getSub(txId)[user]}]);
-        save(txId, {[user]: {value:opt, ts:simNow, day:simDelta}});
+        const writeKey = isPast(txKey) ? user+'_re' : user;
+        save(txId, {[writeKey]: {value:opt, ts:simNow, day:simDelta}});
         if (isPast(txKey)) setSessRes(r => new Set([...r, txId]));
         const timer = setTimeout(() => setCol(c => new Set([...c, txId])), 220);
         collapseTimers.current.push(timer);
@@ -659,7 +684,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.6':'offline'
+connected===null?'connecting…':connected?'synced r3.7':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

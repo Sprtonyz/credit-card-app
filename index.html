@@ -706,6 +706,7 @@ function App(){
     const login=u=>{
         setUser(u);localStorage.setItem(UK,u);
         setCol(new Set()); setSessRes(new Set()); setUndo([]); setSwitch(false);
+        confettiFiredRef.current=false;
     };
 
     const resetCache=()=>{
@@ -932,10 +933,6 @@ function App(){
     });
 
     const anyVisible=groups.length>0;
-    // Reset confetti guard when tasks are visible again (new day / undo etc.)
-    const prevAnyVisibleRef=useRef(anyVisible);
-    if(anyVisible&&!prevAnyVisibleRef.current) confettiFiredRef.current=false;
-    prevAnyVisibleRef.current=anyVisible;
 
     const simLabel=simDelta===0?'today':'+'+simDelta+'d';
     // Dev: also allow simulating 72h for auto-confirm

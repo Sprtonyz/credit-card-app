@@ -301,7 +301,7 @@ export default function CreditCardApp() {
                     {/* Action Buttons / Edit Mode */}
                     {isEditing ? (
                       <div className="flex gap-2 flex-wrap">
-                        {['Tony', 'Nugs', 'Split', 'Other'].map((option) => (
+                        {['Tony', 'Nugs', 'Split', 'Other', 'Unsure'].map((option) => (
                           <button
                             key={option}
                             onClick={() => submitAssignment(tx.id, option)}
@@ -335,15 +335,30 @@ export default function CreditCardApp() {
             {/* Summary */}
             <div className="bg-slate-800 rounded-lg p-6 mt-8 border border-slate-700">
               <h3 className="text-lg font-bold mb-4">Summary</h3>
-              <div className="grid md:grid-cols-2 gap-4 text-sm">
+              <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
                 <div>
                   <p className="text-slate-400">Resolved:</p>
                   <p className="text-2xl font-bold text-green-400">{stats.assigned}</p>
                 </div>
                 <div>
-                  <p className="text-slate-400">Remaining:</p>
-                  <p className="text-2xl font-bold text-yellow-400">{stats.pending}</p>
+                  <p className="text-slate-400">Conflicts:</p>
+                  <p className="text-2xl font-bold text-red-400">{stats.conflicts}</p>
                 </div>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4 text-sm">
+                {USERS.map((user) => {
+                  const userRemaining = transactions.filter(
+                    (tx) => !submissions[tx.id]?.[user] || hasConflict(tx.id)
+                  ).length;
+                  return (
+                    <div key={user} className="bg-slate-900 rounded p-3">
+                      <p className="text-slate-400 text-xs">{user}'s Remaining:</p>
+                      <p className={`text-2xl font-bold ${user === currentUser ? 'text-yellow-400' : 'text-slate-300'}`}>
+                        {userRemaining}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
               {stats.conflicts > 0 && (
                 <p className="text-red-400 mt-4 text-sm">

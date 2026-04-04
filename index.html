@@ -159,7 +159,13 @@
         .shop-panel{position:fixed;right:0.65rem;bottom:62px;background:rgba(10,13,18,0.96);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:0.45rem 0.5rem;display:flex;flex-direction:column;align-items:center;gap:0.28rem;z-index:45;min-width:66px;backdrop-filter:blur(12px);}
         .shop-coins{font-size:0.62rem;color:#fbbf24;font-family:'DM Mono',monospace;letter-spacing:0.04em;white-space:nowrap;}
         .shop-food{font-size:0.56rem;color:#9ca3af;white-space:nowrap;}
+        .shop-handle{font-size:0.55rem;color:#374151;cursor:grab;user-select:none;letter-spacing:0.1em;padding:0.05rem 0;text-align:center;width:100%;}
+        .shop-handle:active{cursor:grabbing;}
         .shop-divider{width:100%;height:1px;background:rgba(255,255,255,0.05);margin:0.1rem 0;}
+        .shop-hp-label{font-size:0.44rem;letter-spacing:0.15em;text-transform:uppercase;color:#4b5563;}
+        .shop-hp-bar{width:100%;height:5px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;margin:0.12rem 0 0.05rem;}
+        .shop-hp-fill{height:100%;border-radius:3px;transition:width 0.4s ease,background 0.4s ease;}
+        .shop-hp-val{font-size:0.5rem;color:#6b7280;text-align:center;}
         .shop-btn{width:100%;font-size:0.52rem;padding:0.28rem 0.35rem;border-radius:5px;border:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.03);color:#6b7280;font-family:'DM Mono',monospace;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:center;transition:background 0.12s;user-select:none;touch-action:manipulation;}
         .shop-btn:disabled{opacity:0.2;cursor:default;}
         .shop-btn.buy{border-color:rgba(251,191,36,0.22);color:#d97706;background:rgba(251,191,36,0.04);}
@@ -222,7 +228,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.16';
+const APP_VERSION='r3.17';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -462,10 +468,38 @@ function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
     );
 }
 
-/* ── PetCanvas — pixel cat walking back and forth ── */
-function PetCanvas({happiness}){
+/* ── PetCanvas — pixel pet (cat/dog/duck) walking with HP bar ── */
+const PETS_DATA={
+    cat:{
+        pal:{1:'#f59e0b',2:'#b45309',3:'#fde68a',4:'#fda4af',5:'#1a1040'},
+        frames:[
+            [[0,0,1,1,0,0,0,0],[0,2,0,0,2,0,0,0],[0,1,1,1,1,1,0,0],[1,1,5,1,5,1,1,0],[1,1,3,4,3,1,1,0],[1,3,1,1,1,3,1,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[2,0,0,0,0,0,2,0],[2,0,0,0,0,0,2,0]],
+            [[0,0,1,1,0,0,0,0],[0,2,0,0,2,0,0,0],[0,1,1,1,1,1,0,0],[1,1,5,1,5,1,1,0],[1,1,3,4,3,1,1,0],[1,3,1,1,1,3,1,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[0,2,0,0,2,0,0,0],[0,0,2,2,0,0,0,0]],
+        ],
+    },
+    dog:{
+        pal:{1:'#d97706',2:'#92400e',3:'#fde68a',4:'#fda4af',5:'#1a1040'},
+        frames:[
+            [[2,1,0,0,0,1,2,0],[2,1,1,1,1,1,2,0],[0,1,1,1,1,1,0,0],[1,1,5,1,5,1,1,0],[1,3,3,4,3,3,1,0],[0,1,3,3,3,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[2,0,0,0,0,0,2,0],[2,0,0,0,0,0,2,0]],
+            [[2,1,0,0,0,1,2,0],[2,1,1,1,1,1,2,0],[0,1,1,1,1,1,0,0],[1,1,5,1,5,1,1,0],[1,3,3,4,3,3,1,0],[0,1,3,3,3,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[0,2,0,0,2,0,0,0],[0,0,2,2,0,0,0,0]],
+        ],
+    },
+    duck:{
+        pal:{1:'#fde047',2:'#ca8a04',3:'#fb923c',4:'#fda4af',5:'#1a1040'},
+        frames:[
+            [[0,0,1,1,1,0,0,0],[0,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0],[0,1,5,1,5,1,0,0],[0,3,3,3,3,0,0,0],[0,0,3,3,0,0,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[0,2,1,1,1,2,0,0],[0,2,2,2,2,2,0,0],[2,0,0,0,0,0,2,0],[2,2,0,0,2,2,0,0]],
+            [[0,0,1,1,1,0,0,0],[0,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0],[0,1,5,1,5,1,0,0],[0,3,3,3,3,0,0,0],[0,0,3,3,0,0,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[0,2,1,1,1,2,0,0],[0,2,2,2,2,2,0,0],[0,2,0,0,2,0,0,0],[0,0,2,2,0,0,0,0]],
+        ],
+    },
+};
+
+function PetCanvas({petType,hp}){
     const cvRef=useRef(null);
     const st=useRef({x:30,dir:1,frame:0,tick:0});
+    const hpRef=useRef(hp);
+    const typeRef=useRef(petType);
+    useEffect(()=>{hpRef.current=hp;},[hp]);
+    useEffect(()=>{typeRef.current=petType;},[petType]);
 
     useEffect(()=>{
         const cv=cvRef.current;
@@ -473,70 +507,67 @@ function PetCanvas({happiness}){
         const ctx=cv.getContext('2d');
         const S=3,SW=8,SH=12;
 
-        // Palette: 1=orange body, 2=dark detail, 3=cream, 4=pink, 5=dark eye
-        const PAL={1:'#f59e0b',2:'#b45309',3:'#fde68a',4:'#fda4af',5:'#1a1040'};
-
-        // 2 walk frames (8×12 sprites)
-        const F=[
-            // legs spread
-            [[0,0,1,1,0,0,0,0],[0,2,0,0,2,0,0,0],[0,1,1,1,1,1,0,0],[1,1,5,1,5,1,1,0],[1,1,3,4,3,1,1,0],[1,3,1,1,1,3,1,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[2,0,0,0,0,0,2,0],[2,0,0,0,0,0,2,0]],
-            // legs tucked
-            [[0,0,1,1,0,0,0,0],[0,2,0,0,2,0,0,0],[0,1,1,1,1,1,0,0],[1,1,5,1,5,1,1,0],[1,1,3,4,3,1,1,0],[1,3,1,1,1,3,1,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[0,2,0,0,2,0,0,0],[0,0,2,2,0,0,0,0]],
-        ];
-
         function resize(){
             cv.width=cv.parentElement?.clientWidth||window.innerWidth;
-            cv.height=SH*S+8;
+            cv.height=SH*S+14; // 14 = 5 (HP bar area) + 9 (ground + pad)
         }
         resize();
         window.addEventListener('resize',resize);
 
         let raf;
-        function draw(){
-            const {x,dir,frame}=st.current;
-            ctx.clearRect(0,0,cv.width,cv.height);
-
-            // Subtle ground line
-            ctx.fillStyle='rgba(255,255,255,0.05)';
-            ctx.fillRect(0,SH*S+2,cv.width,1);
-
-            // Draw sprite (flip horizontally when walking left)
-            ctx.save();
-            if(dir<0){ctx.translate(x+SW*S,0);ctx.scale(-1,1);}
-            else{ctx.translate(x,0);}
-            const rows=F[frame];
-            for(let r=0;r<rows.length;r++){
-                for(let c=0;c<rows[r].length;c++){
-                    const p=rows[r][c];
-                    if(p&&PAL[p]){ctx.fillStyle=PAL[p];ctx.fillRect(c*S,r*S+2,S,S);}
-                }
-            }
-            ctx.restore();
-        }
-
         function loop(){
             const s=st.current;
+            const pet=PETS_DATA[typeRef.current]||PETS_DATA.cat;
+            const curHp=hpRef.current??60;
+            ctx.clearRect(0,0,cv.width,cv.height);
+
+            // HP bar (top, 3px)
+            const bx=10,by=1,bh=3,bw=cv.width-20;
+            ctx.fillStyle='rgba(255,255,255,0.07)';
+            ctx.fillRect(bx,by,bw,bh);
+            const hpCol=curHp>60?'#4ade80':curHp>30?'#fbbf24':'#f87171';
+            ctx.fillStyle=hpCol;
+            ctx.fillRect(bx,by,Math.max(1,Math.round(bw*curHp/100)),bh);
+
+            // Ground line
+            ctx.fillStyle='rgba(255,255,255,0.05)';
+            ctx.fillRect(0,SH*S+8,cv.width,1);
+
+            // Walk logic
             s.tick++;
-            if(s.tick%6===0){           // move every 6 frames (~10fps walk)
+            if(s.tick%6===0){
                 s.x+=s.dir;
-                if(s.tick%12===0) s.frame=1-s.frame; // swap legs every 12 frames
+                if(s.tick%12===0) s.frame=1-s.frame;
                 const maxX=cv.width-SW*S-12;
                 if(s.x>=maxX){s.x=maxX;s.dir=-1;}
                 else if(s.x<=12){s.x=12;s.dir=1;}
             }
-            draw();
+
+            // Draw sprite (offset 5px down for HP bar)
+            ctx.save();
+            if(s.dir<0){ctx.translate(s.x+SW*S,5);ctx.scale(-1,1);}
+            else{ctx.translate(s.x,5);}
+            const rows=pet.frames[s.frame];
+            for(let r=0;r<rows.length;r++){
+                for(let c=0;c<rows[r].length;c++){
+                    const p=rows[r][c];
+                    if(p&&pet.pal[p]){ctx.fillStyle=pet.pal[p];ctx.fillRect(c*S,r*S,S,S);}
+                }
+            }
+            ctx.restore();
+
             raf=requestAnimationFrame(loop);
         }
         raf=requestAnimationFrame(loop);
         return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',resize);};
     },[]);
 
-    return React.createElement('canvas',{ref:cvRef,style:{display:'block',width:'100%',imageRendering:'pixelated'}});
+    return React.createElement('canvas',{ref:cvRef,style:{display:'block',width:'100%',imageRendering:'pixelated',imageRendering:'crisp-edges'}});
 }
 
 /* ── AllDone ── */
-function AllDone({msg}){
-    useEffect(()=>{window.launchConfetti&&window.launchConfetti();},[]);
+function AllDone({msg,onMount}){
+    useEffect(()=>{ onMount&&onMount(); },[]);
     return React.createElement('div',{className:'all-done'},
         React.createElement('div',{className:'all-done-inner'},
             React.createElement('span',{className:'all-done-emoji'},msg.emoji),
@@ -562,8 +593,12 @@ function App(){
     const [onlineUsers,setOnlineUsers]=useState({});
     const [myCoins,setMyCoins]=useState(0);
     const [myFood,setMyFood]=useState(0);
-    const [petHappiness,setPetHappiness]=useState(5);
+    const [petHp,setPetHp]=useState(60);
+    const [petType,setPetType]=useState('cat');
     const [coinPops,setCoinPops]=useState([]);
+    const [shopPos,setShopPos]=useState(null); // null=default CSS position, or {left,top}
+    const confettiFiredRef=useRef(false);
+    const shopDragRef=useRef({active:false,ox:0,oy:0});
 
     const doneMsg=useRef(DONE[Math.floor(Math.random()*DONE.length)]);
     // For dev: simulate time passing for 72h auto-confirm
@@ -630,14 +665,34 @@ function App(){
         return()=>ref.off('value',h);
     },[user]);
 
-    // Pet listener (shared)
+    // Per-user pet listener (type + hp)
     useEffect(()=>{
-        const h=petRef.on('value',snap=>{
+        if(!user)return;
+        const ref=petRef.child(user);
+        const h=ref.on('value',snap=>{
             const val=snap.val();
-            setPetHappiness(val?.happiness??5);
+            if(val){
+                setPetHp(val.hp??60);
+                setPetType(val.type??(user==='Tony'?'cat':'dog'));
+            } else {
+                // First time — initialise pet
+                ref.set({type:user==='Tony'?'cat':'dog',hp:60,lastDrainDay:simDelta});
+            }
         });
-        return()=>petRef.off('value',h);
-    },[]);
+        return()=>ref.off('value',h);
+    },[user]);
+
+    // HP drain when day advances (15 HP per day)
+    useEffect(()=>{
+        if(!user)return;
+        petRef.child(user).transaction(pet=>{
+            if(!pet)return{type:user==='Tony'?'cat':'dog',hp:60,lastDrainDay:simDelta};
+            const last=pet.lastDrainDay??simDelta;
+            const days=Math.max(0,simDelta-last);
+            if(days===0)return undefined; // no change
+            return{...pet,hp:Math.max(0,(pet.hp??60)-days*15),lastDrainDay:simDelta};
+        });
+    },[simDelta,user]);
 
     // Save a single tx submission to Firebase (merge with existing)
     const [lastWriteError,setLastWriteError]=useState(null);
@@ -791,7 +846,24 @@ function App(){
     const feedPet=()=>{
         if(myFood<1)return;
         foodRef.child(user).transaction(n=>Math.max(0,(n||0)-1));
-        petRef.child('happiness').transaction(n=>Math.min(10,(n||0)+2));
+        petRef.child(user+'/hp').transaction(n=>Math.min(100,(n||0)+10));
+    };
+
+    const changePetType=type=>{
+        db.ref('pet/'+user+'/type').set(type);
+    };
+
+    const startShopDrag=e=>{
+        e.preventDefault();
+        const rect=e.currentTarget.closest('[data-shop]').getBoundingClientRect();
+        shopDragRef.current={active:true,ox:e.clientX-rect.left,oy:e.clientY-rect.top};
+        const onMove=e=>{
+            if(!shopDragRef.current.active)return;
+            setShopPos({left:e.clientX-shopDragRef.current.ox,top:e.clientY-shopDragRef.current.oy});
+        };
+        const onUp=()=>{shopDragRef.current.active=false;window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
+        window.addEventListener('pointermove',onMove);
+        window.addEventListener('pointerup',onUp);
     };
 
     const undo=()=>{
@@ -815,8 +887,8 @@ function App(){
     };
 
     const cancelTimers=()=>{ collapseTimers.current.forEach(clearTimeout); collapseTimers.current=[]; };
-    const stepDay  = () => { cancelTimers(); setSim(d=>d+1); setCol(new Set()); setSessRes(new Set()); setSimNow(simNow+24*60*60*1000); };
-    const resetDay = () => { cancelTimers(); setSim(0);       setCol(new Set()); setSessRes(new Set()); setSimNow(Date.now()); };
+    const stepDay  = () => { cancelTimers(); confettiFiredRef.current=false; setSim(d=>d+1); setCol(new Set()); setSessRes(new Set()); setSimNow(simNow+24*60*60*1000); };
+    const resetDay = () => { cancelTimers(); confettiFiredRef.current=false; setSim(0);       setCol(new Set()); setSessRes(new Set()); setSimNow(Date.now()); };
 
     // Tally: always show Tony and Nugs totals (what each assigned to themselves)
     // Macquarie: deduplicated sum of txns anyone assigned to Macquarie
@@ -860,6 +932,10 @@ function App(){
     });
 
     const anyVisible=groups.length>0;
+    // Reset confetti guard when tasks are visible again (new day / undo etc.)
+    const prevAnyVisibleRef=useRef(anyVisible);
+    if(anyVisible&&!prevAnyVisibleRef.current) confettiFiredRef.current=false;
+    prevAnyVisibleRef.current=anyVisible;
 
     const simLabel=simDelta===0?'today':'+'+simDelta+'d';
     // Dev: also allow simulating 72h for auto-confirm
@@ -872,7 +948,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.16':'offline'
+connected===null?'connecting…':connected?'synced r3.17':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>
@@ -959,8 +1035,21 @@ connected===null?'connecting…':connected?'synced r3.16':'offline'
             React.createElement('span',{className:'day-display'},simLabel+(simHours>0?' +'+simHours+'h':'')),
             React.createElement('button',{className:'day-btn',onClick:stepDay},'next day ▶'),
             React.createElement('button',{className:'day-btn',style:{fontSize:'0.6rem'},
-                onClick:()=>setSimNow(n=>n+24*60*60*1000),title:'advance 24h for auto-confirm test'},'+24h'),
+                onClick:()=>setSimNow(n=>n+24*60*60*1000),title:'advance 24h'},'+24h'),
             React.createElement('button',{className:'reset-btn',onClick:resetDay},'reset'),
+            React.createElement('span',{className:'dev-sep'},'|'),
+            React.createElement('button',{className:'day-btn',title:'add 5 coins',
+                onClick:()=>coinsRef.child(user).transaction(n=>(n||0)+5)},'+5🪙'),
+            React.createElement('button',{className:'day-btn',title:'add 3 food',
+                onClick:()=>foodRef.child(user).transaction(n=>(n||0)+3)},'+3🍖'),
+            React.createElement('button',{className:'reset-btn',title:'zero coins',
+                onClick:()=>coinsRef.child(user).set(0)},'0🪙'),
+            React.createElement('span',{className:'dev-sep'},'|'),
+            React.createElement('span',{className:'dev-label'},'pet:'),
+            ...['cat','dog','duck'].map(t=>React.createElement('button',{key:t,
+                className:'day-btn',
+                style:{background:petType===t?'rgba(96,165,250,0.2)':'',borderColor:petType===t?'rgba(96,165,250,0.4)':''},
+                onClick:()=>changePetType(t)},t)),
             React.createElement('span',{className:'dev-sep'},'|'),
             React.createElement('button',{className:'clear-btn',onClick:resetCache},'🗑 clear'),
         ),
@@ -996,11 +1085,22 @@ connected===null?'connecting…':connected?'synced r3.16':'offline'
             React.createElement('span',{className:'coin-pop-text'},'+1')
         )),
 
-        // Shop panel — fixed right side
-        React.createElement('div',{className:'shop-panel'},
+        // Shop panel — draggable, fixed right side by default
+        React.createElement('div',{'data-shop':true,className:'shop-panel',
+            style:shopPos?{position:'fixed',left:shopPos.left+'px',top:shopPos.top+'px',right:'auto',bottom:'auto'}:{}
+        },
+            React.createElement('div',{className:'shop-handle',onPointerDown:startShopDrag},'╌╌'),
             React.createElement('div',{className:'shop-coins'},'🪙 '+myCoins),
-            myFood>0&&React.createElement('div',{className:'shop-food'},'🍖 ×'+myFood),
             React.createElement('div',{className:'shop-divider'}),
+            // HP bar in shop panel
+            React.createElement('div',{className:'shop-hp-label'},'HP'),
+            React.createElement('div',{className:'shop-hp-bar'},
+                React.createElement('div',{className:'shop-hp-fill',
+                    style:{width:petHp+'%',background:petHp>60?'#4ade80':petHp>30?'#fbbf24':'#f87171'}})
+            ),
+            React.createElement('div',{className:'shop-hp-val'},petHp+'/100'),
+            React.createElement('div',{className:'shop-divider'}),
+            myFood>0&&React.createElement('div',{className:'shop-food'},'🍖 ×'+myFood),
             React.createElement('button',{className:'shop-btn buy',disabled:myCoins<1,
                 onPointerDown:e=>e.currentTarget.style.opacity='0.55',
                 onPointerUp:e=>{e.currentTarget.style.opacity='';buyFood();},
@@ -1036,7 +1136,9 @@ connected===null?'connecting…':connected?'synced r3.16':'offline'
             ),
 
             !anyVisible
-                ? React.createElement(AllDone,{msg:doneMsg.current})
+                ? React.createElement(AllDone,{msg:doneMsg.current,onMount:()=>{
+                    if(!confettiFiredRef.current){confettiFiredRef.current=true;window.launchConfetti&&window.launchConfetti();}
+                  }})
                 : React.createElement('div',null,
                     groups.map(({txKey,visible,past,label,date})=>
                         React.createElement('div',{key:txKey,className:'day-group'},
@@ -1059,7 +1161,7 @@ connected===null?'connecting…':connected?'synced r3.16':'offline'
 
         // Pixel pet footer — walks back and forth
         React.createElement('div',{className:'pet-footer'},
-            React.createElement(PetCanvas,{happiness:petHappiness})
+            React.createElement(PetCanvas,{petType,hp:petHp})
         )
     );
 }

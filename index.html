@@ -478,8 +478,12 @@ function App(){
     },[user]);
 
     // Save a single tx submission to Firebase (merge with existing)
+    const [lastWriteError,setLastWriteError]=useState(null);
+    const [lastWriteOk,setLastWriteOk]=useState(null);
     const save=(txId,txData)=>{
-        db.ref('submissions/'+txId).update(txData);
+        db.ref('submissions/'+txId).update(txData)
+            .then(()=>setLastWriteOk(txId+' @ '+new Date().toLocaleTimeString()))
+            .catch(e=>setLastWriteError(txId+': '+e.message));
     };
 
     const login=u=>{
@@ -648,7 +652,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.1':'offline'
+connected===null?'connecting…':connected?'synced r3.2':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>
@@ -701,6 +705,8 @@ connected===null?'connecting…':connected?'synced r3.1':'offline'
                 },'📋 copy log')
             ),
             React.createElement('div',null,'👤 '+user+' | simDelta:'+simDelta+' | simNow+'+(simNow-Date.now())+'ms'),
+            React.createElement('div',{style:{color:lastWriteError?'#f87171':'#4ade80'}},
+                lastWriteError?'❌ WRITE FAIL: '+lastWriteError : lastWriteOk?'✅ last write ok: '+lastWriteOk:'⏳ no writes yet'),
             React.createElement('div',null,'📊 myR:'+myRemaining+' | '+otherUser+'R:'+otherRemaining),
             React.createElement('div',null,'subs:'+Object.keys(subs).join(',')),
             ...loadedKeys.map(txKey=>

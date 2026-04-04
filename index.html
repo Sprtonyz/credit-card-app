@@ -191,7 +191,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.5';
+const APP_VERSION='r3.6';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -557,12 +557,15 @@ function App(){
         const conflict = isConflict(tx.id, txKey);
         const unsure   = isUnsurePinned(tx.id, txKey);
         if (!conflict && !unsure) return false;
-        // Conflict/unsure surfaced — both users are remaining until it resolves.
-        // Current user: use sessRes for instant visual feedback after tap.
-        // Other user: always remaining while conflict/unsure exists, since they
-        // need to re-resolve too. Their count only drops once the conflict clears.
+        // Conflict/unsure surfaced — both users need to re-tap.
+        // Current user: sessRes gives instant visual feedback after tap.
+        // Other user: check if they've re-tapped on the current simDelta day.
+        //   pick.day stores which simDelta day the tap was made. If it's before
+        //   the current day, they haven't resolved it yet this day → remaining.
+        //   Once they tap today their day field updates → no longer remaining.
         if (u === user) return !sessRes.has(tx.id);
-        return true; // other user: remaining while conflict/unsure is active
+        const otherPickDay = getSub(tx.id)[u]?.day ?? -1;
+        return otherPickDay < simDelta;
     };
 
     // isVisible: card shown on screen if remaining for current user OR mid-animation
@@ -573,7 +576,7 @@ function App(){
     // Count updates come from Firebase listener firing (~100-200ms later).
     const assign = (txId, txKey, opt) => {
         setUndo(s => [...s, {txId, u:user, prev:getPick(txId,user), prevSub:getSub(txId)[user]}]);
-        save(txId, {[user]: {value:opt, ts:simNow}});
+        save(txId, {[user]: {value:opt, ts:simNow, day:simDelta}});
         if (isPast(txKey)) setSessRes(r => new Set([...r, txId]));
         const timer = setTimeout(() => setCol(c => new Set([...c, txId])), 220);
         collapseTimers.current.push(timer);
@@ -656,7 +659,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.5':'offline'
+connected===null?'connecting…':connected?'synced r3.6':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

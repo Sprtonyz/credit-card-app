@@ -191,7 +191,7 @@ const ASSIGN_OPTS=['Unsure','Macquarie','Tony','Nugs'];
 
 const SK='cc_v4_subs';
 const UK='cc_v4_user';
-const APP_VERSION='r3.0';
+const APP_VERSION='r3.4';
 const VK='cc_version';
 // Force clear local state if app version changed (ensures clean slate on new deploys)
 (function(){
@@ -655,7 +655,7 @@ function App(){
         React.createElement('div',{className:'sync-bar'},
             React.createElement('div',{className:'sync-status '+(connected===null?'':'connected'===String(connected==='connecting')?'connecting':connected?'connected':'disconnected')},
                 React.createElement('div',{className:'sync-dot '+(connected===null?'connecting':connected?'connected':'disconnected')}),
-connected===null?'connecting…':connected?'synced r3.3':'offline'
+connected===null?'connecting…':connected?'synced r3.4':'offline'
             ),
             React.createElement('div',{className:'online-users'},
                 USERS.map(u=>

@@ -10,14 +10,17 @@
     "export": "next build && next export"
   },
   "dependencies": {
-    "next": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "papaparse": "latest"
+    "firebase": "^9.23.0",
+    "fuse.js": "^6.6.2",
+    "next": "12.3.4",
+    "papaparse": "^5.4.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
-    "tailwindcss": "latest",
-    "postcss": "latest",
-    "autoprefixer": "latest"
+    "tailwindcss": "^3.4.17",
+    "postcss": "^8.4.31",
+    "autoprefixer": "^10.4.19"
   }
 }

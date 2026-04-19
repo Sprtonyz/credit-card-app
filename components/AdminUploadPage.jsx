@@ -59,6 +59,7 @@ function OcrDiagnostics({ processedImages }) {
               <>
                 <div className="ocr-diagnostics-meta">
                   <span>Hash: {image.imageHash || 'n/a'}</span>
+                  <span>Parser: {image.parserProfile || 'classic'}</span>
                   <span>OCR text:</span>
                 </div>
                 <pre className="ocr-diagnostics-text">
@@ -149,9 +150,13 @@ export default function AdminUploadPage() {
   };
 
   const runOcrPipeline = async () => {
-    const results = await processImages(uploadedFiles, (progressUpdate) => {
-      setProgress(progressUpdate.overallProgress);
-    });
+    const results = await processImages(
+      uploadedFiles,
+      (progressUpdate) => {
+        setProgress(progressUpdate.overallProgress);
+      },
+      { profile: 'classic' }
+    );
 
     setProcessedImages(results);
 
@@ -359,6 +364,9 @@ export default function AdminUploadPage() {
         {step === 'upload' && (
           <div className="bg-slate-800 rounded-lg p-8 border border-slate-700">
             <ImageUploader onImagesSelected={handleImagesSelected} isLoading={isLoading} />
+            <p className="text-xs text-slate-400 mt-4">
+              Using classic OCR screenshots.
+            </p>
 
             <button
               onClick={handleProcessImages}

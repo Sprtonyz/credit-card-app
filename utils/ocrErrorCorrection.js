@@ -39,10 +39,77 @@ export function fixMerchantName(merchant) {
 export function fixDateFormatting(dateStr) {
   if (!dateStr || dateStr.trim() === '') return null;
 
+  const normalized = dateStr.trim().replace(/\u00a0/g, ' ');
+
+  const tryParseDateParts = () => {
+    const monthLookup = {
+      jan: 0,
+      january: 0,
+      feb: 1,
+      february: 1,
+      mar: 2,
+      march: 2,
+      apr: 3,
+      april: 3,
+      may: 4,
+      jun: 5,
+      june: 5,
+      jul: 6,
+      july: 6,
+      aug: 7,
+      august: 7,
+      sep: 8,
+      sept: 8,
+      september: 8,
+      oct: 9,
+      october: 9,
+      nov: 10,
+      november: 10,
+      dec: 11,
+      december: 11,
+    };
+
+    const withMonthName = normalized.match(
+      /^(?:(?:mon|tue|wed|thu|fri|sat|sun)(?:day)?\s+)?(\d{1,2})\s+([a-z]{3,9})\s+(\d{2,4})$/i
+    );
+    if (withMonthName) {
+      const day = Number(withMonthName[1]);
+      const month = monthLookup[withMonthName[2].toLowerCase()];
+      let year = Number(withMonthName[3]);
+      if (year < 100) year += year < 70 ? 2000 : 1900;
+      if (Number.isFinite(day) && Number.isInteger(month) && Number.isFinite(year)) {
+        const date = new Date(year, month, day);
+        if (!Number.isNaN(date.getTime())) {
+          const yyyy = date.getFullYear();
+          const mm = String(date.getMonth() + 1).padStart(2, '0');
+          const dd = String(date.getDate()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}`;
+        }
+      }
+    }
+
+    const numeric = normalized.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+    if (numeric) {
+      const day = Number(numeric[1]);
+      const month = Number(numeric[2]) - 1;
+      let year = Number(numeric[3]);
+      if (year < 100) year += year < 70 ? 2000 : 1900;
+      const date = new Date(year, month, day);
+      if (!Number.isNaN(date.getTime())) {
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      }
+    }
+
+    return null;
+  };
+
   try {
-    const date = new Date(dateStr);
+    const date = new Date(normalized);
     if (Number.isNaN(date.getTime())) {
-      return null;
+      return tryParseDateParts();
     }
 
     const year = date.getFullYear();
@@ -51,7 +118,7 @@ export function fixDateFormatting(dateStr) {
 
     return `${year}-${month}-${day}`;
   } catch (e) {
-    return null;
+    return tryParseDateParts();
   }
 }
 

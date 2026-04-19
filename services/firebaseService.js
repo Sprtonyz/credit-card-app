@@ -9,6 +9,13 @@ import {
   set,
 } from 'firebase/database';
 
+function formatLocalDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export async function addTransactions(transactions) {
   try {
     const transactionsRef = ref(db, 'transactions');
@@ -20,7 +27,7 @@ export async function addTransactions(transactions) {
         merchant: tx.merchant,
         amount: tx.amount,
         category: tx.category || null,
-        date: tx.date,
+        date: tx.date || formatLocalDate(),
         isPending: !tx.date || tx.isPending,
         source: tx.source || 'image',
         uploadedDate: new Date().toISOString(),
@@ -66,11 +73,11 @@ function getYesterdayDate() {
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  return yesterday.toISOString().split('T')[0];
+  return formatLocalDate(yesterday);
 }
 
 export function getTodayDate() {
-  return new Date().toISOString().split('T')[0];
+  return formatLocalDate();
 }
 
 export async function getYesterdaysPending() {

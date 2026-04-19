@@ -67,6 +67,13 @@ function getSubTs(sub, user) {
   return sub?.[user]?.ts ?? null;
 }
 
+function getSubmissionDay(sub, user) {
+  const dayValue = sub?.[user]?.day;
+  if (dayValue === undefined || dayValue === null || dayValue === '') return null;
+  const parsed = Number(dayValue);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function hasConflict(sub) {
   const picks = USERS.map((u) => getSubValue(sub, u)).filter((value) => value && value !== 'Unsure');
   return picks.length === USERS.length && new Set(picks).size > 1;
@@ -91,14 +98,17 @@ function isVisibleForUser(tx, submissions, user, day) {
 
   const sub = submissions[tx.id] || {};
   const { resolved } = getSubmissionStatus(sub);
-  const userSubmission = sub[user];
-  const submittedToday = userSubmission?.day === day;
+  const submittedDay = getSubmissionDay(sub, user);
+  const submittedToday = submittedDay !== null && submittedDay === day;
 
   return !resolved && !submittedToday;
 }
 
-function shouldCountForAssignee(sub, assignee) {
-  const values = USERS.map((u) => getSubValue(sub, u)).filter(Boolean);
+function shouldCountForAssignee(sub, assignee, day) {
+  const values = USERS.map((u) => {
+    const submittedDay = getSubmissionDay(sub, u);
+    return submittedDay !== null && submittedDay === day ? getSubValue(sub, u) : null;
+  }).filter(Boolean);
   if (values.includes('Unsure')) return false;
   return values.includes(assignee);
 }
@@ -168,6 +178,17 @@ function addDays(date, days) {
 function parseLocalDate(dateStr) {
   const parsed = new Date(`${dateStr}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatLocalDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function getLocalDateKey(dateLike) {
+  if (!dateLike) return null;
+  const parsed = new Date(dateLike);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return formatLocalDate(parsed);
 }
 
 function formatRelativeDayLabel(dateStr, referenceDate) {
@@ -710,19 +731,39 @@ export default function CreditCardApp() {
     [sourceTransactions]
   );
   const referenceDate = useMemo(() => addDays(startOfLocalDay(new Date()), day), [day]);
+  const referenceDateKey = useMemo(() => formatLocalDate(referenceDate), [referenceDate]);
   const otherUser = currentUser ? getOtherUser(currentUser) : USERS[0];
   const dayLabel = day === 0 ? 'today' : `+${day}d`;
 
   const firebaseSections = useMemo(() => {
     if (!usingFirebaseTransactions) return [];
 
-    const pending = firebaseTransactions
-      .filter((tx) => tx.isPending || !tx.date)
-      .filter((tx) => isVisibleForUser(tx, submissions, currentUser, day));
-    const datedGroups = groupTransactionsByDate(
-      firebaseTransactions.filter((tx) => tx.date && !tx.isPending)
-    );
+    const pending = [];
+    const agedPendingGroups = {};
+    const datedTransactions = [];
+
+    firebaseTransactions.forEach((tx) => {
+      const visible = isVisibleForUser(tx, submissions, currentUser, day);
+      if (!visible) return;
+
+      const isPending = tx.isPending || !tx.date;
+      if (isPending) {
+        if (day === 0) {
+          pending.push(tx);
+        } else {
+          const pendingKey = getLocalDateKey(tx.uploadedDate || tx.date) || referenceDateKey;
+          if (!agedPendingGroups[pendingKey]) agedPendingGroups[pendingKey] = [];
+          agedPendingGroups[pendingKey].push(tx);
+        }
+        return;
+      }
+
+      datedTransactions.push(tx);
+    });
+
+    const datedGroups = groupTransactionsByDate(datedTransactions);
     const datedKeys = sortDateKeys(Object.keys(datedGroups));
+    const agedPendingKeys = sortDateKeys(Object.keys(agedPendingGroups));
 
     const sections = [];
     if (pending.length > 0) {
@@ -733,6 +774,16 @@ export default function CreditCardApp() {
         txs: pending,
       });
     }
+
+    agedPendingKeys.forEach((dateKey) => {
+      const txs = agedPendingGroups[dateKey] || [];
+      if (txs.length === 0) return;
+      sections.push({
+        key: `pending-${dateKey}`,
+        title: formatRelativeDayLabel(dateKey, referenceDate),
+        txs,
+      });
+    });
 
     datedKeys.forEach((dateKey) => {
       const txs = (datedGroups[dateKey] || []).filter((tx) =>
@@ -792,21 +843,21 @@ export default function CreditCardApp() {
     USERS.forEach((u) => {
       out[u] = Object.entries(submissions).reduce((acc, [txId, sub]) => {
         const tx = transactionsById[txId];
-        if (!tx || !shouldCountForAssignee(sub, u)) return acc;
+        if (!tx || !shouldCountForAssignee(sub, u, day)) return acc;
         return acc + Number(tx.amount || 0);
       }, 0);
     });
     return out;
-  }, [submissions, transactionsById]);
+  }, [submissions, transactionsById, day]);
 
   const macTally = useMemo(
     () =>
       Object.entries(submissions).reduce((acc, [txId, sub]) => {
         const tx = transactionsById[txId];
-        if (!tx || !shouldCountForAssignee(sub, 'Macquarie')) return acc;
+        if (!tx || !shouldCountForAssignee(sub, 'Macquarie', day)) return acc;
         return acc + Number(tx.amount || 0);
       }, 0),
-    [submissions, transactionsById]
+    [submissions, transactionsById, day]
   );
 
   const handleAssign = async (txId, value) => {

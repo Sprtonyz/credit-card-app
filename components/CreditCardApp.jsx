@@ -6,6 +6,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { db } from '../config/firebase';
+import { onValue, ref, set } from 'firebase/database';
 
 const USERS = ['Tony', 'Nugs'];
 const ASSIGN_OPTS = ['Unsure', 'Macquarie', 'Tony', 'Nugs'];
@@ -66,8 +68,131 @@ function getSubTs(sub, user) {
 }
 
 function hasConflict(sub) {
-  const picks = USERS.map((u) => getSubValue(sub, u)).filter(Boolean);
+  const picks = USERS.map((u) => getSubValue(sub, u)).filter((value) => value && value !== 'Unsure');
   return picks.length === USERS.length && new Set(picks).size > 1;
+}
+
+function getSubmissionStatus(sub) {
+  const values = USERS.map((u) => getSubValue(sub, u)).filter(Boolean);
+  const hasUnsure = values.includes('Unsure');
+  const allPicked = values.length === USERS.length;
+  const resolved = allPicked && !hasUnsure && new Set(values).size === 1;
+
+  return {
+    resolved,
+    conflict: allPicked && !hasUnsure && new Set(values).size > 1,
+    unsure: hasUnsure,
+    anyPicked: values.length > 0,
+  };
+}
+
+function isVisibleForUser(tx, submissions, user, day) {
+  if (!user) return true;
+
+  const sub = submissions[tx.id] || {};
+  const { resolved } = getSubmissionStatus(sub);
+  const userSubmission = sub[user];
+  const submittedToday = userSubmission?.day === day;
+
+  return !resolved && !submittedToday;
+}
+
+function shouldCountForAssignee(sub, assignee) {
+  const values = USERS.map((u) => getSubValue(sub, u)).filter(Boolean);
+  if (values.includes('Unsure')) return false;
+  return values.includes(assignee);
+}
+
+function normalizeFirebaseTransaction(id, tx) {
+  return {
+    id,
+    desc: tx.merchant || tx.desc || 'Untitled transaction',
+    amount: Number(tx.amount) || 0,
+    date: tx.date || null,
+    isPending: Boolean(tx.isPending) || !tx.date,
+    uploadedDate: tx.uploadedDate || null,
+    category: tx.category || null,
+    source: tx.source || 'image',
+    raw: tx,
+  };
+}
+
+function groupTransactionsByDate(transactions) {
+  return transactions.reduce((groups, tx) => {
+    const key = tx.date || 'undated';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(tx);
+    return groups;
+  }, {});
+}
+
+function sortDateKeys(keys) {
+  return [...keys].sort((a, b) => {
+    if (a === 'undated') return 1;
+    if (b === 'undated') return -1;
+
+    const ta = new Date(a).getTime();
+    const tb = new Date(b).getTime();
+    if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) {
+      return tb - ta;
+    }
+
+    return String(b).localeCompare(String(a));
+  });
+}
+
+function formatDayLabel(dayKey, fallbackIndex) {
+  if (!dayKey) return fallbackIndex === 0 ? 'today' : `+${fallbackIndex}d`;
+  if (dayKey === 'undated') return 'undated';
+
+  const parsed = new Date(`${dayKey}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return dayKey;
+
+  return parsed.toLocaleDateString('en-AU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function startOfLocalDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function parseLocalDate(dateStr) {
+  const parsed = new Date(`${dateStr}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatRelativeDayLabel(dateStr, referenceDate) {
+  const parsed = parseLocalDate(dateStr);
+  if (!parsed) return dateStr || 'Unknown';
+
+  const ref = startOfLocalDay(referenceDate);
+  const diffDays = Math.round((ref.getTime() - startOfLocalDay(parsed).getTime()) / 86400000);
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays > 1) return `${diffDays}D Ago`;
+  if (diffDays === -1) return 'Tomorrow';
+  return `${Math.abs(diffDays)}D Ahead`;
+}
+
+function formatShortDate(dateStr) {
+  const parsed = parseLocalDate(dateStr);
+  if (!parsed) return dateStr || '';
+
+  return parsed.toLocaleDateString('en-AU', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function Landing({ onSelect }) {
@@ -207,7 +332,7 @@ function TransactionCard({ tx, sub, currentUser, onAssign }) {
   const unsure = USERS.some((u) => getSubValue(sub, u) === 'Unsure');
 
   return (
-    <div className={`tx-card ${conflict ? 'conflict' : ''}`}>
+    <div className={`tx-card ${conflict ? 'conflict' : unsure ? 'unsure' : ''}`}>
       <div className="tx-top">
         <div>
           <div className="tx-meta">
@@ -336,12 +461,15 @@ function PetCanvas({ petType = 'cat' }) {
 }
 
 function TxGroup({ title, date, dayKey, txs, submissions, currentUser, onAssign }) {
+  const isPending = title === 'Pending';
+
   return (
     <div className="day-group">
       <div className="day-group-header">
-        <span className="day-label-pill today">{title}</span>
-        <div className="day-line" />
-        <span className="day-date">{date}</span>
+        {isPending && <span className="attention-dot" />}
+        <span className={`day-label-pill ${isPending ? 'past' : 'today'}`}>{title}</span>
+        {isPending && <span className="attention-tag">attention</span>}
+        <div className={`day-line ${isPending ? 'past' : ''}`} />
       </div>
       {txs.map((tx) => (
         <TransactionCard
@@ -369,10 +497,59 @@ function AllDone({ msg }) {
   );
 }
 
+function OcrDiagnostics({ processedImages }) {
+  if (!processedImages || processedImages.length === 0) return null;
+
+  return (
+    <div className="ocr-diagnostics">
+      <h3 className="ocr-diagnostics-title">OCR Diagnostics</h3>
+      <p className="ocr-diagnostics-sub">
+        This shows exactly what Tesseract extracted before anything is written to Firebase.
+      </p>
+      <div className="ocr-diagnostics-list">
+        {processedImages.map((image) => (
+          <details key={image.imageHash || image.fileName} className="ocr-diagnostics-item">
+            <summary>
+              <span>{image.fileName}</span>
+              <span>
+                {image.error
+                  ? 'error'
+                  : `${image.originalCount || 0} tx · ${image.transactions?.length || 0} parsed`}
+              </span>
+            </summary>
+            {image.error ? (
+              <p className="ocr-diagnostics-error">{image.error}</p>
+            ) : (
+              <>
+                <div className="ocr-diagnostics-meta">
+                  <span>Hash: {image.imageHash || 'n/a'}</span>
+                  <span>Preview of raw OCR:</span>
+                </div>
+                <pre className="ocr-diagnostics-text">
+                  {image.extractedText || 'No OCR text extracted.'}
+                </pre>
+                <div className="ocr-diagnostics-meta">
+                  <span>Parsed transactions:</span>
+                </div>
+                <ul className="ocr-diagnostics-txs">
+                  {(image.transactions || []).map((tx, idx) => (
+                    <li key={`${image.fileName}-${idx}`}>
+                      {tx.merchant} - ${Number(tx.amount || 0).toFixed(2)}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </details>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CreditCardApp() {
   const [currentUser, setCurrentUser] = useState(null);
   const [submissions, setSubmissions] = useState({});
-  const [collapsedTxs, setCollapsedTxs] = useState(new Set());
   const [showSwitch, setShowSwitch] = useState(false);
   const [showMac, setShowMac] = useState(false);
   const [showPetDebug, setShowPetDebug] = useState(false);
@@ -385,6 +562,8 @@ export default function CreditCardApp() {
   const [day, setDay] = useState(0);
   const [undoStack, setUndoStack] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState({});
+  const [firebaseTransactions, setFirebaseTransactions] = useState(null);
+  const [previewOnly, setPreviewOnly] = useState(false);
   const doneMsg = useRef(DONE[Math.floor(Math.random() * DONE.length)]);
   const confettiRef = useRef(null);
   const confettiFiredRef = useRef(false);
@@ -415,6 +594,44 @@ export default function CreditCardApp() {
   useEffect(() => {
     if (currentUser) localStorage.setItem(USER_KEY, currentUser);
   }, [currentUser]);
+
+  useEffect(() => {
+    const txRef = ref(db, 'transactions');
+    const unsubscribe = onValue(
+      txRef,
+      (snapshot) => {
+        const next = [];
+        snapshot.forEach((child) => {
+          const value = child.val();
+          if (!value) return;
+          if (value.source === 'manual-test') return;
+          if ((value.merchant || '').startsWith('FIREBASE TEST')) return;
+          next.push(normalizeFirebaseTransaction(child.key, value));
+        });
+        setFirebaseTransactions(next);
+      },
+      () => {
+        setFirebaseTransactions([]);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const submissionsRef = ref(db, 'submissions');
+    const unsubscribe = onValue(
+      submissionsRef,
+      (snapshot) => {
+        setSubmissions(snapshot.val() || {});
+      },
+      () => {
+        // Keep local data if Firebase submissions cannot be read.
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (!presenceTabIdRef.current) {
@@ -480,10 +697,73 @@ export default function CreditCardApp() {
     };
   }, [currentUser]);
 
-  const todayKey = String(day);
-  const visibleTxs = (DEMO_DAYS[todayKey] || DEMO_DAYS['0']).filter((tx) => !collapsedTxs.has(tx.id));
+  const usingFirebaseTransactions = Array.isArray(firebaseTransactions) && firebaseTransactions.length > 0;
+  const sourceTransactions = useMemo(
+    () =>
+      usingFirebaseTransactions
+        ? firebaseTransactions
+        : Object.values(DEMO_DAYS).flat(),
+    [usingFirebaseTransactions, firebaseTransactions]
+  );
+  const transactionsById = useMemo(
+    () => Object.fromEntries((sourceTransactions || []).map((tx) => [tx.id, tx])),
+    [sourceTransactions]
+  );
+  const referenceDate = useMemo(() => addDays(startOfLocalDay(new Date()), day), [day]);
   const otherUser = currentUser ? getOtherUser(currentUser) : USERS[0];
   const dayLabel = day === 0 ? 'today' : `+${day}d`;
+
+  const firebaseSections = useMemo(() => {
+    if (!usingFirebaseTransactions) return [];
+
+    const pending = firebaseTransactions
+      .filter((tx) => tx.isPending || !tx.date)
+      .filter((tx) => isVisibleForUser(tx, submissions, currentUser, day));
+    const datedGroups = groupTransactionsByDate(
+      firebaseTransactions.filter((tx) => tx.date && !tx.isPending)
+    );
+    const datedKeys = sortDateKeys(Object.keys(datedGroups));
+
+    const sections = [];
+    if (pending.length > 0) {
+      sections.push({
+        key: 'pending',
+        title: 'Pending',
+        date: '',
+        txs: pending,
+      });
+    }
+
+    datedKeys.forEach((dateKey) => {
+      const txs = (datedGroups[dateKey] || []).filter((tx) =>
+        isVisibleForUser(tx, submissions, currentUser, day)
+      );
+      if (txs.length === 0) return;
+      sections.push({
+        key: dateKey,
+        title: formatRelativeDayLabel(dateKey, referenceDate),
+        txs,
+      });
+    });
+
+    return sections;
+  }, [usingFirebaseTransactions, firebaseTransactions, submissions, currentUser, day, referenceDate]);
+
+  const demoSection = useMemo(() => {
+    const demoTxs = (DEMO_DAYS[String(day)] || DEMO_DAYS['0']).filter((tx) =>
+      isVisibleForUser(tx, submissions, currentUser, day)
+    );
+    return [
+      {
+        key: String(day),
+        title: day === 0 ? 'Today' : day === 1 ? 'Yesterday' : `${day}D Ago`,
+        txs: demoTxs,
+      },
+    ];
+  }, [day, submissions, currentUser]);
+
+  const sections = usingFirebaseTransactions ? firebaseSections : demoSection;
+  const visibleTxs = sections.flatMap((section) => section.txs);
   const anyVisible = visibleTxs.length > 0;
 
   useEffect(() => {
@@ -499,37 +779,37 @@ export default function CreditCardApp() {
   }, [anyVisible, currentUser]);
 
   const myRemaining = useMemo(
-    () => visibleTxs.filter((tx) => !submissions[tx.id]?.[currentUser]).length,
-    [visibleTxs, submissions, currentUser]
+    () => sourceTransactions.filter((tx) => isVisibleForUser(tx, submissions, currentUser, day)).length,
+    [sourceTransactions, submissions, currentUser, day]
   );
   const otherRemaining = useMemo(
-    () => visibleTxs.filter((tx) => !submissions[tx.id]?.[otherUser]).length,
-    [visibleTxs, submissions, otherUser]
+    () => sourceTransactions.filter((tx) => isVisibleForUser(tx, submissions, otherUser, day)).length,
+    [sourceTransactions, submissions, otherUser, day]
   );
 
   const userTallies = useMemo(() => {
     const out = {};
     USERS.forEach((u) => {
-      out[u] = Object.values(DEMO_DAYS).flat().reduce((acc, tx) => {
-        const pick = getSubValue(submissions[tx.id], u);
-        return pick === u ? acc + tx.amount : acc;
+      out[u] = Object.entries(submissions).reduce((acc, [txId, sub]) => {
+        const tx = transactionsById[txId];
+        if (!tx || !shouldCountForAssignee(sub, u)) return acc;
+        return acc + Number(tx.amount || 0);
       }, 0);
     });
     return out;
-  }, [submissions]);
+  }, [submissions, transactionsById]);
 
   const macTally = useMemo(
     () =>
-      Object.values(DEMO_DAYS)
-        .flat()
-        .reduce((acc, tx) => {
-          const picked = USERS.some((u) => getSubValue(submissions[tx.id], u) === 'Macquarie');
-          return picked ? acc + tx.amount : acc;
-        }, 0),
-    [submissions]
+      Object.entries(submissions).reduce((acc, [txId, sub]) => {
+        const tx = transactionsById[txId];
+        if (!tx || !shouldCountForAssignee(sub, 'Macquarie')) return acc;
+        return acc + Number(tx.amount || 0);
+      }, 0),
+    [submissions, transactionsById]
   );
 
-  const handleAssign = (txId, value) => {
+  const handleAssign = async (txId, value) => {
     if (!currentUser) return;
     setUndoStack((prev) => [
       ...prev,
@@ -543,10 +823,19 @@ export default function CreditCardApp() {
         [currentUser]: { value, ts: Date.now() },
       },
     }));
-    setCollapsedTxs((prev) => new Set([...prev, txId]));
+
+    try {
+      await set(ref(db, `submissions/${txId}/${currentUser}`), {
+        day,
+        ts: Date.now(),
+        value,
+      });
+    } catch (err) {
+      console.error('Failed to persist submission to Firebase:', err);
+    }
   };
 
-  const undo = () => {
+  const undo = async () => {
     const last = undoStack[undoStack.length - 1];
     if (!last) return;
     setUndoStack((prev) => prev.slice(0, -1));
@@ -557,26 +846,32 @@ export default function CreditCardApp() {
       else delete next[last.txId][last.user];
       return next;
     });
+
+    try {
+      if (last.prev) {
+        await set(ref(db, `submissions/${last.txId}/${last.user}`), {
+          day,
+          ts: last.prev.ts || Date.now(),
+          value: last.prev.value,
+        });
+      } else {
+        await set(ref(db, `submissions/${last.txId}/${last.user}`), null);
+      }
+    } catch (err) {
+      console.error('Failed to undo submission in Firebase:', err);
+    }
   };
 
-  const maxDay = Math.max(...Object.keys(DEMO_DAYS).map(Number));
-  const stepDay = () =>
-    setDay((d) => {
-      const next = (d + 1) > maxDay ? 0 : d + 1;
-      if (next === 0) setCollapsedTxs(new Set());
-      return next;
-    });
+  const stepDay = () => setDay((d) => d + 1);
   const resetDay = () => {
     setDay(0);
-    setCollapsedTxs(new Set());
   };
 
-  const clearCache = () => {
+  const clearCache = async () => {
     if (!window.confirm('Reset all data? This clears ALL devices.')) return;
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(USER_KEY);
     setSubmissions({});
-    setCollapsedTxs(new Set());
     setUndoStack([]);
     setShowMac(false);
     setShowPetDebug(false);
@@ -586,6 +881,12 @@ export default function CreditCardApp() {
     setHp(100);
     setPetXp(0);
     setDay(0);
+
+    try {
+      await set(ref(db, 'submissions'), null);
+    } catch (err) {
+      console.error('Failed to clear Firebase submissions:', err);
+    }
   };
 
   if (!currentUser) {
@@ -733,15 +1034,18 @@ export default function CreditCardApp() {
           </div>
         </div>
 
-        <TxGroup
-          title="Today"
-          date="2026-04-19"
-          dayKey={todayKey}
-          txs={visibleTxs}
-          submissions={submissions}
-          currentUser={currentUser}
-          onAssign={handleAssign}
-        />
+        {sections.map((section) => (
+          <TxGroup
+            key={section.key}
+            title={section.title}
+            date={section.date}
+            dayKey={section.key}
+            txs={section.txs}
+            submissions={submissions}
+            currentUser={currentUser}
+            onAssign={handleAssign}
+          />
+        ))}
 
       {!anyVisible && <AllDone msg={doneMsg.current} />}
       <ConfettiCanvas ref={confettiRef} />

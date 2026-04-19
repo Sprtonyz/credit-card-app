@@ -147,3 +147,16 @@ export async function getAllProcessedLogs() {
     throw error;
   }
 }
+
+export async function clearUploadedData() {
+  try {
+    await Promise.all([
+      set(ref(db, 'transactions'), null),
+      set(ref(db, 'processedTransactions'), null),
+      set(ref(db, 'submissions'), null),
+    ]);
+  } catch (error) {
+    console.error('Error clearing uploaded data:', error);
+    throw error;
+  }
+}

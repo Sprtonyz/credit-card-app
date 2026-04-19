@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -6,8 +6,18 @@ const ACCEPTED_FORMATS = ['image/jpeg', 'image/png', 'image/webp'];
 
 export default function ImageUploader({ onImagesSelected, isLoading = false }) {
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [previewUrls, setPreviewUrls] = useState([]);
   const [errors, setErrors] = useState([]);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    const nextUrls = uploadedFiles.map((file) => URL.createObjectURL(file));
+    setPreviewUrls(nextUrls);
+
+    return () => {
+      nextUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [uploadedFiles]);
 
   const validateFiles = (files) => {
     const newErrors = [];
@@ -41,6 +51,10 @@ export default function ImageUploader({ onImagesSelected, isLoading = false }) {
       setUploadedFiles(fileArray);
       onImagesSelected(fileArray);
     }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleRemoveFile = (index) => {
@@ -48,6 +62,10 @@ export default function ImageUploader({ onImagesSelected, isLoading = false }) {
     setUploadedFiles(newFiles);
     onImagesSelected(newFiles);
     setErrors([]);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleClearAll = () => {
@@ -115,8 +133,16 @@ export default function ImageUploader({ onImagesSelected, isLoading = false }) {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {uploadedFiles.map((file, idx) => (
               <div key={idx} className="relative bg-slate-700 rounded-lg overflow-hidden group">
-                <div className="aspect-video bg-slate-800 flex items-center justify-center text-2xl">
-                  Preview
+                <div className="aspect-video bg-slate-800 flex items-center justify-center overflow-hidden">
+                  {previewUrls[idx] ? (
+                    <img
+                      src={previewUrls[idx]}
+                      alt={file.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="text-2xl text-slate-500">Preview</div>
+                  )}
                 </div>
 
                 <div className="p-2 text-xs text-slate-400 truncate">{file.name}</div>

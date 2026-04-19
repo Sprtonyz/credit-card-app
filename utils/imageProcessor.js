@@ -1,6 +1,27 @@
 import Tesseract from 'tesseract.js';
 import { correctTransaction } from './ocrErrorCorrection';
 
+function normalizeOcrLine(line) {
+  return line
+    .replace(/\u00a0/g, ' ')
+    .replace(/[|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/(?<=\d)[oO](?=\d)/g, '0')
+    .replace(/(?<=\d)[lI](?=\d)/g, '1')
+    .replace(/(?<=\d)[sS](?=\d)/g, '5')
+    .trim();
+}
+
+function cleanMerchantCandidate(text) {
+  if (!text) return '';
+
+  return text
+    .replace(/^\s*(pending|posted)\s*[-:–—]?\s*/i, '')
+    .replace(/^\s*(?:\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})\s*/i, '')
+    .replace(/^\s*[-:–—]+\s*/i, '')
+    .trim();
+}
+
 async function extractTextFromImage(imageFile, onProgress) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -12,6 +33,8 @@ async function extractTextFromImage(imageFile, onProgress) {
         const {
           data: { text },
         } = await Tesseract.recognize(image, 'eng', {
+          tessedit_pageseg_mode: 6,
+          preserve_interword_spaces: '1',
           logger: (m) => {
             if (onProgress) {
               onProgress(m.progress);
@@ -37,45 +60,85 @@ function parseTransactionText(text) {
   if (!text) return [];
 
   const transactions = [];
-  const lines = text.split('\n').filter((line) => line.trim().length > 0);
+  const lines = text
+    .split('\n')
+    .map((line) => normalizeOcrLine(line))
+    .filter((line) => line.length > 0);
 
   let currentMerchant = null;
   let currentAmount = null;
   let currentDate = null;
   let currentCategory = null;
 
-  for (const line of lines) {
+  for (let idx = 0; idx < lines.length; idx += 1) {
+    const line = lines[idx];
     const trimmed = line.trim();
+    const isUiLabel = /^(date|description|merchant|amount|total|balance|card|transaction|transactions|pending)$/i.test(trimmed);
+    const amountMatch = trimmed.match(
+      /(?:\$|aud\s*)?\d{1,3}(?:[,\s]\d{3})*(?:[.,]\d{2})|\$?\d+[.,]\d{2}/i
+    );
+    const dateMatch = trimmed.match(
+      /\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}/i
+    );
 
-    const amountMatch = trimmed.match(/\$?\d+[.,]\d{2}|\d+[.,]\d{2}/);
+    if (dateMatch) {
+      currentDate = dateMatch[0];
+    }
+
+    if (/entertainment|food|groceries|transport|shopping|utilities|health/i.test(trimmed)) {
+      currentCategory = trimmed;
+    }
+
+    if (!amountMatch && !dateMatch && !isUiLabel && trimmed.length > 2) {
+      const cleanedMerchant = cleanMerchantCandidate(trimmed);
+      if (cleanedMerchant) {
+        currentMerchant = cleanedMerchant;
+      }
+      continue;
+    }
+
     if (amountMatch) {
+      const amountText = amountMatch[0];
+      const merchantText = cleanMerchantCandidate(
+        trimmed
+        .replace(amountMatch[0], '')
+        .replace(/\b(?:aud|usd)\b/i, '')
+        .replace(/[:\-]+$/, '')
+        .trim()
+      );
+
+      const merchant = merchantText || currentMerchant;
+      if (merchant && amountText) {
+        transactions.push({
+          merchant,
+          amount: amountText,
+          date: currentDate,
+          category: currentCategory,
+          lineIndex: idx + 1,
+          rawLine: trimmed,
+        });
+        currentMerchant = null;
+        currentAmount = null;
+        currentDate = null;
+        currentCategory = null;
+        continue;
+      }
+
+      currentAmount = amountText;
       if (currentAmount && currentMerchant) {
         transactions.push({
           merchant: currentMerchant,
           amount: currentAmount,
           date: currentDate,
           category: currentCategory,
+          lineIndex: idx + 1,
+          rawLine: trimmed,
         });
         currentMerchant = null;
+        currentAmount = null;
         currentDate = null;
         currentCategory = null;
       }
-      currentAmount = amountMatch[0];
-    }
-
-    const dateMatch = trimmed.match(
-      /\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}/i
-    );
-    if (dateMatch) {
-      currentDate = dateMatch[0];
-    }
-
-    if (!amountMatch && trimmed.length > 2 && !dateMatch) {
-      currentMerchant = trimmed;
-    }
-
-    if (/entertainment|food|groceries|transport|shopping|utilities|health/i.test(trimmed)) {
-      currentCategory = trimmed;
     }
   }
 
@@ -85,6 +148,8 @@ function parseTransactionText(text) {
       amount: currentAmount,
       date: currentDate,
       category: currentCategory,
+      lineIndex: lines.length,
+      rawLine: lines[lines.length - 1] || '',
     });
   }
 
@@ -123,6 +188,10 @@ export async function processImage(imageFile, onProgress) {
     const extractedText = await extractTextFromImage(imageFile, onProgress);
     const rawTransactions = parseTransactionText(extractedText);
     const correctedTransactions = rawTransactions.map(correctTransaction);
+    const rawLineCount = extractedText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean).length;
 
     return {
       imageHash,
@@ -130,6 +199,7 @@ export async function processImage(imageFile, onProgress) {
       extractedText,
       transactions: correctedTransactions,
       originalCount: rawTransactions.length,
+      rawLineCount,
     };
   } catch (error) {
     console.error('Error processing image:', error);
@@ -168,3 +238,4 @@ export async function processImages(imageFiles, onProgress) {
 
   return results;
 }
+

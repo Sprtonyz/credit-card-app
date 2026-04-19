@@ -77,6 +77,7 @@ export function fixCategory(category) {
 
 export function correctTransaction(transaction) {
   return {
+    ...transaction,
     merchant: fixMerchantName(transaction.merchant),
     amount: fixAmountFormatting(transaction.amount),
     category: transaction.category ? fixCategory(transaction.category) : null,

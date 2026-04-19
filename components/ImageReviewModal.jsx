@@ -8,6 +8,7 @@ export default function ImageReviewModal({
   isLoading = false,
 }) {
   const [selected, setSelected] = useState({});
+  const getDuplicateItems = (group) => (Array.isArray(group) ? group : group?.group || []);
 
   const handleSelectDuplicate = (groupIndex, itemIndex) => {
     setSelected((prev) => ({
@@ -48,13 +49,16 @@ export default function ImageReviewModal({
     const indicesToKeep = new Set();
 
     duplicates.forEach((group, groupIdx) => {
+      const items = getDuplicateItems(group);
       const selectedIdx = selected[groupIdx];
-      indicesToKeep.add(group[selectedIdx].index);
+      if (items[selectedIdx]) {
+        indicesToKeep.add(items[selectedIdx].index);
+      }
     });
 
     flagged.forEach((flaggedItem, flaggedIdx) => {
       if (selected[`flagged_${flaggedIdx}`]) {
-        flaggedItem.group.forEach((item) => {
+        getDuplicateItems(flaggedItem).forEach((item) => {
           indicesToKeep.add(item.index);
         });
       }
@@ -79,57 +83,69 @@ export default function ImageReviewModal({
         </div>
 
         <div className="p-6 space-y-6">
-          {duplicates.map((group, groupIdx) => (
-            <div key={`dup_${groupIdx}`} className="bg-slate-700/50 rounded-lg p-4 border border-red-500/30">
-              <h3 className="font-bold text-red-300 mb-3">
-                Duplicate Group {groupIdx + 1}: Select which to keep
-              </h3>
+          {duplicates.map((group, groupIdx) => {
+            const items = getDuplicateItems(group);
 
-              <div className="space-y-2">
-                {group.map((item, itemIdx) => (
-                  <label
-                    key={`dup_${groupIdx}_${itemIdx}`}
-                    className="flex items-start p-3 bg-slate-800 rounded border-2 transition cursor-pointer"
-                    style={{
-                      borderColor:
-                        selected[groupIdx] === itemIdx
-                          ? '#3b82f6'
-                          : '#475569',
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name={`dup_group_${groupIdx}`}
-                      value={itemIdx}
-                      checked={selected[groupIdx] === itemIdx}
-                      onChange={() => handleSelectDuplicate(groupIdx, itemIdx)}
-                      className="mt-1 mr-3"
-                    />
-                    <div className="flex-1">
-                      <p className="font-mono text-sm text-slate-300">
-                        <span className="font-bold">{item.transaction.merchant}</span>
-                        {' - '}
-                        <span className="text-blue-300">${item.transaction.amount.toFixed(2)}</span>
-                      </p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        From: {item.imageSource.imageName}
-                      </p>
-                      {item.transaction.date && (
-                        <p className="text-xs text-slate-400">
-                          Date: {item.transaction.date}
+            return (
+              <div key={`dup_${groupIdx}`} className="bg-slate-700/50 rounded-lg p-4 border border-red-500/30">
+                <h3 className="font-bold text-red-300 mb-3">
+                  Duplicate Group {groupIdx + 1}: Select which to keep
+                </h3>
+
+                <div className="space-y-2">
+                  {items.map((item, itemIdx) => (
+                    <label
+                      key={`dup_${groupIdx}_${itemIdx}`}
+                      className="flex items-start p-3 bg-slate-800 rounded border-2 transition cursor-pointer"
+                      style={{
+                        borderColor:
+                          selected[groupIdx] === itemIdx
+                            ? '#3b82f6'
+                            : '#475569',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name={`dup_group_${groupIdx}`}
+                        value={itemIdx}
+                        checked={selected[groupIdx] === itemIdx}
+                        onChange={() => handleSelectDuplicate(groupIdx, itemIdx)}
+                        className="mt-1 mr-3"
+                      />
+                      <div className="flex-1">
+                        <p className="font-mono text-sm text-slate-300">
+                          <span className="font-bold">{item.transaction.merchant}</span>
+                          {' - '}
+                          <span className="text-blue-300">${item.transaction.amount.toFixed(2)}</span>
                         </p>
-                      )}
-                      {item.transaction.category && (
-                        <p className="text-xs text-slate-400">
-                          Category: {item.transaction.category}
+                        <p className="text-xs text-slate-400 mt-1">
+                          From: {item.imageSource.imageName}
                         </p>
-                      )}
-                    </div>
-                  </label>
-                ))}
+                        <p className="text-xs text-slate-400">
+                          {item.transaction.lineIndex ? `OCR line: ${item.transaction.lineIndex}` : 'OCR line: unknown'}
+                        </p>
+                        {item.transaction.rawLine ? (
+                          <p className="text-xs text-slate-500 font-mono mt-1 break-all">
+                            {item.transaction.rawLine}
+                          </p>
+                        ) : null}
+                        {item.transaction.date && (
+                          <p className="text-xs text-slate-400">
+                            Date: {item.transaction.date}
+                          </p>
+                        )}
+                        {item.transaction.category && (
+                          <p className="text-xs text-slate-400">
+                            Category: {item.transaction.category}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {flagged.map((flaggedItem, flaggedIdx) => (
             <div key={`flag_${flaggedIdx}`} className="bg-slate-700/50 rounded-lg p-4 border border-yellow-500/30">
@@ -151,6 +167,14 @@ export default function ImageReviewModal({
                     <p className="text-xs text-slate-400 mt-1">
                       From: {item.imageSource.imageName}
                     </p>
+                    <p className="text-xs text-slate-400">
+                      {item.transaction.lineIndex ? `OCR line: ${item.transaction.lineIndex}` : 'OCR line: unknown'}
+                    </p>
+                    {item.transaction.rawLine ? (
+                      <p className="text-xs text-slate-500 font-mono mt-1 break-all">
+                        {item.transaction.rawLine}
+                      </p>
+                    ) : null}
                   </div>
                 ))}
               </div>

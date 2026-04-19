@@ -1,14 +1,19 @@
 {
   "admin\\upload.js -> ../../components/AdminUploadPage": {
-    "id": "admin\\upload.js -> ../../components/AdminUploadPage",
+    "id": 9900,
     "files": [
-      "static/chunks/components_AdminUploadPage_jsx.js"
+      "static/chunks/a198fdd9.efcaf4be7c21d566.js",
+      "static/chunks/123.d0c8ecfca236d327.js",
+      "static/chunks/838.b3261a4377de6b13.js",
+      "static/chunks/900.0eacac777ba7dc5e.js"
     ]
   },
   "index.js -> ../components/CreditCardApp": {
-    "id": "index.js -> ../components/CreditCardApp",
+    "id": 5392,
     "files": [
-      "static/chunks/components_CreditCardApp_jsx.js"
+      "static/chunks/a198fdd9.efcaf4be7c21d566.js",
+      "static/chunks/123.d0c8ecfca236d327.js",
+      "static/chunks/392.56837592218c2bdc.js"
     ]
   }
 }

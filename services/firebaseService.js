@@ -8,13 +8,11 @@ import {
   get,
   set,
 } from 'firebase/database';
-
-function formatLocalDate(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import {
+  formatLocalDate,
+  getSimulatedISOString,
+  getSimulatedTodayDate,
+} from '../utils/simulationDate';
 
 export async function addTransactions(transactions) {
   try {
@@ -23,14 +21,16 @@ export async function addTransactions(transactions) {
 
     for (const tx of transactions) {
       const newTxRef = push(transactionsRef);
+      const simulatedUploadDay = getTodayDate();
       await set(newTxRef, {
         merchant: tx.merchant,
         amount: tx.amount,
         category: tx.category || null,
-        date: tx.date || formatLocalDate(),
+        date: tx.date || formatLocalDate(getSimulatedTodayDate()),
         isPending: !tx.date || tx.isPending,
         source: tx.source || 'image',
-        uploadedDate: new Date().toISOString(),
+        uploadedDate: getSimulatedISOString(),
+        uploadedDay: simulatedUploadDay,
         imageHash: tx.imageHash || null,
         owner: null,
       });
@@ -70,14 +70,14 @@ export async function queryTransactionsByDate(date) {
 }
 
 function getYesterdayDate() {
-  const today = new Date();
+  const today = getSimulatedTodayDate();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
   return formatLocalDate(yesterday);
 }
 
 export function getTodayDate() {
-  return formatLocalDate();
+  return formatLocalDate(getSimulatedTodayDate());
 }
 
 export async function getYesterdaysPending() {
@@ -129,7 +129,8 @@ export async function saveProcessedLog(imageHash, transactionIds, imageName) {
   try {
     const processedRef = ref(db, `processedTransactions/${imageHash}`);
     await set(processedRef, {
-      uploadDate: new Date().toISOString(),
+      uploadDate: getSimulatedISOString(),
+      uploadDay: getTodayDate(),
       extractedCount: transactionIds.length,
       transactions: transactionIds,
       imageName: imageName,

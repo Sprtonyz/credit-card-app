@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   forwardRef,
   useEffect,
   useImperativeHandle,
@@ -6,8 +6,14 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import Link from 'next/link';
 import { db } from '../config/firebase';
 import { onValue, ref, set } from 'firebase/database';
+import {
+  clearSavedSimulatedDay,
+  getSavedSimulatedDay,
+  setSavedSimulatedDay,
+} from '../utils/simulationDate';
 
 const USERS = ['Tony', 'Nugs'];
 const ASSIGN_OPTS = ['Unsure', 'Macquarie', 'Tony', 'Nugs'];
@@ -49,10 +55,10 @@ const DEMO_DAYS = {
 };
 
 const DONE = [
-  { emoji: '🎉', title: 'All done!', sub: 'Every transaction sorted. Legends.' },
-  { emoji: '🏆', title: 'Clean sweep!', sub: 'Nothing left to action today.' },
-  { emoji: '✨', title: "That's everything!", sub: "You're both on top of it." },
-  { emoji: '🚀', title: 'Done and dusted!', sub: 'Go enjoy the rest of your day.' },
+  { emoji: '\u{1F389}', title: 'All done!', sub: 'Every transaction sorted. Legends.' },
+  { emoji: '\u{1F3C6}', title: 'Clean sweep!', sub: 'Nothing left to action today.' },
+  { emoji: '\u2728', title: "That's everything!", sub: "You're both on top of it." },
+  { emoji: '\u{1F680}', title: 'Done and dusted!', sub: 'Go enjoy the rest of your day.' },
 ];
 
 function getOtherUser(user) {
@@ -72,6 +78,34 @@ function getSubmissionDay(sub, user) {
   if (dayValue === undefined || dayValue === null || dayValue === '') return null;
   const parsed = Number(dayValue);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getSurfacedSubmissionValue(sub, user, day) {
+  const submittedDay = getSubmissionDay(sub, user);
+  if (submittedDay === null || submittedDay >= day) return null;
+  return getSubValue(sub, user);
+}
+
+function getSurfacedSubmissionStatus(sub, day) {
+  const values = USERS.map((u) => getSurfacedSubmissionValue(sub, u, day)).filter(Boolean);
+  const hasUnsure = values.includes('Unsure');
+
+  return {
+    conflict: values.length === USERS.length && !hasUnsure && new Set(values).size > 1,
+    unsure: hasUnsure,
+  };
+}
+
+function getOptionClassName(value) {
+  if (value === 'Macquarie') return 'mac-btn';
+  if (value === 'Unsure') return 'unsure-btn';
+  if (value === 'Tony') return 'tony-btn';
+  if (value === 'Nugs') return 'nugs-btn';
+  return '';
+}
+
+function formatAssignmentLabel(value) {
+  return value === 'Macquarie' ? 'MAC' : value;
 }
 
 function hasConflict(sub) {
@@ -121,6 +155,7 @@ function normalizeFirebaseTransaction(id, tx) {
     date: tx.date || null,
     isPending: Boolean(tx.isPending) || !tx.date,
     uploadedDate: tx.uploadedDate || null,
+    uploadedDay: tx.uploadedDay || null,
     category: tx.category || null,
     source: tx.source || 'image',
     raw: tx,
@@ -230,7 +265,7 @@ function Landing({ onSelect }) {
             {u}
           </button>
         ))}
-        <p className="landing-footer">Westpac · Transaction reconciliation</p>
+        <p className="landing-footer">Westpac - Transaction reconciliation</p>
       </div>
     </div>
   );
@@ -345,19 +380,18 @@ const ConfettiCanvas = forwardRef(function ConfettiCanvas(_, ref) {
   return <canvas ref={canvasRef} id="confetti-canvas" style={{ display: 'none' }} />;
 });
 
-function TransactionCard({ tx, sub, currentUser, onAssign }) {
+function TransactionCard({ tx, sub, currentUser, currentDay, onAssign }) {
   const otherUser = getOtherUser(currentUser);
-  const mySub = getSubValue(sub, currentUser);
-  const otherSub = getSubValue(sub, otherUser);
-  const conflict = hasConflict(sub);
-  const unsure = USERS.some((u) => getSubValue(sub, u) === 'Unsure');
+  const mySub = getSurfacedSubmissionValue(sub, currentUser, currentDay);
+  const otherSub = getSurfacedSubmissionValue(sub, otherUser, currentDay);
+  const { conflict, unsure } = getSurfacedSubmissionStatus(sub, currentDay);
 
   return (
     <div className={`tx-card ${conflict ? 'conflict' : unsure ? 'unsure' : ''}`}>
       <div className="tx-top">
         <div>
           <div className="tx-meta">
-            {conflict && <span className="badge badge-conflict">⚠ conflict</span>}
+            {conflict && <span className="badge badge-conflict">! conflict</span>}
             {unsure && !conflict && <span className="badge badge-unsure">? unsure</span>}
           </div>
           <p className="tx-desc">{tx.desc}</p>
@@ -368,17 +402,17 @@ function TransactionCard({ tx, sub, currentUser, onAssign }) {
       {conflict || unsure ? (
         <>
           <p className="my-pick-note">
-            {otherUser} picked <span className="my-pick-chip">{otherSub || '—'}</span>
-            {mySub ? ` · your pick: ${mySub}` : ' · tap to assign'}
+            {otherUser} picked <span className="my-pick-chip">{formatAssignmentLabel(otherSub) || '--'}</span>
+            {mySub ? ` | your pick: ${formatAssignmentLabel(mySub)}` : ' | tap to assign'}
           </p>
           <div className="conflict-row">
             {ASSIGN_OPTS.map((opt) => (
               <button
                 key={opt}
-                className={`conflict-tap-btn ${opt === 'Macquarie' ? 'mac-btn' : opt === 'Unsure' ? 'unsure-btn' : ''}`}
+                className={`conflict-tap-btn ${getOptionClassName(opt)}`}
                 onClick={() => onAssign(tx.id, opt)}
               >
-                {opt}
+                {formatAssignmentLabel(opt)}
               </button>
             ))}
           </div>
@@ -389,10 +423,10 @@ function TransactionCard({ tx, sub, currentUser, onAssign }) {
           {ASSIGN_OPTS.map((opt) => (
             <button
               key={opt}
-              className={`tap-btn ${opt === 'Macquarie' ? 'mac-btn' : opt === 'Unsure' ? 'unsure-btn' : opt === 'Tony' ? 'tony-btn' : 'nugs-btn'}`}
+              className={`tap-btn ${getOptionClassName(opt)}`}
               onClick={() => onAssign(tx.id, opt)}
             >
-              {opt === 'Macquarie' ? 'MAC' : opt}
+              {formatAssignmentLabel(opt)}
             </button>
           ))}
         </div>
@@ -405,8 +439,8 @@ function PetBar({ hp, coins, food, level, petType }) {
   return (
     <>
       <div className="shop-bar">
-        <span className="shop-coins">🪙 {coins}</span>
-        <span className="shop-food">🍖 ×{food}</span>
+        <span className="shop-coins">{'\u{1FA99}'} {coins}</span>
+        <span className="shop-food">{'\u{1F356}'} x{food}</span>
         <div className="shop-divider-v" />
         <div className="shop-hp-wrap">
           <span className="shop-hp-label">hp</span>
@@ -419,10 +453,10 @@ function PetBar({ hp, coins, food, level, petType }) {
           <span className="shop-hp-val">{hp}</span>
         </div>
         <div className="shop-divider-v" />
-        <button className="shop-btn buy">buy food 1🪙</button>
-        <button className="shop-btn feed">feed 🍖</button>
+        <button className="shop-btn buy">buy food 1{'\u{1FA99}'}</button>
+        <button className="shop-btn feed">feed {'\u{1F356}'}</button>
         <div className="shop-divider-v" />
-        <span className="pet-level">Lv.{level} · 0/90 xp</span>
+        <span className="pet-level">Lv.{level} - 0/90 xp</span>
       </div>
       <div className="pet-footer">
         <PetCanvas petType={petType} />
@@ -481,7 +515,7 @@ function PetCanvas({ petType = 'cat' }) {
   return <canvas ref={ref} />;
 }
 
-function TxGroup({ title, date, dayKey, txs, submissions, currentUser, onAssign }) {
+function TxGroup({ title, date, dayKey, txs, submissions, currentUser, currentDay, onAssign }) {
   const isPending = title === 'Pending';
 
   return (
@@ -498,6 +532,7 @@ function TxGroup({ title, date, dayKey, txs, submissions, currentUser, onAssign 
           tx={tx}
           sub={submissions[tx.id] || {}}
           currentUser={currentUser}
+          currentDay={currentDay}
           onAssign={onAssign}
         />
       ))}
@@ -512,7 +547,7 @@ function AllDone({ msg }) {
         <span className="all-done-emoji">{msg.emoji}</span>
         <h2 className="all-done-title">{msg.title}</h2>
         <p className="all-done-sub">{msg.sub}</p>
-        <span className="all-done-badge">💳 all transactions assigned</span>
+        <span className="all-done-badge">{'\u{1F4B3}'} all transactions assigned</span>
       </div>
     </div>
   );
@@ -535,7 +570,7 @@ function OcrDiagnostics({ processedImages }) {
               <span>
                 {image.error
                   ? 'error'
-                  : `${image.originalCount || 0} tx · ${image.transactions?.length || 0} parsed`}
+                  : `${image.originalCount || 0} tx - ${image.transactions?.length || 0} parsed`}
               </span>
             </summary>
             {image.error ? (
@@ -580,7 +615,7 @@ export default function CreditCardApp() {
   const [hp, setHp] = useState(100);
   const [petXp, setPetXp] = useState(0);
   const [petLevel] = useState(5);
-  const [day, setDay] = useState(0);
+  const [day, setDay] = useState(() => getSavedSimulatedDay());
   const [undoStack, setUndoStack] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState({});
   const [firebaseTransactions, setFirebaseTransactions] = useState(null);
@@ -611,6 +646,10 @@ export default function CreditCardApp() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions));
   }, [submissions]);
+
+  useEffect(() => {
+    setSavedSimulatedDay(day);
+  }, [day]);
 
   useEffect(() => {
     if (currentUser) localStorage.setItem(USER_KEY, currentUser);
@@ -748,10 +787,11 @@ export default function CreditCardApp() {
 
       const isPending = tx.isPending || !tx.date;
       if (isPending) {
-        if (day === 0) {
+        const pendingKey =
+          tx.uploadedDay || getLocalDateKey(tx.uploadedDate || tx.date) || referenceDateKey;
+        if (pendingKey === referenceDateKey) {
           pending.push(tx);
         } else {
-          const pendingKey = getLocalDateKey(tx.uploadedDate || tx.date) || referenceDateKey;
           if (!agedPendingGroups[pendingKey]) agedPendingGroups[pendingKey] = [];
           agedPendingGroups[pendingKey].push(tx);
         }
@@ -913,8 +953,14 @@ export default function CreditCardApp() {
     }
   };
 
-  const stepDay = () => setDay((d) => d + 1);
+  const stepDay = () =>
+    setDay((d) => {
+      const nextDay = d + 1;
+      setSavedSimulatedDay(nextDay);
+      return nextDay;
+    });
   const resetDay = () => {
+    setSavedSimulatedDay(0);
     setDay(0);
   };
 
@@ -932,6 +978,7 @@ export default function CreditCardApp() {
     setHp(100);
     setPetXp(0);
     setDay(0);
+    clearSavedSimulatedDay();
 
     try {
       await set(ref(db, 'submissions'), null);
@@ -963,7 +1010,7 @@ export default function CreditCardApp() {
           {USERS.map((u) =>
             onlineUsers[u] ? (
               <span key={u} className={`online-chip ${u === currentUser ? 'self' : 'active'}`}>
-                ● {u} Online
+                {'\u25CF'} {u} Online
               </span>
             ) : null
           )}
@@ -974,20 +1021,20 @@ export default function CreditCardApp() {
         <span className="dev-label">dev</span>
         <span className="day-display">{dayLabel}</span>
         <button className="day-btn" onClick={stepDay}>
-          next day ▶
+          next day {'\u25B6'}
         </button>
         <button className="reset-btn" onClick={resetDay}>
           reset
         </button>
         <span className="dev-sep">|</span>
         <button className="day-btn" onClick={() => setCoins((v) => v + 5)}>
-          +5🪙
+          +5{'\u{1FA99}'}
         </button>
         <button className="day-btn" onClick={() => setFood((v) => v + 3)}>
-          +3🍖
+          +3{'\u{1F356}'}
         </button>
         <button className="reset-btn" onClick={() => setCoins(0)}>
-          0🪙
+          0{'\u{1FA99}'}
         </button>
         <span className="dev-sep">|</span>
         <button
@@ -998,11 +1045,11 @@ export default function CreditCardApp() {
           }}
           onClick={() => setShowPetDebug((v) => !v)}
         >
-          pet {showPetDebug ? '▲' : '▼'}
+          pet {showPetDebug ? '\u25B2' : '\u25BC'}
         </button>
         <span className="dev-sep">|</span>
         <button className="clear-btn" onClick={clearCache}>
-          🗑 clear
+          {'\u{1F5D1}'} clear
         </button>
       </div>
 
@@ -1041,7 +1088,7 @@ export default function CreditCardApp() {
           {USERS.map((u, i) => (
             <React.Fragment key={u}>
               {i > 0 && <div style={{ width: '1px', background: 'rgba(255,255,255,0.05)' }} />}
-              <div className={`tally-item ${u === currentUser ? 'me' : ''}`}>
+              <div className={`tally-item ${u === currentUser ? 'me' : ''} ${u.toLowerCase()}`}>
                 <div className="tally-name">{u}{u === currentUser ? ' (you)' : ''}</div>
                 <div className="tally-amount">${(userTallies[u] || 0).toFixed(2)}</div>
                 <div className="tally-note">own assignments</div>
@@ -1057,7 +1104,7 @@ export default function CreditCardApp() {
           </div>
         )}
         <button className="mac-toggle" onClick={() => setShowMac((v) => !v)} title="Toggle Macquarie">
-          {showMac ? '›' : '‹'}
+          {showMac ? '\u203A' : '\u2039'}
         </button>
       </div>
 
@@ -1065,11 +1112,14 @@ export default function CreditCardApp() {
         <div className="app-header">
           <h1 className="app-title">Transactions</h1>
           <div className="header-right">
+            <Link href="/admin/upload">
+              <a className="day-btn header-upload-btn">upload</a>
+            </Link>
             <button className="undo-btn" disabled={!undoStack.length} onClick={undo}>
-              ↩ undo
+              {'\u21A9'} undo
             </button>
             <button className="user-badge" onClick={() => setShowSwitch(true)}>
-              {currentUser[0]} {currentUser} ↕
+              {currentUser[0]} {currentUser} {'\u2195'}
             </button>
           </div>
         </div>
@@ -1094,6 +1144,7 @@ export default function CreditCardApp() {
             txs={section.txs}
             submissions={submissions}
             currentUser={currentUser}
+            currentDay={day}
             onAssign={handleAssign}
           />
         ))}

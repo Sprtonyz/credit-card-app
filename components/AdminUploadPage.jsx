@@ -8,6 +8,7 @@ import { mergeTransactions, prepareForFirebase } from '../utils/transactionMerge
 import {
   addTransactions,
   getAllTransactions,
+  getTodayDate,
   saveProcessedLog,
   getAllProcessedLogs,
   clearUploadedData,
@@ -112,7 +113,7 @@ export default function AdminUploadPage() {
       merchant: marker,
       amount: 1.23,
       category: 'Test',
-      date: new Date().toISOString().split('T')[0],
+      date: getTodayDate(),
       isPending: false,
       source: 'manual-test',
       uploadedDate: new Date().toISOString(),
@@ -155,7 +156,7 @@ export default function AdminUploadPage() {
       (progressUpdate) => {
         setProgress(progressUpdate.overallProgress);
       },
-      { profile: 'classic' }
+      { profile: 'classic', uploadDate: getTodayDate() }
     );
 
     setProcessedImages(results);

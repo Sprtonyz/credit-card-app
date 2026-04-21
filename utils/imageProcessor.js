@@ -11,7 +11,7 @@ const DATE_PREFIX_RE = new RegExp(
   `^\\s*(?:(?:mon|tue|wed|thu|fri|sat|sun)(?:day)?\\s+)?\\d{1,2}\\s+${MONTH_PATTERN}\\s+\\d{2,4}\\s*[-:–—]?\\s*`,
   'i'
 );
-const AMOUNT_RE = /-?(?:\$|aud\s*)?\d{1,3}(?:[,\s]\d{3})*(?:[.,]\d{2})|-?\$?\d+[.,]\d{2}/i;
+const AMOUNT_RE = /(?:-\s*\$?\s*\d[\d,]*(?:[.,]\d{2})?|\$\s*\d[\d,]*(?:[.,]\d{2})?)/i;
 
 function normalizeOcrLine(line) {
   return line
@@ -28,6 +28,8 @@ function cleanMerchantCandidate(text) {
   if (!text) return '';
 
   return text
+    .replace(/^[^A-Za-z0-9]+/, '')
+    .replace(/^[A-Z]\s+(?=[A-Za-z])/g, '')
     .replace(/^\s*(pending|posted)\s*[-:–—]?\s*/i, '')
     .replace(DATE_PREFIX_RE, '')
     .replace(/^\s*[-:–—]+\s*/i, '')
@@ -56,6 +58,47 @@ function extractAmountMatch(text) {
   if (!text) return null;
   const matches = normalizeOcrLine(text).match(AMOUNT_RE);
   return matches ? matches[0] : null;
+}
+
+function normalizeAmountToken(amountToken) {
+  if (!amountToken) return null;
+  return amountToken.replace(/\s+/g, '').replace(/[–—]/g, '-');
+}
+
+function isNoiseLine(text) {
+  const normalized = normalizeOcrLine(text || '');
+  if (!normalized) return true;
+  if (/^[^a-z0-9]+$/i.test(normalized)) return true;
+  if (normalized.length < 2) return true;
+  return false;
+}
+
+function isLabelOnlyLine(text) {
+  const normalized = normalizeOcrLine(text || '').toLowerCase();
+  if (!normalized) return true;
+  if (
+    /^(category in progress|in progress|date|description|merchant|amount|total|balance|card|transaction|transactions)$/.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isMerchantStarterLine(text) {
+  const normalized = normalizeOcrLine(text || '');
+  if (!normalized) return false;
+  if (isLabelOnlyLine(normalized) || isNoiseLine(normalized)) return false;
+  return /^(pending|posted)\b/i.test(normalized);
+}
+
+function isMerchantContinuationLine(text) {
+  const normalized = normalizeOcrLine(text || '');
+  if (!normalized) return false;
+  if (isLabelOnlyLine(normalized) || isNoiseLine(normalized)) return false;
+  if (extractAmountMatch(normalized)) return false;
+  return /[A-Za-z]/.test(normalized);
 }
 
 function toLineEntries(text, lines = []) {
@@ -89,111 +132,91 @@ function toLineEntries(text, lines = []) {
     .filter((line) => line.text.length > 0);
 }
 
-function parseClassicTransactionText(text) {
-  if (!text) return [];
+function parseClassicTransactionText(text, lineEntries = []) {
+  const entries = toLineEntries(text, lineEntries);
+  if (entries.length === 0) return [];
 
   const transactions = [];
-  const lines = text
-    .split('\n')
-    .map((line) => normalizeOcrLine(line))
-    .filter((line) => line.length > 0);
-
-  let currentMerchant = null;
-  let currentAmount = null;
+  let currentMerchantParts = [];
   let currentDate = null;
   let currentCategory = null;
 
-  for (let idx = 0; idx < lines.length; idx += 1) {
-    const line = lines[idx];
-    const trimmed = line.trim();
-    const isUiLabel = /^(date|description|merchant|amount|total|balance|card|transaction|transactions|pending)$/i.test(trimmed);
-    const amountMatch = trimmed.match(AMOUNT_RE);
-    const dateMatch = extractDateFromLine(trimmed);
+  const pushTransaction = (merchant, amountText, entry, rawLine) => {
+    if (!merchant || !amountText || isForeignFeeLine(merchant)) return;
 
-    if (dateMatch) {
+    transactions.push({
+      merchant,
+      amount: amountText,
+      date: currentDate,
+      category: currentCategory,
+      lineIndex: entry.index + 1,
+      rawLine,
+      parserProfile: 'classic',
+    });
+
+    currentMerchantParts = [];
+    currentDate = null;
+    currentCategory = null;
+  };
+
+  for (const entry of entries) {
+    const trimmed = entry.text.trim();
+    if (!trimmed) continue;
+
+    const dateMatch = extractDateFromLine(trimmed);
+    if (dateMatch && isStandaloneDateLine(trimmed)) {
       currentDate = dateMatch;
+      continue;
+    }
+
+    if (isForeignFeeLine(trimmed)) {
+      currentMerchantParts = [];
+      currentCategory = null;
+      continue;
     }
 
     if (/entertainment|food|groceries|transport|shopping|utilities|health/i.test(trimmed)) {
       currentCategory = trimmed;
     }
 
-    if (isForeignFeeLine(trimmed)) {
-      currentMerchant = null;
-      currentAmount = null;
-      currentCategory = null;
+    if (isLabelOnlyLine(trimmed) || isNoiseLine(trimmed)) {
       continue;
     }
 
-    if (!amountMatch && !dateMatch && !isUiLabel && trimmed.length > 2) {
-      const cleanedMerchant = cleanMerchantCandidate(trimmed);
-      if (cleanedMerchant) {
-        currentMerchant = cleanedMerchant;
-      }
-      continue;
-    }
-
+    const amountMatch = extractAmountMatch(trimmed);
     if (amountMatch) {
-      const amountText = amountMatch[0];
-      const merchantText = cleanMerchantCandidate(
+      const amountText = normalizeAmountToken(amountMatch);
+      const inlineMerchant = cleanMerchantCandidate(
         trimmed
-          .replace(amountText, '')
+          .replace(amountMatch, '')
           .replace(/\b(?:aud|usd)\b/i, '')
           .replace(/[:\-]+$/, '')
           .trim()
       );
+      const mergedMerchant = cleanMerchantCandidate(currentMerchantParts.join(' '));
+      const merchant = inlineMerchant || mergedMerchant;
+      const rawLine = inlineMerchant
+        ? `${inlineMerchant} ${amountText}`.trim()
+        : `${mergedMerchant} ${amountText}`.trim();
 
-      const merchant = merchantText || currentMerchant;
-      if (merchant && amountText) {
-        if (!isForeignFeeLine(merchant)) {
-          transactions.push({
-            merchant,
-            amount: amountText,
-            date: currentDate,
-            category: currentCategory,
-            lineIndex: idx + 1,
-            rawLine: trimmed,
-            parserProfile: 'classic',
-          });
-        }
-        currentMerchant = null;
-        currentAmount = null;
-        currentDate = null;
-        currentCategory = null;
-        continue;
+      pushTransaction(merchant, amountText, entry, rawLine);
+      continue;
+    }
+
+    if (isMerchantStarterLine(trimmed)) {
+      const cleaned = cleanMerchantCandidate(trimmed);
+      if (cleaned) {
+        currentMerchantParts = [cleaned];
       }
+      continue;
+    }
 
-      currentAmount = amountText;
-      if (currentAmount && currentMerchant) {
-        if (!isForeignFeeLine(currentMerchant)) {
-          transactions.push({
-            merchant: currentMerchant,
-            amount: currentAmount,
-            date: currentDate,
-            category: currentCategory,
-            lineIndex: idx + 1,
-            rawLine: trimmed,
-            parserProfile: 'classic',
-          });
-        }
-        currentMerchant = null;
-        currentAmount = null;
-        currentDate = null;
-        currentCategory = null;
+    if (isMerchantContinuationLine(trimmed) && currentMerchantParts.length > 0) {
+      const cleaned = cleanMerchantCandidate(trimmed);
+      if (cleaned) {
+        currentMerchantParts.push(cleaned);
       }
     }
-  }
-
-  if (currentAmount && currentMerchant && !isForeignFeeLine(currentMerchant)) {
-    transactions.push({
-      merchant: currentMerchant,
-      amount: currentAmount,
-      date: currentDate,
-      category: currentCategory,
-      lineIndex: lines.length,
-      rawLine: lines[lines.length - 1] || '',
-      parserProfile: 'classic',
-    });
   }
 
   return transactions;
@@ -220,7 +243,7 @@ function parseItemizedTransactionText(text, lineEntries = [], fallbackDate = nul
     );
     const amountMatch = mergedText.match(AMOUNT_RE);
     const dateFromGroup = currentGroup.map((entry) => extractDateFromLine(entry.text)).find(Boolean);
-    const amountText = amountMatch ? amountMatch[0].replace(/^-/, '') : null;
+    const amountText = amountMatch ? normalizeAmountToken(amountMatch[0]).replace(/^-/, '') : null;
 
     if (isForeignFeeLine(mergedText) || isForeignFeeLine(merchantText)) {
       currentGroup = [];
@@ -279,39 +302,77 @@ function detectParserProfile(text, lines, requestedProfile = 'classic') {
   return 'classic';
 }
 
-async function extractOcrDataFromImage(imageFile, onProgress) {
+function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
-    reader.onload = async (event) => {
-      try {
-        const image = event.target.result;
-
-        const { data } = await Tesseract.recognize(image, 'eng', {
-          tessedit_pageseg_mode: 6,
-          preserve_interword_spaces: '1',
-          logger: (m) => {
-            if (onProgress) {
-              onProgress(m.progress);
-            }
-          },
-        });
-
-        resolve({
-          text: data?.text || '',
-          lines: data?.lines || [],
-        });
-      } catch (error) {
-        reject(error);
-      }
-    };
-
-    reader.onerror = () => {
-      reject(new Error('Failed to read image file'));
-    };
-
-    reader.readAsDataURL(imageFile);
+    reader.onload = (event) => resolve(event.target.result);
+    reader.onerror = () => reject(new Error('Failed to read image file'));
+    reader.readAsDataURL(file);
   });
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to load image for OCR'));
+    image.src = src;
+  });
+}
+
+function buildOcrCanvas(image, scale = 2) {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Unable to prepare OCR canvas');
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { data } = imageData;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    const contrastBoost = (gray - 128) * 1.35 + 128;
+    const clipped = Math.max(0, Math.min(255, Math.round(contrastBoost)));
+    const thresholded = clipped > 232 ? 255 : clipped;
+    data[i] = thresholded;
+    data[i + 1] = thresholded;
+    data[i + 2] = thresholded;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+async function extractOcrDataFromImage(imageFile, onProgress) {
+  const dataUrl = await readFileAsDataUrl(imageFile);
+  const image = await loadImageElement(dataUrl);
+  const canvas = buildOcrCanvas(image, 2);
+
+  const { data } = await Tesseract.recognize(canvas, 'eng', {
+    tessedit_pageseg_mode: 6,
+    preserve_interword_spaces: '1',
+    logger: (m) => {
+      if (onProgress) {
+        onProgress(m.progress);
+      }
+    },
+  });
+
+  return {
+    text: data?.text || '',
+    lines: data?.lines || [],
+  };
 }
 
 export async function generateImageHash(file) {
@@ -349,7 +410,7 @@ export async function processImage(imageFile, onProgress, options = {}) {
     const rawTransactions =
       profile === 'itemized'
         ? parseItemizedTransactionText(ocrData.text, ocrData.lines, uploadDate)
-        : parseClassicTransactionText(ocrData.text);
+        : parseClassicTransactionText(ocrData.text, ocrData.lines);
     const correctedTransactions = rawTransactions.map(correctTransaction);
     const rawLineCount = ocrData.text
       .split('\n')

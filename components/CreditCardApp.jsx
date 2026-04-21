@@ -8,7 +8,7 @@
 } from 'react';
 import Link from 'next/link';
 import { db } from '../config/firebase';
-import { onValue, ref, set } from 'firebase/database';
+import { onDisconnect, onValue, ref, remove, set } from 'firebase/database';
 import {
   clearSavedSimulatedDay,
   formatLocalDate,
@@ -24,7 +24,8 @@ const USERS = ['Tony', 'Nugs'];
 const ASSIGN_OPTS = ['Unsure', 'Macquarie', 'Tony', 'Nugs'];
 const STORAGE_KEY = 'cc_v4_subs';
 const USER_KEY = 'cc_v4_user';
-const PRESENCE_KEY = 'cc_v4_presence';
+const PRESENCE_ROOT = 'cc_v4_presence';
+const PRESENCE_TTL_MS = 12000;
 const APP_VERSION = 'r3.19';
 const VERSION_KEY = 'cc_version';
 
@@ -603,6 +604,7 @@ export default function CreditCardApp() {
   const [showSwitch, setShowSwitch] = useState(false);
   const [showMac, setShowMac] = useState(false);
   const [showPetDebug, setShowPetDebug] = useState(false);
+  const [showDevTools, setShowDevTools] = useState(false);
   const [petType, setPetType] = useState('cat');
   const [coins, setCoins] = useState(17);
   const [food, setFood] = useState(4);
@@ -716,75 +718,90 @@ export default function CreditCardApp() {
   }, [authReady]);
 
   useEffect(() => {
-    if (!presenceTabIdRef.current) {
-      const savedTabId = sessionStorage.getItem('cc_v4_presence_tab');
-      presenceTabIdRef.current = savedTabId || `tab_${Math.random().toString(36).slice(2)}`;
-      sessionStorage.setItem('cc_v4_presence_tab', presenceTabIdRef.current);
-    }
+    if (!authReady) return undefined;
 
-    const refreshPresence = () => {
+    const presenceRootRef = ref(db, PRESENCE_ROOT);
+    const refreshOnlineUsers = (snapshot) => {
       const now = Date.now();
-      const raw = localStorage.getItem(PRESENCE_KEY);
-      let map = {};
-      if (raw) {
-        try {
-          map = JSON.parse(raw);
-        } catch {
-          map = {};
-        }
-      }
-
-      map[presenceTabIdRef.current] = {
-        user: currentUser || null,
-        ts: now,
-      };
-      localStorage.setItem(PRESENCE_KEY, JSON.stringify(map));
-
       const active = {};
-      Object.values(map).forEach((entry) => {
+
+      snapshot.forEach((child) => {
+        const entry = child.val();
         if (!entry || typeof entry !== 'object') return;
-        if (!entry.user || now - entry.ts >= 6000) return;
+        if (!entry.user || !USERS.includes(entry.user)) return;
+        if (now - Number(entry.ts || 0) > PRESENCE_TTL_MS) return;
         active[entry.user] = true;
       });
+
       USERS.forEach((u) => {
         if (!active[u]) active[u] = false;
       });
       setOnlineUsers(active);
     };
 
-    refreshPresence();
-    const interval = setInterval(refreshPresence, 1500);
-    const onStorage = (e) => {
-      if (e.key === PRESENCE_KEY) refreshPresence();
-    };
-    const onUnload = () => {
-      const raw = localStorage.getItem(PRESENCE_KEY);
-      if (!raw) return;
-      try {
-        const map = JSON.parse(raw);
-        delete map[presenceTabIdRef.current];
-        localStorage.setItem(PRESENCE_KEY, JSON.stringify(map));
-      } catch {
-        // ignore
+    const unsubscribe = onValue(
+      presenceRootRef,
+      refreshOnlineUsers,
+      () => {
+        setOnlineUsers({ Tony: false, Nugs: false });
       }
+    );
+
+    return () => unsubscribe();
+  }, [authReady]);
+
+  useEffect(() => {
+    if (!authReady) return undefined;
+
+    if (!presenceTabIdRef.current) {
+      const savedTabId = sessionStorage.getItem('cc_v4_presence_tab');
+      presenceTabIdRef.current = savedTabId || `tab_${Math.random().toString(36).slice(2)}`;
+      sessionStorage.setItem('cc_v4_presence_tab', presenceTabIdRef.current);
+    }
+
+    const presencePath = presenceTabIdRef.current;
+    const userPresenceRef = ref(db, `${PRESENCE_ROOT}/${presencePath}`);
+
+    const writePresence = async () => {
+      if (!currentUser) {
+        await remove(userPresenceRef);
+        return;
+      }
+
+      const payload = {
+        user: currentUser,
+        ts: Date.now(),
+      };
+      await set(userPresenceRef, payload);
+      const disconnect = onDisconnect(userPresenceRef);
+      await disconnect.remove();
     };
 
-    window.addEventListener('storage', onStorage);
-    window.addEventListener('beforeunload', onUnload);
+    writePresence().catch((error) => {
+      console.error('Failed to update presence:', error);
+    });
+
+    const interval = window.setInterval(() => {
+      if (!currentUser) return;
+      set(userPresenceRef, {
+        user: currentUser,
+        ts: Date.now(),
+      }).catch((error) => {
+        console.error('Failed to refresh presence:', error);
+      });
+    }, 4000);
 
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener('beforeunload', onUnload);
+      window.clearInterval(interval);
+      remove(userPresenceRef).catch(() => {
+        // ignore cleanup errors
+      });
     };
-  }, [currentUser]);
+  }, [authReady, currentUser]);
 
-  const usingFirebaseTransactions = Array.isArray(firebaseTransactions) && firebaseTransactions.length > 0;
+  const usingFirebaseTransactions = Array.isArray(firebaseTransactions);
   const sourceTransactions = useMemo(
-    () =>
-      usingFirebaseTransactions
-        ? firebaseTransactions
-        : Object.values(DEMO_DAYS).flat(),
+    () => (usingFirebaseTransactions ? firebaseTransactions : []),
     [usingFirebaseTransactions, firebaseTransactions]
   );
   const transactionsById = useMemo(
@@ -796,6 +813,24 @@ export default function CreditCardApp() {
   const liveDateTimeLabel = useMemo(() => formatLocalDateTime(simulatedNow), [simulatedNow]);
   const otherUser = currentUser ? getOtherUser(currentUser) : USERS[0];
   const dayLabel = day === 0 ? 'live' : `+${day} day${day === 1 ? '' : 's'}`;
+  const visibleNowLabel = useMemo(
+    () =>
+      simulatedNow.toLocaleTimeString('en-AU', {
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
+    [simulatedNow]
+  );
+  const visibleDateLabel = useMemo(
+    () =>
+      simulatedNow.toLocaleDateString('en-AU', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+    [simulatedNow]
+  );
 
   const firebaseSections = useMemo(() => {
     if (!usingFirebaseTransactions) return [];
@@ -865,20 +900,7 @@ export default function CreditCardApp() {
 
   const authLoading = currentUser && !authReady && !authError;
 
-  const demoSection = useMemo(() => {
-    const demoTxs = (DEMO_DAYS[String(day)] || DEMO_DAYS['0']).filter((tx) =>
-      isVisibleForUser(tx, submissions, currentUser, day)
-    );
-    return [
-      {
-        key: String(day),
-        title: day === 0 ? 'Today' : day === 1 ? 'Yesterday' : `${day}D Ago`,
-        txs: demoTxs,
-      },
-    ];
-  }, [day, submissions, currentUser]);
-
-  const sections = usingFirebaseTransactions ? firebaseSections : demoSection;
+  const sections = firebaseSections;
   const visibleTxs = sections.flatMap((section) => section.txs);
   const anyVisible = visibleTxs.length > 0;
 
@@ -997,6 +1019,7 @@ export default function CreditCardApp() {
     setUndoStack([]);
     setShowMac(false);
     setShowPetDebug(false);
+    setShowDevTools(false);
     setCurrentUser(null);
     setCoins(17);
     setFood(4);
@@ -1052,6 +1075,7 @@ export default function CreditCardApp() {
           synced {APP_VERSION}
         </div>
         <div className="online-users">
+          <span className="online-users-label">Profile Online</span>
           {USERS.map((u) =>
             onlineUsers[u] ? (
               <span key={u} className={`online-chip ${u === currentUser ? 'self' : 'active'}`}>
@@ -1062,72 +1086,89 @@ export default function CreditCardApp() {
         </div>
       </div>
 
-      <div className="dev-banner">
-        <span className="dev-label">dev</span>
-        <div className="clock-panel">
-          <span className="day-display">{liveDateTimeLabel}</span>
-          <span className="clock-note">Melbourne {dayLabel}</span>
+      <div className="top-meta-bar">
+        <div className="top-meta-main">
+          <span className="meta-chip">
+            <strong>{visibleNowLabel}</strong>
+          </span>
+          <span className="meta-chip">{visibleDateLabel}</span>
+          <span className="meta-chip">Melbourne {dayLabel}</span>
         </div>
-        <button className="day-btn" onClick={stepDay}>
-          next day +24h {'\u25B6'}
-        </button>
-        <button className="reset-btn" onClick={resetDay}>
-          reset
-        </button>
-        <span className="dev-sep">|</span>
-        <button className="day-btn" onClick={() => setCoins((v) => v + 5)}>
-          +5{'\u{1FA99}'}
-        </button>
-        <button className="day-btn" onClick={() => setFood((v) => v + 3)}>
-          +3{'\u{1F356}'}
-        </button>
-        <button className="reset-btn" onClick={() => setCoins(0)}>
-          0{'\u{1FA99}'}
-        </button>
-        <span className="dev-sep">|</span>
-        <button
-          className="day-btn"
-          style={{
-            borderColor: showPetDebug ? 'rgba(167,139,250,0.4)' : '',
-            background: showPetDebug ? 'rgba(167,139,250,0.1)' : '',
-          }}
-          onClick={() => setShowPetDebug((v) => !v)}
-        >
-          pet {showPetDebug ? '\u25B2' : '\u25BC'}
-        </button>
-        <span className="dev-sep">|</span>
-        <button className="clear-btn" onClick={clearCache}>
-          {'\u{1F5D1}'} clear
+        <button className="debug-toggle" onClick={() => setShowDevTools((v) => !v)}>
+          tools {showDevTools ? '\u25B2' : '\u25BC'}
         </button>
       </div>
 
-      {showPetDebug && (
-        <div className="pet-debug-row">
-          <span className="dev-label">pet type:</span>
-          {['cat', 'dog', 'duck'].map((type) => (
+      {showDevTools && (
+        <div className="debug-tray">
+          <div className="dev-banner">
+            <span className="dev-label">dev</span>
+            <div className="clock-panel">
+              <span className="day-display">{liveDateTimeLabel}</span>
+              <span className="clock-note">Melbourne {dayLabel}</span>
+            </div>
+            <button className="day-btn" onClick={stepDay}>
+              next day +24h {'\u25B6'}
+            </button>
+            <button className="reset-btn" onClick={resetDay}>
+              reset
+            </button>
+            <span className="dev-sep">|</span>
+            <button className="day-btn" onClick={() => setCoins((v) => v + 5)}>
+              +5{'\u{1FA99}'}
+            </button>
+            <button className="day-btn" onClick={() => setFood((v) => v + 3)}>
+              +3{'\u{1F356}'}
+            </button>
+            <button className="reset-btn" onClick={() => setCoins(0)}>
+              0{'\u{1FA99}'}
+            </button>
+            <span className="dev-sep">|</span>
             <button
-              key={type}
               className="day-btn"
               style={{
-                background: petType === type ? 'rgba(96,165,250,0.2)' : '',
-                borderColor: petType === type ? 'rgba(96,165,250,0.4)' : '',
+                borderColor: showPetDebug ? 'rgba(167,139,250,0.4)' : '',
+                background: showPetDebug ? 'rgba(167,139,250,0.1)' : '',
               }}
-              onClick={() => setPetType(type)}
+              onClick={() => setShowPetDebug((v) => !v)}
             >
-              {type}
+              pet {showPetDebug ? '\u25B2' : '\u25BC'}
             </button>
-          ))}
-          <span className="dev-sep">|</span>
-          <span className="dev-label">xp:{petXp} lv:{petLevel}</span>
-          <button className="day-btn" onClick={() => setPetXp((n) => n + 30)}>
-            +30xp
-          </button>
-          <button className="reset-btn" onClick={() => setPetXp(0)}>
-            0xp
-          </button>
-          <button className="day-btn" onClick={() => setHp(100)}>
-            +hp
-          </button>
+            <span className="dev-sep">|</span>
+            <button className="clear-btn" onClick={clearCache}>
+              {'\u{1F5D1}'} clear
+            </button>
+          </div>
+
+          {showPetDebug && (
+            <div className="pet-debug-row">
+              <span className="dev-label">pet type:</span>
+              {['cat', 'dog', 'duck'].map((type) => (
+                <button
+                  key={type}
+                  className="day-btn"
+                  style={{
+                    background: petType === type ? 'rgba(96,165,250,0.2)' : '',
+                    borderColor: petType === type ? 'rgba(96,165,250,0.4)' : '',
+                  }}
+                  onClick={() => setPetType(type)}
+                >
+                  {type}
+                </button>
+              ))}
+              <span className="dev-sep">|</span>
+              <span className="dev-label">xp:{petXp} lv:{petLevel}</span>
+              <button className="day-btn" onClick={() => setPetXp((n) => n + 30)}>
+                +30xp
+              </button>
+              <button className="reset-btn" onClick={() => setPetXp(0)}>
+                0xp
+              </button>
+              <button className="day-btn" onClick={() => setHp(100)}>
+                +hp
+              </button>
+            </div>
+          )}
         </div>
       )}
 

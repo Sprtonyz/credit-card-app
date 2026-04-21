@@ -148,9 +148,17 @@
         .online-chip{font-size:0.5rem;padding:0.1rem 0.45rem;border-radius:10px;letter-spacing:0.05em;}
         .online-chip.active{background:rgba(96,165,250,0.15);color:#60a5fa;border:1px solid rgba(96,165,250,0.2);}
         .online-chip.self{background:rgba(74,222,128,0.12);color:#4ade80;border:1px solid rgba(74,222,128,0.2);}
+        .top-meta-bar{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;padding:0.38rem 0.9rem;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.04);}
+        .top-meta-main{display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;}
+        .meta-chip{display:inline-flex;align-items:center;gap:0.28rem;padding:0.18rem 0.5rem;border-radius:999px;font-size:0.54rem;letter-spacing:0.08em;color:#9ca3af;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);}
+        .meta-chip strong{font-weight:500;color:#e5e7eb;}
+        .debug-toggle{display:inline-flex;align-items:center;justify-content:center;gap:0.3rem;padding:0.22rem 0.55rem;border-radius:999px;border:1px solid rgba(167,139,250,0.18);background:rgba(167,139,250,0.06);color:#c4b5fd;font-family:'DM Mono',monospace;font-size:0.56rem;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;}
+        .debug-toggle:hover{background:rgba(167,139,250,0.1);}
+        .debug-tray{overflow:hidden;border-bottom:1px solid rgba(255,255,255,0.04);background:rgba(0,0,0,0.12);animation:fadeDown 0.18s ease;}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pop{0%{transform:scale(0.4);opacity:0}60%{transform:scale(1.3)}80%{transform:scale(0.95)}100%{transform:scale(1);opacity:1}}
+        @keyframes fadeDown{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
         /* Pet footer — pixel pet walks across */
         .pet-footer{position:fixed;bottom:0;left:0;right:0;height:54px;background:rgba(8,10,15,0.98);border-top:1px solid rgba(255,255,255,0.055);backdrop-filter:blur(16px);z-index:50;overflow:hidden;}
         .pet-footer canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;}
@@ -194,6 +202,11 @@
                 0px 6px 0 0 #fbbf24,2px 6px 0 0 #fbbf24,4px 6px 0 0 #fef08a,6px 6px 0 0 #fbbf24,8px 6px 0 0 #fbbf24,
                 2px 8px 0 0 #fbbf24,4px 8px 0 0 #d97706,6px 8px 0 0 #fbbf24;}
         @keyframes coinFloat{0%{transform:translateX(-50%) translateY(0) scale(0.5);opacity:1}18%{transform:translateX(-50%) translateY(-10px) scale(1.2);opacity:1}100%{transform:translateX(-50%) translateY(-52px) scale(1);opacity:0}}
+        @media (max-width:520px){
+            .top-meta-bar{padding-left:0.75rem;padding-right:0.75rem;}
+            .top-meta-main{gap:0.3rem;}
+            .meta-chip{font-size:0.5rem;}
+        }
     </style>
 </head>
 <body>
@@ -607,6 +620,7 @@ function App(){
     const [petType,setPetType]=useState('cat');
     const [coinPops,setCoinPops]=useState([]);
     const [showPetDebug,setShowPetDebug]=useState(false);
+    const [showDevTools,setShowDevTools]=useState(false);
     const [levelUpMsg,setLevelUpMsg]=useState(null); // e.g. 'Level 3!' while animating
     const confettiFiredRef=useRef(false);
     const prevLevelRef=useRef(1);
@@ -615,6 +629,13 @@ function App(){
     // For dev: simulate time passing for 72h auto-confirm
     // In production this would just be Date.now()
     const [simNow,setSimNow]=useState(Date.now());
+    const [clockNow,setClockNow]=useState(Date.now());
+
+    useEffect(()=>{
+        const tick=()=>setClockNow(Date.now());
+        const timer=setInterval(tick,30000);
+        return()=>clearInterval(timer);
+    },[]);
 
     // Load user from localStorage (device-local preference only)
     useEffect(()=>{
@@ -952,6 +973,9 @@ function App(){
     const simLabel=simDelta===0?'today':'+'+simDelta+'d';
     // Dev: also allow simulating 72h for auto-confirm
     const simHours=Math.round((simNow-Date.now())/3600000);
+    const displayMs=simDelta===0?clockNow:simNow;
+    const displayDate=new Date(displayMs).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+    const displayTime=new Date(displayMs).toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'});
 
     return React.createElement('div',null,
         showSwitch&&React.createElement(SwitchOverlay,{currentUser:user,onSelect:login,onClose:()=>setSwitch(false)}),
@@ -970,6 +994,21 @@ connected===null?'connecting…':connected?'synced r3.19':'offline'
                         : null
                 ).filter(Boolean)
             )
+        ),
+
+        React.createElement('div',{className:'top-meta-bar'},
+            React.createElement('div',{className:'top-meta-main'},
+                React.createElement('span',{className:'meta-chip'},
+                    React.createElement('strong',null,displayTime)
+                ),
+                React.createElement('span',{className:'meta-chip'},displayDate),
+                simDelta!==0&&React.createElement('span',{className:'meta-chip'},'offset '+simLabel)
+            ),
+            React.createElement('button',{
+                className:'debug-toggle',
+                onClick:()=>setShowDevTools(v=>!v),
+                title:'Toggle debug tools'
+            },'tools ',showDevTools?'▲':'▼')
         ),
 
         // Debug panel — hidden but copy log preserved
@@ -1041,43 +1080,44 @@ connected===null?'connecting…':connected?'synced r3.19':'offline'
             })
         ),
 
-                // Dev banner — day controls
-        React.createElement('div',{className:'dev-banner'},
-            React.createElement('span',{className:'dev-label'},'🛠 dev'),
-            React.createElement('span',{className:'day-display'},simLabel),
-            React.createElement('button',{className:'day-btn',onClick:stepDay},'next day ▶'),
-            React.createElement('button',{className:'reset-btn',onClick:resetDay},'reset'),
-            React.createElement('span',{className:'dev-sep'},'|'),
-            React.createElement('button',{className:'day-btn',title:'add 5 coins',
-                onClick:()=>coinsRef.child(user).transaction(n=>(n||0)+5)},'+5🪙'),
-            React.createElement('button',{className:'day-btn',title:'add 3 food',
-                onClick:()=>foodRef.child(user).transaction(n=>(n||0)+3)},'+3🍖'),
-            React.createElement('button',{className:'reset-btn',title:'zero coins',
-                onClick:()=>coinsRef.child(user).set(0)},'0🪙'),
-            React.createElement('span',{className:'dev-sep'},'|'),
-            React.createElement('button',{
-                className:'day-btn',
-                style:{borderColor:showPetDebug?'rgba(167,139,250,0.4)':'',background:showPetDebug?'rgba(167,139,250,0.1)':''},
-                onClick:()=>setShowPetDebug(v=>!v)
-            },'🐾 pet'+(showPetDebug?' ▲':' ▼')),
-            React.createElement('span',{className:'dev-sep'},'|'),
-            React.createElement('button',{className:'clear-btn',onClick:resetCache},'🗑 clear'),
-        ),
-        // Pet debug row — hidable
-        showPetDebug&&React.createElement('div',{className:'pet-debug-row'},
-            React.createElement('span',{className:'dev-label'},'pet type:'),
-            ...['cat','dog','duck'].map(t=>React.createElement('button',{key:t,
-                className:'day-btn',
-                style:{background:petType===t?'rgba(96,165,250,0.2)':'',borderColor:petType===t?'rgba(96,165,250,0.4)':''},
-                onClick:()=>changePetType(t)},t)),
-            React.createElement('span',{className:'dev-sep'},'|'),
-            React.createElement('span',{className:'dev-label'},'xp:'+petXp+' lv:'+petLevel),
-            React.createElement('button',{className:'day-btn',title:'add 30 xp',
-                onClick:()=>petRef.child(user+'/xp').transaction(n=>(n||0)+30)},'+30xp'),
-            React.createElement('button',{className:'reset-btn',title:'reset xp',
-                onClick:()=>petRef.child(user+'/xp').set(0)},'0xp'),
-            React.createElement('button',{className:'day-btn',title:'fill HP',
-                onClick:()=>petRef.child(user+'/hp').set(100)},'+hp'),
+        showDevTools&&React.createElement('div',{className:'debug-tray'},
+            React.createElement('div',{className:'dev-banner'},
+                React.createElement('span',{className:'dev-label'},'🛠 dev'),
+                React.createElement('span',{className:'day-display'},simLabel),
+                React.createElement('button',{className:'day-btn',onClick:stepDay},'next day ▶'),
+                React.createElement('button',{className:'reset-btn',onClick:resetDay},'reset'),
+                React.createElement('span',{className:'dev-sep'},'|'),
+                React.createElement('button',{className:'day-btn',title:'add 5 coins',
+                    onClick:()=>coinsRef.child(user).transaction(n=>(n||0)+5)},'+5🪙'),
+                React.createElement('button',{className:'day-btn',title:'add 3 food',
+                    onClick:()=>foodRef.child(user).transaction(n=>(n||0)+3)},'+3🍖'),
+                React.createElement('button',{className:'reset-btn',title:'zero coins',
+                    onClick:()=>coinsRef.child(user).set(0)},'0🪙'),
+                React.createElement('span',{className:'dev-sep'},'|'),
+                React.createElement('button',{
+                    className:'day-btn',
+                    style:{borderColor:showPetDebug?'rgba(167,139,250,0.4)':'',background:showPetDebug?'rgba(167,139,250,0.1)':''},
+                    onClick:()=>setShowPetDebug(v=>!v)
+                },'🐾 pet'+(showPetDebug?' ▲':' ▼')),
+                React.createElement('span',{className:'dev-sep'},'|'),
+                React.createElement('button',{className:'clear-btn',onClick:resetCache},'🗑 clear')
+            ),
+            // Pet debug row — hidable
+            showPetDebug&&React.createElement('div',{className:'pet-debug-row'},
+                React.createElement('span',{className:'dev-label'},'pet type:'),
+                ...['cat','dog','duck'].map(t=>React.createElement('button',{key:t,
+                    className:'day-btn',
+                    style:{background:petType===t?'rgba(96,165,250,0.2)':'',borderColor:petType===t?'rgba(96,165,250,0.4)':''},
+                    onClick:()=>changePetType(t)},t)),
+                React.createElement('span',{className:'dev-sep'},'|'),
+                React.createElement('span',{className:'dev-label'},'xp:'+petXp+' lv:'+petLevel),
+                React.createElement('button',{className:'day-btn',title:'add 30 xp',
+                    onClick:()=>petRef.child(user+'/xp').transaction(n=>(n||0)+30)},'+30xp'),
+                React.createElement('button',{className:'reset-btn',title:'reset xp',
+                    onClick:()=>petRef.child(user+'/xp').set(0)},'0xp'),
+                React.createElement('button',{className:'day-btn',title:'fill HP',
+                    onClick:()=>petRef.child(user+'/hp').set(100)},'+hp')
+            )
         ),
 
         // Tally bar — always show Tony + Nugs, Macquarie toggle on right

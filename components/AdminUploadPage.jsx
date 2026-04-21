@@ -5,6 +5,7 @@ import ImageReviewModal from './ImageReviewModal';
 import { processImages } from '../utils/imageProcessor';
 import { detectDuplicatesAcrossImages } from '../utils/duplicateDetection';
 import { mergeTransactions, prepareForFirebase } from '../utils/transactionMerger';
+import { ensureAnonymousAuth } from '../utils/firebaseAuth';
 import {
   addTransactions,
   getAllTransactions,
@@ -102,8 +103,22 @@ export default function AdminUploadPage() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+
+  React.useEffect(
+    () =>
+      ensureAnonymousAuth({
+        onReady: () => setAuthReady(true),
+        onError: (authError) => {
+          console.error('Anonymous Firebase sign-in failed:', authError);
+          setError('Unable to sign in to Firebase automatically.');
+        },
+      }),
+    []
+  );
 
   const handleFirebaseSmokeTest = async () => {
+    if (!authReady) return;
     setIsLoading(true);
     setError(null);
     setStep('processing');
@@ -177,6 +192,7 @@ export default function AdminUploadPage() {
   };
 
   const handleConfirmTransactions = async (keptIndices, processedOverride = processedImages) => {
+    if (!authReady) return;
     setIsLoading(true);
     setStep('processing');
 
@@ -246,6 +262,7 @@ export default function AdminUploadPage() {
   };
 
   const handleProcessImages = async () => {
+    if (!authReady) return;
     if (uploadedFiles.length === 0) {
       setError('Please select at least one image');
       return;
@@ -273,6 +290,7 @@ export default function AdminUploadPage() {
   };
 
   const handlePreviewOcr = async () => {
+    if (!authReady) return;
     if (uploadedFiles.length === 0) {
       setError('Please select at least one image');
       return;
@@ -308,6 +326,7 @@ export default function AdminUploadPage() {
   };
 
   const handleWipeUploadedData = async () => {
+    if (!authReady) return;
     if (
       !window.confirm(
         'Delete all uploaded transactions, processed logs, and submissions from Firebase? This cannot be undone.'
@@ -371,15 +390,15 @@ export default function AdminUploadPage() {
 
             <button
               onClick={handleProcessImages}
-              disabled={uploadedFiles.length === 0 || isLoading}
+              disabled={uploadedFiles.length === 0 || isLoading || !authReady}
               className="w-full mt-6 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
             >
-              {isLoading ? 'Processing...' : `Process ${uploadedFiles.length} Image(s)`}
+              {!authReady ? 'Connecting...' : isLoading ? 'Processing...' : `Process ${uploadedFiles.length} Image(s)`}
             </button>
 
             <button
               onClick={handleFirebaseSmokeTest}
-              disabled={isLoading}
+              disabled={isLoading || !authReady}
               className="w-full mt-3 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
               >
               Test Firebase Write
@@ -387,7 +406,7 @@ export default function AdminUploadPage() {
 
             <button
               onClick={handlePreviewOcr}
-              disabled={uploadedFiles.length === 0 || isLoading}
+              disabled={uploadedFiles.length === 0 || isLoading || !authReady}
               className="w-full mt-3 px-6 py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-white font-medium transition"
             >
               OCR Preview Only
@@ -395,7 +414,7 @@ export default function AdminUploadPage() {
 
             <button
               onClick={handleWipeUploadedData}
-              disabled={isLoading}
+              disabled={isLoading || !authReady}
               className="w-full mt-3 px-6 py-3 bg-rose-700 hover:bg-rose-600 disabled:opacity-50 rounded-lg text-white font-medium transition"
             >
               Debug: Wipe Uploaded Data

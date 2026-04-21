@@ -18,6 +18,7 @@ import {
   SIMULATED_DAY_KEY,
   setSavedSimulatedDay,
 } from '../utils/simulationDate';
+import { ensureAnonymousAuth } from '../utils/firebaseAuth';
 
 const USERS = ['Tony', 'Nugs'];
 const ASSIGN_OPTS = ['Unsure', 'Macquarie', 'Tony', 'Nugs'];
@@ -610,6 +611,8 @@ export default function CreditCardApp() {
   const [petLevel] = useState(5);
   const [day, setDay] = useState(() => getSavedSimulatedDay());
   const [clockTick, setClockTick] = useState(() => Date.now());
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState(null);
   const [undoStack, setUndoStack] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState({});
   const [firebaseTransactions, setFirebaseTransactions] = useState(null);
@@ -645,6 +648,14 @@ export default function CreditCardApp() {
     setSavedSimulatedDay(day);
   }, [day]);
 
+  useEffect(() => ensureAnonymousAuth({
+    onReady: () => setAuthReady(true),
+    onError: (error) => {
+      console.error('Anonymous Firebase sign-in failed:', error);
+      setAuthError('Unable to sign in to Firebase automatically.');
+    },
+  }), []);
+
   useEffect(() => {
     const syncDayOffset = (event) => {
       if (event.key !== SIMULATED_DAY_KEY) return;
@@ -665,6 +676,7 @@ export default function CreditCardApp() {
   }, [currentUser]);
 
   useEffect(() => {
+    if (!authReady) return;
     const txRef = ref(db, 'transactions');
     const unsubscribe = onValue(
       txRef,
@@ -685,9 +697,10 @@ export default function CreditCardApp() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
+    if (!authReady) return;
     const submissionsRef = ref(db, 'submissions');
     const unsubscribe = onValue(
       submissionsRef,
@@ -700,7 +713,7 @@ export default function CreditCardApp() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
     if (!presenceTabIdRef.current) {
@@ -849,6 +862,8 @@ export default function CreditCardApp() {
 
     return sections;
   }, [usingFirebaseTransactions, firebaseTransactions, submissions, currentUser, day, simulatedNow]);
+
+  const authLoading = currentUser && !authReady && !authError;
 
   const demoSection = useMemo(() => {
     const demoTxs = (DEMO_DAYS[String(day)] || DEMO_DAYS['0']).filter((tx) =>
@@ -1001,8 +1016,28 @@ export default function CreditCardApp() {
     return <Landing onSelect={setCurrentUser} />;
   }
 
+  if (authLoading) {
+    return (
+      <div className="landing">
+        <div className="landing-card">
+          <p className="landing-eyebrow">Credit Card</p>
+          <h1 className="landing-title">Connecting securely</h1>
+          <p className="landing-sub">Signing in silently with Firebase.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
+      {authError && (
+        <div className="sync-bar" style={{ justifyContent: 'center' }}>
+          <div className="sync-status disconnected">
+            <div className="sync-dot disconnected" />
+            {authError}
+          </div>
+        </div>
+      )}
       {showSwitch && (
         <SwitchOverlay
           currentUser={currentUser}

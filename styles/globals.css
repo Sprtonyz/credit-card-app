@@ -138,11 +138,31 @@ body {
   color: #92400e;
 }
 
+.clock-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.08rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
 .day-display {
-  font-size: 0.64rem;
-  color: #fbbf24;
-  min-width: 56px;
+  font-size: 0.61rem;
+  color: #f8fafc;
   text-align: center;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.clock-note {
+  font-size: 0.45rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fbbf24;
+  white-space: nowrap;
 }
 
 .day-btn {

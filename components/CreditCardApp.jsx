@@ -11,7 +11,11 @@ import { db } from '../config/firebase';
 import { onValue, ref, set } from 'firebase/database';
 import {
   clearSavedSimulatedDay,
+  formatLocalDate,
+  formatLocalDateTime,
   getSavedSimulatedDay,
+  getSimulatedNow,
+  SIMULATED_DAY_KEY,
   setSavedSimulatedDay,
 } from '../utils/simulationDate';
 
@@ -200,38 +204,27 @@ function formatDayLabel(dayKey, fallbackIndex) {
   });
 }
 
-function startOfLocalDay(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function addDays(date, days) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
 function parseLocalDate(dateStr) {
   const parsed = new Date(`${dateStr}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function formatLocalDate(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
 function getLocalDateKey(dateLike) {
   if (!dateLike) return null;
+  if (typeof dateLike === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateLike)) return dateLike;
   const parsed = new Date(dateLike);
   if (Number.isNaN(parsed.getTime())) return null;
   return formatLocalDate(parsed);
 }
 
 function formatRelativeDayLabel(dateStr, referenceDate) {
-  const parsed = parseLocalDate(dateStr);
-  if (!parsed) return dateStr || 'Unknown';
+  const parsedKey = getLocalDateKey(dateStr);
+  if (!parsedKey) return dateStr || 'Unknown';
 
-  const ref = startOfLocalDay(referenceDate);
-  const diffDays = Math.round((ref.getTime() - startOfLocalDay(parsed).getTime()) / 86400000);
+  const referenceKey = formatLocalDate(referenceDate);
+  const refMs = Date.parse(`${referenceKey}T00:00:00Z`);
+  const parsedMs = Date.parse(`${parsedKey}T00:00:00Z`);
+  const diffDays = Math.round((refMs - parsedMs) / 86400000);
 
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
@@ -616,6 +609,7 @@ export default function CreditCardApp() {
   const [petXp, setPetXp] = useState(0);
   const [petLevel] = useState(5);
   const [day, setDay] = useState(() => getSavedSimulatedDay());
+  const [clockTick, setClockTick] = useState(() => Date.now());
   const [undoStack, setUndoStack] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState({});
   const [firebaseTransactions, setFirebaseTransactions] = useState(null);
@@ -650,6 +644,21 @@ export default function CreditCardApp() {
   useEffect(() => {
     setSavedSimulatedDay(day);
   }, [day]);
+
+  useEffect(() => {
+    const syncDayOffset = (event) => {
+      if (event.key !== SIMULATED_DAY_KEY) return;
+      setDay(getSavedSimulatedDay());
+    };
+
+    window.addEventListener('storage', syncDayOffset);
+    return () => window.removeEventListener('storage', syncDayOffset);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (currentUser) localStorage.setItem(USER_KEY, currentUser);
@@ -769,10 +778,11 @@ export default function CreditCardApp() {
     () => Object.fromEntries((sourceTransactions || []).map((tx) => [tx.id, tx])),
     [sourceTransactions]
   );
-  const referenceDate = useMemo(() => addDays(startOfLocalDay(new Date()), day), [day]);
-  const referenceDateKey = useMemo(() => formatLocalDate(referenceDate), [referenceDate]);
+  const simulatedNow = useMemo(() => getSimulatedNow(new Date(clockTick)), [clockTick, day]);
+  const referenceDateKey = useMemo(() => formatLocalDate(simulatedNow), [simulatedNow]);
+  const liveDateTimeLabel = useMemo(() => formatLocalDateTime(simulatedNow), [simulatedNow]);
   const otherUser = currentUser ? getOtherUser(currentUser) : USERS[0];
-  const dayLabel = day === 0 ? 'today' : `+${day}d`;
+  const dayLabel = day === 0 ? 'live' : `+${day} day${day === 1 ? '' : 's'}`;
 
   const firebaseSections = useMemo(() => {
     if (!usingFirebaseTransactions) return [];
@@ -820,7 +830,7 @@ export default function CreditCardApp() {
       if (txs.length === 0) return;
       sections.push({
         key: `pending-${dateKey}`,
-        title: formatRelativeDayLabel(dateKey, referenceDate),
+        title: formatRelativeDayLabel(dateKey, simulatedNow),
         txs,
       });
     });
@@ -832,13 +842,13 @@ export default function CreditCardApp() {
       if (txs.length === 0) return;
       sections.push({
         key: dateKey,
-        title: formatRelativeDayLabel(dateKey, referenceDate),
+        title: formatRelativeDayLabel(dateKey, simulatedNow),
         txs,
       });
     });
 
     return sections;
-  }, [usingFirebaseTransactions, firebaseTransactions, submissions, currentUser, day, referenceDate]);
+  }, [usingFirebaseTransactions, firebaseTransactions, submissions, currentUser, day, simulatedNow]);
 
   const demoSection = useMemo(() => {
     const demoTxs = (DEMO_DAYS[String(day)] || DEMO_DAYS['0']).filter((tx) =>
@@ -1019,9 +1029,12 @@ export default function CreditCardApp() {
 
       <div className="dev-banner">
         <span className="dev-label">dev</span>
-        <span className="day-display">{dayLabel}</span>
+        <div className="clock-panel">
+          <span className="day-display">{liveDateTimeLabel}</span>
+          <span className="clock-note">Melbourne {dayLabel}</span>
+        </div>
         <button className="day-btn" onClick={stepDay}>
-          next day {'\u25B6'}
+          next day +24h {'\u25B6'}
         </button>
         <button className="reset-btn" onClick={resetDay}>
           reset

@@ -12,6 +12,7 @@ import {
   formatLocalDate,
   getSimulatedISOString,
   getSimulatedTodayDate,
+  shiftDateKey,
 } from '../utils/simulationDate';
 
 export async function addTransactions(transactions) {
@@ -70,10 +71,7 @@ export async function queryTransactionsByDate(date) {
 }
 
 function getYesterdayDate() {
-  const today = getSimulatedTodayDate();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  return formatLocalDate(yesterday);
+  return shiftDateKey(formatLocalDate(getSimulatedTodayDate()), -1);
 }
 
 export function getTodayDate() {

@@ -1,4 +1,5 @@
 import { getTodayDate } from '../services/firebaseService';
+import { shiftDateKey } from './simulationDate';
 
 function transactionExists(newTx, existingTxs) {
   return existingTxs.some((existing) => {
@@ -55,9 +56,7 @@ export function mergeTransactions(
     }
 
     if (txWithDate.isPending) {
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      const yesterdayStr = shiftDateKey(today, -1);
 
       if (txWithDate.date === yesterdayStr) {
         const existsYesterday = existingTransactions.some(

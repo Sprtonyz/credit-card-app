@@ -4,6 +4,7 @@ export function fixAmountFormatting(amountStr) {
   let cleaned = amountStr.toString().replace(/\s/g, '');
   cleaned = cleaned.replace(/[$€£¥]/g, '');
   const hadCurrencyMarker = /[$€£¥]/.test(amountStr) || /^-/.test(cleaned);
+  const unsignedCleaned = cleaned.replace(/^-/, '');
 
   const commaCount = (cleaned.match(/,/g) || []).length;
   const periodCount = (cleaned.match(/\./g) || []).length;
@@ -22,9 +23,10 @@ export function fixAmountFormatting(amountStr) {
     hadCurrencyMarker &&
     commaCount === 0 &&
     periodCount === 0 &&
-    /^\d{3,6}$/.test(cleaned)
+    /^\d{3,6}$/.test(unsignedCleaned)
   ) {
-    cleaned = `${cleaned.slice(0, -2)}.${cleaned.slice(-2)}`;
+    const normalized = `${unsignedCleaned.slice(0, -2)}.${unsignedCleaned.slice(-2)}`;
+    cleaned = cleaned.startsWith('-') ? `-${normalized}` : normalized;
   }
 
   cleaned = cleaned.replace(/[^0-9.]/g, '');

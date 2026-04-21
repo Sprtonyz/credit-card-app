@@ -26,6 +26,8 @@ const STORAGE_KEY = 'cc_v4_subs';
 const USER_KEY = 'cc_v4_user';
 const PRESENCE_ROOT = 'cc_v4_presence';
 const PRESENCE_TTL_MS = 12000;
+const APP_STATE_ROOT = 'cc_v4_app_state';
+const SHARED_DAY_OFFSET_KEY = `${APP_STATE_ROOT}/simulatedDayOffset`;
 const APP_VERSION = 'r3.19';
 const VERSION_KEY = 'cc_version';
 
@@ -574,6 +576,7 @@ function OcrDiagnostics({ processedImages }) {
               <>
                 <div className="ocr-diagnostics-meta">
                   <span>Hash: {image.imageHash || 'n/a'}</span>
+                  <span>OCR mode: {image.ocrMode || 'balanced'}</span>
                   <span>Preview of raw OCR:</span>
                 </div>
                 <pre className="ocr-diagnostics-text">
@@ -667,6 +670,26 @@ export default function CreditCardApp() {
     window.addEventListener('storage', syncDayOffset);
     return () => window.removeEventListener('storage', syncDayOffset);
   }, []);
+
+  useEffect(() => {
+    if (!authReady) return undefined;
+
+    const dayOffsetRef = ref(db, SHARED_DAY_OFFSET_KEY);
+    const unsubscribe = onValue(
+      dayOffsetRef,
+      (snapshot) => {
+        const raw = snapshot.val();
+        const nextDay = Number.isFinite(Number(raw)) ? Number(raw) : 0;
+        setSavedSimulatedDay(nextDay);
+        setDay(nextDay);
+      },
+      () => {
+        setDay(getSavedSimulatedDay());
+      }
+    );
+
+    return () => unsubscribe();
+  }, [authReady]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClockTick(Date.now()), 1000);
@@ -1001,14 +1024,13 @@ export default function CreditCardApp() {
   };
 
   const stepDay = () =>
-    setDay((d) => {
-      const nextDay = d + 1;
-      setSavedSimulatedDay(nextDay);
-      return nextDay;
+    set(ref(db, SHARED_DAY_OFFSET_KEY), day + 1).catch((err) => {
+      console.error('Failed to update shared simulated day:', err);
     });
   const resetDay = () => {
-    setSavedSimulatedDay(0);
-    setDay(0);
+    set(ref(db, SHARED_DAY_OFFSET_KEY), 0).catch((err) => {
+      console.error('Failed to reset shared simulated day:', err);
+    });
   };
 
   const clearCache = async () => {

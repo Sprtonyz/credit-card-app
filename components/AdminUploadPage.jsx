@@ -62,6 +62,7 @@ function OcrDiagnostics({ processedImages }) {
                 <div className="ocr-diagnostics-meta">
                   <span>Hash: {image.imageHash || 'n/a'}</span>
                   <span>Parser: {image.parserProfile || 'classic'}</span>
+                  <span>OCR mode: {image.ocrMode || 'balanced'}</span>
                   <span>OCR text:</span>
                 </div>
                 <pre className="ocr-diagnostics-text">

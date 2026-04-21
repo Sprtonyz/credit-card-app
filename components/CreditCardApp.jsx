@@ -24,6 +24,7 @@ const USERS = ['Tony', 'Nugs'];
 const ASSIGN_OPTS = ['Unsure', 'Macquarie', 'Tony', 'Nugs'];
 const STORAGE_KEY = 'cc_v4_subs';
 const USER_KEY = 'cc_v4_user';
+const PET_STORAGE_KEY = 'cc_v4_pet_state';
 const PRESENCE_ROOT = 'cc_v4_presence';
 const PRESENCE_TTL_MS = 12000;
 const APP_STATE_ROOT = 'cc_v4_app_state';
@@ -114,6 +115,29 @@ function getOptionClassName(value) {
 
 function formatAssignmentLabel(value) {
   return value === 'Macquarie' ? 'MAC' : value;
+}
+
+function getDefaultPetState(user) {
+  return {
+    coins: 0,
+    food: 0,
+    hp: 60,
+    xp: 0,
+    petType: 'classic',
+  };
+}
+
+function getPetLevel(xp) {
+  return Math.floor(Math.sqrt(Math.max(0, xp) / 10)) + 1;
+}
+
+function getXpForLevel(level) {
+  return level * level * 10;
+}
+
+function normalizePetType(value) {
+  if (value === 'shiny' || value === 'ember' || value === 'classic') return value;
+  return 'classic';
 }
 
 function hasConflict(sub) {
@@ -407,7 +431,7 @@ function TransactionCard({ tx, sub, currentUser, currentDay, onAssign }) {
               <button
                 key={opt}
                 className={`conflict-tap-btn ${getOptionClassName(opt)}`}
-                onClick={() => onAssign(tx.id, opt)}
+                onClick={(event) => onAssign(tx.id, opt, event)}
               >
                 {formatAssignmentLabel(opt)}
               </button>
@@ -421,7 +445,7 @@ function TransactionCard({ tx, sub, currentUser, currentDay, onAssign }) {
             <button
               key={opt}
               className={`tap-btn ${getOptionClassName(opt)}`}
-              onClick={() => onAssign(tx.id, opt)}
+              onClick={(event) => onAssign(tx.id, opt, event)}
             >
               {formatAssignmentLabel(opt)}
             </button>
@@ -432,7 +456,7 @@ function TransactionCard({ tx, sub, currentUser, currentDay, onAssign }) {
   );
 }
 
-function PetBar({ hp, coins, food, level, petType }) {
+function PetBar({ hp, coins, food, level, xp, xpNeeded, onBuyFood, onFeedPet, petType }) {
   return (
     <>
       <div className="shop-bar">
@@ -450,10 +474,16 @@ function PetBar({ hp, coins, food, level, petType }) {
           <span className="shop-hp-val">{hp}</span>
         </div>
         <div className="shop-divider-v" />
-        <button className="shop-btn buy">buy food 1{'\u{1FA99}'}</button>
-        <button className="shop-btn feed">feed {'\u{1F356}'}</button>
+        <button className="shop-btn buy" disabled={coins < 1} onClick={onBuyFood}>
+          buy food 1{'\u{1FA99}'}
+        </button>
+        <button className="shop-btn feed" disabled={food < 1} onClick={onFeedPet}>
+          feed {'\u{1F356}'}
+        </button>
         <div className="shop-divider-v" />
-        <span className="pet-level">Lv.{level} - 0/90 xp</span>
+        <span className="pet-level">
+          Lv.{level} - {xp}/{xpNeeded} xp
+        </span>
       </div>
       <div className="pet-footer">
         <PetCanvas petType={petType} />
@@ -462,7 +492,106 @@ function PetBar({ hp, coins, food, level, petType }) {
   );
 }
 
-function PetCanvas({ petType = 'cat' }) {
+const PET_THEMES = {
+  classic: {
+    line: '#f4b544',
+    fill: 'rgba(244,181,68,0.18)',
+    glow: 'rgba(251,191,36,0.24)',
+    eye: '#fff7d6',
+    trail: 'rgba(245,158,11,0.1)',
+  },
+  shiny: {
+    line: '#7dd3fc',
+    fill: 'rgba(56,189,248,0.14)',
+    glow: 'rgba(125,211,252,0.24)',
+    eye: '#eff6ff',
+    trail: 'rgba(56,189,248,0.08)',
+  },
+  ember: {
+    line: '#fb923c',
+    fill: 'rgba(251,146,60,0.16)',
+    glow: 'rgba(249,115,22,0.24)',
+    eye: '#fff1e6',
+    trail: 'rgba(249,115,22,0.08)',
+  },
+};
+
+const PET_VARIANTS = {
+  classic: {
+    body: { x: 31, y: 22, rx: 18, ry: 11, tilt: -0.08 },
+    head: { x: 31, y: 18, w: 28, h: 25 },
+    ears: [
+      [[24, 8], [21, -1], [29, 6]],
+      [[35, 7], [39, -3], [41, 9]],
+    ],
+    tail: [[45, 22], [57, 12], [54, 3], [50, -2], [46, 4]],
+    eyes: [[27.5, 16.5, 1.7, 2.2], [34.5, 16, 1.6, 2.1]],
+    mouth: [[24, 22], [30, 25.5], [36, 22.5]],
+    legs: [[22, 31], [28, 31], [35, 30.5], [40, 29.5]],
+    feetY: [39, 39, 39, 38.5],
+    accent: (ctx, theme) => {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(22, 20);
+      ctx.quadraticCurveTo(31, 12, 39, 18);
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+  shiny: {
+    body: { x: 33, y: 23, rx: 16, ry: 10, tilt: -0.14 },
+    head: { x: 28, y: 18, w: 24, h: 23 },
+    ears: [
+      [[21, 10], [18, -8], [24, 7]],
+      [[30, 8], [29, -10], [34, 7]],
+    ],
+    tail: [[47, 19], [58, 15], [61, 7], [58, 1], [50, 3]],
+    eyes: [[24.5, 16.2, 1.4, 2.4], [30.5, 15.8, 1.3, 2.3]],
+    mouth: [[22, 22], [27, 24.5], [31, 22]],
+    legs: [[26, 31], [31, 31], [37, 30.5], [41, 29.5]],
+    feetY: [39, 39, 39, 38.5],
+    accent: (ctx, theme, tick) => {
+      const finLift = Math.sin(tick / 18) * 2;
+      ctx.save();
+      ctx.strokeStyle = theme.line;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(34, 12);
+      ctx.quadraticCurveTo(41, 8 - finLift, 45, 14);
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+  ember: {
+    body: { x: 31, y: 23, rx: 19, ry: 10, tilt: -0.02 },
+    head: { x: 33, y: 18, w: 26, h: 22 },
+    ears: [
+      [[27, 10], [26, 0], [32, 8]],
+      [[36, 9], [42, 2], [41, 11]],
+    ],
+    tail: [[48, 23], [61, 17], [64, 8], [59, 3], [51, 7]],
+    eyes: [[30, 16.5, 1.7, 1.8], [36.5, 16.2, 1.6, 1.7]],
+    mouth: [[29, 22], [34, 23.8], [39, 21.6]],
+    legs: [[21, 31.5], [27, 31.2], [37, 31], [43, 30]],
+    feetY: [39.5, 39, 39, 38.5],
+    accent: (ctx, theme, tick) => {
+      const flame = Math.sin(tick / 9) * 1.5;
+      ctx.save();
+      ctx.fillStyle = theme.glow;
+      ctx.beginPath();
+      ctx.moveTo(58, 7);
+      ctx.quadraticCurveTo(63, 0 - flame, 60, -4 - flame);
+      ctx.quadraticCurveTo(66, 0, 64, 5 - flame * 0.4);
+      ctx.quadraticCurveTo(62, 11, 58, 7);
+      ctx.fill();
+      ctx.restore();
+    },
+  },
+};
+
+function PetCanvas({ petType = 'classic' }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -472,30 +601,177 @@ function PetCanvas({ petType = 'cat' }) {
     let raf = 0;
     let x = 20;
     let dir = 1;
-    let frame = 0;
+    let tick = 0;
 
     const resize = () => {
       canvas.width = canvas.parentElement?.clientWidth || window.innerWidth;
       canvas.height = 54;
     };
 
+    const roundedPath = (pathFactory, fill, stroke, blur = 0) => {
+      ctx.save();
+      if (blur) {
+        ctx.shadowBlur = blur;
+        ctx.shadowColor = stroke;
+      }
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.6;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      pathFactory();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    const drawCompanion = (left, baseline, facingLeft, theme, variant) => {
+      const bob = Math.sin(tick / 10) * 1.4;
+      const tailSwing = Math.sin(tick / 12) * 4;
+      const headNod = Math.sin(tick / 14) * 1.2;
+      const legOffset = Math.sin(tick / 7) * 1.5;
+
+      ctx.save();
+      if (facingLeft) {
+        ctx.translate(left + 68, 0);
+        ctx.scale(-1, 1);
+        ctx.translate(-left, 0);
+      }
+
+      ctx.translate(left, baseline + bob);
+
+      roundedPath(() => {
+        ctx.beginPath();
+        ctx.ellipse(variant.body.x, variant.body.y, variant.body.rx, variant.body.ry, variant.body.tilt, 0, Math.PI * 2);
+      }, theme.fill, theme.line, 14);
+
+      roundedPath(() => {
+        const halfW = variant.head.w / 2;
+        const halfH = variant.head.h / 2;
+        ctx.beginPath();
+        ctx.moveTo(variant.head.x - halfW * 0.65, variant.head.y - halfH * 0.3);
+        ctx.quadraticCurveTo(variant.head.x - halfW, variant.head.y - halfH, variant.head.x, variant.head.y - halfH);
+        ctx.quadraticCurveTo(variant.head.x + halfW, variant.head.y - halfH, variant.head.x + halfW * 0.9, variant.head.y);
+        ctx.quadraticCurveTo(variant.head.x + halfW * 0.9, variant.head.y + halfH, variant.head.x, variant.head.y + halfH);
+        ctx.quadraticCurveTo(variant.head.x - halfW, variant.head.y + halfH, variant.head.x - halfW * 1.02, variant.head.y + 2);
+        ctx.quadraticCurveTo(
+          variant.head.x - halfW * 1.08,
+          variant.head.y - halfH * 0.2,
+          variant.head.x - halfW * 0.65,
+          variant.head.y - halfH * 0.3
+        );
+      }, theme.fill, theme.line, 16);
+
+      variant.ears.forEach((points) => {
+        roundedPath(() => {
+          ctx.beginPath();
+          ctx.moveTo(points[0][0], points[0][1]);
+          ctx.lineTo(points[1][0], points[1][1]);
+          ctx.lineTo(points[2][0], points[2][1]);
+          ctx.closePath();
+        }, theme.fill, theme.line);
+      });
+
+      ctx.save();
+      ctx.strokeStyle = theme.line;
+      ctx.lineWidth = 1.7;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(variant.tail[0][0], variant.tail[0][1]);
+      ctx.quadraticCurveTo(
+        variant.tail[1][0],
+        variant.tail[1][1] + tailSwing * 0.25,
+        variant.tail[2][0],
+        variant.tail[2][1] + tailSwing
+      );
+      ctx.quadraticCurveTo(
+        variant.tail[3][0],
+        variant.tail[3][1] + tailSwing * 0.35,
+        variant.tail[4][0],
+        variant.tail[4][1] + tailSwing * 0.2
+      );
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.fillStyle = theme.eye;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = theme.eye;
+      ctx.beginPath();
+      variant.eyes.forEach(([x, y, rx, ry]) => {
+        ctx.ellipse(x, y + headNod * 0.15, rx, ry, 0, 0, Math.PI * 2);
+      });
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(variant.mouth[0][0], variant.mouth[0][1]);
+      ctx.quadraticCurveTo(variant.mouth[1][0], variant.mouth[1][1], variant.mouth[2][0], variant.mouth[2][1]);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = theme.line;
+      ctx.lineWidth = 1.8;
+      ctx.lineCap = 'round';
+      variant.legs.forEach(([x1, y1], index) => {
+        const swing = index % 2 === 0 ? -legOffset : legOffset;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x1 + swing, variant.feetY[index]);
+        ctx.stroke();
+      });
+      ctx.restore();
+
+      variant.accent?.(ctx, theme, tick);
+
+      ctx.restore();
+    };
+
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const variantKey = petType === 'shiny' ? 'shiny' : petType === 'ember' ? 'ember' : 'classic';
+      const theme = PET_THEMES[variantKey];
+      const variant = PET_VARIANTS[variantKey];
+      const spriteWidth = 68;
+      const floorY = 45;
+      const shadowWidth = 22;
+      const shadowY = floorY + 2;
+      const spriteX = Math.max(6, Math.min(canvas.width - spriteWidth - 6, x));
+      const shadowX = Math.round(spriteX + spriteWidth / 2 - shadowWidth / 2);
+      const facingLeft = dir < 0;
+
+      const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      bg.addColorStop(0, 'rgba(255,255,255,0.015)');
+      bg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = theme.trail;
+      ctx.beginPath();
+      ctx.ellipse(spriteX + 34, floorY - 6, 42, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+
       ctx.fillStyle = 'rgba(255,255,255,0.05)';
-      ctx.fillRect(0, 0, canvas.width, 1);
-      ctx.fillStyle = petType === 'dog' ? '#d97706' : petType === 'duck' ? '#fde047' : '#fbbf24';
-      ctx.fillRect(6, 5, canvas.width - 12, 3);
+      ctx.fillRect(0, floorY, canvas.width, 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.beginPath();
+      ctx.ellipse(shadowX, shadowY, shadowWidth / 2, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      ctx.beginPath();
+      ctx.ellipse(shadowX, shadowY - 1, shadowWidth / 3, 1.4, 0, 0, Math.PI * 2);
+      ctx.fill();
 
-      x += dir * 0.8;
-      if (x > canvas.width - 18) dir = -1;
-      if (x < 10) dir = 1;
-      frame = (frame + 1) % 2;
+      x += dir * 0.5;
+      if (x > canvas.width - spriteWidth - 6) dir = -1;
+      if (x < 6) dir = 1;
+      tick += 1;
 
-      ctx.fillStyle = frame ? (petType === 'dog' ? '#d97706' : petType === 'duck' ? '#fde047' : '#fbbf24') : '#d97706';
-      ctx.fillRect(x, 24, 8, 8);
-      ctx.fillStyle = '#1f2937';
-      ctx.fillRect(x + 1, 26, 1, 1);
-      ctx.fillRect(x + 5, 26, 1, 1);
+      drawCompanion(Math.round(spriteX), floorY - 39, facingLeft, theme, variant);
       raf = requestAnimationFrame(draw);
     };
 
@@ -608,12 +884,9 @@ export default function CreditCardApp() {
   const [showMac, setShowMac] = useState(false);
   const [showPetDebug, setShowPetDebug] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
-  const [petType, setPetType] = useState('cat');
-  const [coins, setCoins] = useState(17);
-  const [food, setFood] = useState(4);
-  const [hp, setHp] = useState(100);
-  const [petXp, setPetXp] = useState(0);
-  const [petLevel] = useState(5);
+  const [petProfiles, setPetProfiles] = useState({});
+  const [coinPops, setCoinPops] = useState([]);
+  const [levelUpMsg, setLevelUpMsg] = useState(null);
   const [day, setDay] = useState(() => getSavedSimulatedDay());
   const [clockTick, setClockTick] = useState(() => Date.now());
   const [authReady, setAuthReady] = useState(false);
@@ -626,6 +899,8 @@ export default function CreditCardApp() {
   const confettiRef = useRef(null);
   const confettiFiredRef = useRef(false);
   const presenceTabIdRef = useRef(null);
+  const prevPetLevelRef = useRef(1);
+  const petLevelReadyRef = useRef(false);
 
   useEffect(() => {
     if (localStorage.getItem(VERSION_KEY) !== APP_VERSION) {
@@ -701,6 +976,46 @@ export default function CreditCardApp() {
   }, [currentUser]);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PET_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        setPetProfiles(parsed);
+      }
+    } catch (error) {
+      console.warn('Failed to load pet state from localStorage:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(PET_STORAGE_KEY, JSON.stringify(petProfiles));
+  }, [petProfiles]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    setPetProfiles((prev) => {
+      if (prev[currentUser]) {
+        const normalized = normalizePetType(prev[currentUser].petType);
+        if (normalized === prev[currentUser].petType) return prev;
+        return {
+          ...prev,
+          [currentUser]: {
+            ...prev[currentUser],
+            petType: normalized,
+          },
+        };
+      }
+      return {
+        ...prev,
+        [currentUser]: getDefaultPetState(currentUser),
+      };
+    });
+    setLevelUpMsg(null);
+    petLevelReadyRef.current = false;
+  }, [currentUser]);
+
+  useEffect(() => {
     if (!authReady) return;
     const txRef = ref(db, 'transactions');
     const unsubscribe = onValue(
@@ -723,6 +1038,88 @@ export default function CreditCardApp() {
 
     return () => unsubscribe();
   }, [authReady]);
+
+  const petState = currentUser ? petProfiles[currentUser] || getDefaultPetState(currentUser) : getDefaultPetState('Tony');
+  const petLevel = getPetLevel(petState.xp);
+  const xpBase = getXpForLevel(petLevel - 1);
+  const xpNeeded = getXpForLevel(petLevel) - xpBase;
+  const xpThisLevel = petState.xp - xpBase;
+  const coins = petState.coins;
+  const food = petState.food;
+  const hp = petState.hp;
+  const petXp = petState.xp;
+  const petType = normalizePetType(petState.petType);
+
+  useEffect(() => {
+    if (!petLevelReadyRef.current) {
+      prevPetLevelRef.current = petLevel;
+      petLevelReadyRef.current = true;
+      return undefined;
+    }
+
+    if (petLevel <= prevPetLevelRef.current) {
+      prevPetLevelRef.current = petLevel;
+      return undefined;
+    }
+
+    prevPetLevelRef.current = petLevel;
+    setLevelUpMsg(`Pet Level ${petLevel}!`);
+    confettiRef.current?.launch?.();
+    const timer = window.setTimeout(() => setLevelUpMsg(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [petLevel]);
+
+  const updateActivePet = (updater) => {
+    if (!currentUser) return;
+    setPetProfiles((prev) => {
+      const current = prev[currentUser] || getDefaultPetState(currentUser);
+      const nextPet = typeof updater === 'function' ? updater(current) : updater;
+      return {
+        ...prev,
+        [currentUser]: nextPet,
+      };
+    });
+  };
+
+  const addCoinPop = (event) => {
+    if (!event?.currentTarget) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const id = `${Date.now()}-${Math.random()}`;
+    setCoinPops((prev) => [
+      ...prev,
+      {
+        id,
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+      },
+    ]);
+    window.setTimeout(() => {
+      setCoinPops((prev) => prev.filter((pop) => pop.id !== id));
+    }, 850);
+  };
+
+  const buyFood = () => {
+    updateActivePet((pet) => {
+      if (pet.coins < 1) return pet;
+      return {
+        ...pet,
+        coins: pet.coins - 1,
+        food: pet.food + 1,
+      };
+    });
+  };
+
+  const feedPet = () => {
+    updateActivePet((pet) => {
+      if (pet.food < 1) return pet;
+      return {
+        ...pet,
+        food: pet.food - 1,
+        hp: Math.min(100, Math.max(0, pet.hp + 10)),
+        xp: pet.xp + 10,
+      };
+    });
+  };
 
   useEffect(() => {
     if (!authReady) return;
@@ -970,8 +1367,10 @@ export default function CreditCardApp() {
     [submissions, transactionsById, day]
   );
 
-  const handleAssign = async (txId, value) => {
+  const handleAssign = async (txId, value, event) => {
     if (!currentUser) return;
+    const previousValue = submissions[txId]?.[currentUser]?.value ?? null;
+    const shouldReward = previousValue !== value;
     setUndoStack((prev) => [
       ...prev,
       { txId, user: currentUser, prev: submissions[txId]?.[currentUser] || null },
@@ -991,6 +1390,14 @@ export default function CreditCardApp() {
         ts: Date.now(),
         value,
       });
+
+      if (shouldReward) {
+        updateActivePet((pet) => ({
+          ...pet,
+          coins: pet.coins + 1,
+        }));
+        addCoinPop(event);
+      }
     } catch (err) {
       console.error('Failed to persist submission to Firebase:', err);
     }
@@ -1037,16 +1444,16 @@ export default function CreditCardApp() {
     if (!window.confirm('Reset all data? This clears ALL devices.')) return;
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(PET_STORAGE_KEY);
     setSubmissions({});
     setUndoStack([]);
     setShowMac(false);
     setShowPetDebug(false);
     setShowDevTools(false);
     setCurrentUser(null);
-    setCoins(17);
-    setFood(4);
-    setHp(100);
-    setPetXp(0);
+    setPetProfiles({});
+    setLevelUpMsg(null);
+    setCoinPops([]);
     setDay(0);
     clearSavedSimulatedDay();
 
@@ -1136,13 +1543,13 @@ export default function CreditCardApp() {
               reset
             </button>
             <span className="dev-sep">|</span>
-            <button className="day-btn" onClick={() => setCoins((v) => v + 5)}>
+            <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, coins: pet.coins + 5 }))}>
               +5{'\u{1FA99}'}
             </button>
-            <button className="day-btn" onClick={() => setFood((v) => v + 3)}>
+            <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, food: pet.food + 3 }))}>
               +3{'\u{1F356}'}
             </button>
-            <button className="reset-btn" onClick={() => setCoins(0)}>
+            <button className="reset-btn" onClick={() => updateActivePet((pet) => ({ ...pet, coins: 0 }))}>
               0{'\u{1FA99}'}
             </button>
             <span className="dev-sep">|</span>
@@ -1165,7 +1572,7 @@ export default function CreditCardApp() {
           {showPetDebug && (
             <div className="pet-debug-row">
               <span className="dev-label">pet type:</span>
-              {['cat', 'dog', 'duck'].map((type) => (
+              {['classic', 'shiny', 'ember'].map((type) => (
                 <button
                   key={type}
                   className="day-btn"
@@ -1173,20 +1580,20 @@ export default function CreditCardApp() {
                     background: petType === type ? 'rgba(96,165,250,0.2)' : '',
                     borderColor: petType === type ? 'rgba(96,165,250,0.4)' : '',
                   }}
-                  onClick={() => setPetType(type)}
+                  onClick={() => updateActivePet((pet) => ({ ...pet, petType: type }))}
                 >
                   {type}
                 </button>
               ))}
               <span className="dev-sep">|</span>
               <span className="dev-label">xp:{petXp} lv:{petLevel}</span>
-              <button className="day-btn" onClick={() => setPetXp((n) => n + 30)}>
+              <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, xp: pet.xp + 30 }))}>
                 +30xp
               </button>
-              <button className="reset-btn" onClick={() => setPetXp(0)}>
+              <button className="reset-btn" onClick={() => updateActivePet((pet) => ({ ...pet, xp: 0 }))}>
                 0xp
               </button>
-              <button className="day-btn" onClick={() => setHp(100)}>
+              <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, hp: 100 }))}>
                 +hp
               </button>
             </div>
@@ -1261,10 +1668,32 @@ export default function CreditCardApp() {
         ))}
 
       {!anyVisible && <AllDone msg={doneMsg.current} />}
+      {levelUpMsg && (
+        <div className="levelup-overlay">
+          <div className="levelup-badge">✦ {levelUpMsg} ✦</div>
+          <div className="levelup-sub">congrats, your pet levelled up</div>
+        </div>
+      )}
+      {coinPops.map((pop) => (
+        <div key={pop.id} className="coin-pop" style={{ left: `${pop.x}px`, top: `${pop.y}px` }}>
+          <span className="pixel-coin-art" />
+          <span className="coin-pop-text">+1</span>
+        </div>
+      ))}
       <ConfettiCanvas ref={confettiRef} />
       </div>
 
-      <PetBar hp={hp} coins={coins} food={food} level={petLevel} petType={petType} />
+      <PetBar
+        hp={hp}
+        coins={coins}
+        food={food}
+        level={petLevel}
+        xp={xpThisLevel}
+        xpNeeded={xpNeeded}
+        onBuyFood={buyFood}
+        onFeedPet={feedPet}
+        petType={petType}
+      />
     </div>
   );
 }

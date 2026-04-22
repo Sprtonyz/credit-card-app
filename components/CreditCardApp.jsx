@@ -180,12 +180,14 @@ function shouldCountForAssignee(sub, assignee, day) {
 }
 
 function normalizeFirebaseTransaction(id, tx) {
+  const amount = Number(tx.amount) || 0;
   return {
     id,
     desc: tx.merchant || tx.desc || 'Untitled transaction',
-    amount: Number(tx.amount) || 0,
+    amount,
     date: tx.date || null,
     isPending: Boolean(tx.isPending) || !tx.date,
+    isRefund: Boolean(tx.isRefund) || amount < 0,
     uploadedDate: tx.uploadedDate || null,
     uploadedDay: tx.uploadedDay || null,
     category: tx.category || null,
@@ -406,18 +408,34 @@ function TransactionCard({ tx, sub, currentUser, currentDay, onAssign }) {
   const mySub = getSurfacedSubmissionValue(sub, currentUser, currentDay);
   const otherSub = getSurfacedSubmissionValue(sub, otherUser, currentDay);
   const { conflict, unsure } = getSurfacedSubmissionStatus(sub, currentDay);
+  const isRefund = Boolean(tx.isRefund || Number(tx.amount) < 0);
+  const amountClass = isRefund ? 'text-emerald-300' : 'text-white';
+  const cardClass = isRefund ? 'refund' : '';
 
   return (
-    <div className={`tx-card ${conflict ? 'conflict' : unsure ? 'unsure' : ''}`}>
+    <div className={`tx-card ${cardClass} ${conflict ? 'conflict' : unsure ? 'unsure' : ''}`}>
       <div className="tx-top">
         <div>
           <div className="tx-meta">
+            {isRefund && !conflict && !unsure && (
+              <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                refund
+              </span>
+            )}
             {conflict && <span className="badge badge-conflict">! conflict</span>}
             {unsure && !conflict && <span className="badge badge-unsure">? unsure</span>}
           </div>
           <p className="tx-desc">{tx.desc}</p>
+          {isRefund && (
+            <p className="mt-1 text-xs font-medium uppercase tracking-wider text-emerald-300/80">
+              Credit applied
+            </p>
+          )}
         </div>
-        <span className="tx-amount">${tx.amount.toFixed(2)}</span>
+        <span className={`tx-amount ${amountClass}`}>
+          {isRefund ? 'CR ' : ''}
+          ${Math.abs(tx.amount).toFixed(2)}
+        </span>
       </div>
 
       {conflict || unsure ? (
@@ -878,7 +896,13 @@ function OcrDiagnostics({ processedImages }) {
 }
 
 export default function CreditCardApp() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    if (typeof window === 'undefined') return null;
+    const searchParams = new URLSearchParams(window.location.search);
+    const forceLanding = searchParams.get('landing') === '1' || searchParams.get('reset') === '1';
+    if (forceLanding) return null;
+    return localStorage.getItem(USER_KEY);
+  });
   const [submissions, setSubmissions] = useState({});
   const [showSwitch, setShowSwitch] = useState(false);
   const [showMac, setShowMac] = useState(false);
@@ -903,14 +927,23 @@ export default function CreditCardApp() {
   const petLevelReadyRef = useRef(false);
 
   useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const forceLanding = searchParams.get('landing') === '1' || searchParams.get('reset') === '1';
+
     if (localStorage.getItem(VERSION_KEY) !== APP_VERSION) {
       localStorage.removeItem(USER_KEY);
       localStorage.setItem(VERSION_KEY, APP_VERSION);
     }
 
+    if (forceLanding) {
+      localStorage.removeItem(USER_KEY);
+      setCurrentUser(null);
+      return;
+    }
+
     const savedUser = localStorage.getItem(USER_KEY);
     const savedSubs = localStorage.getItem(STORAGE_KEY);
-    if (savedUser) setCurrentUser(savedUser);
+    if (!forceLanding && savedUser) setCurrentUser(savedUser);
     if (savedSubs) {
       try {
         setSubmissions(JSON.parse(savedSubs));

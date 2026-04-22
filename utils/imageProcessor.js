@@ -11,7 +11,8 @@ const DATE_PREFIX_RE = new RegExp(
   `^\\s*(?:(?:mon|tue|wed|thu|fri|sat|sun)(?:day)?\\s+)?\\d{1,2}\\s+${MONTH_PATTERN}\\s+\\d{2,4}\\s*[-:\\u2013\\u2014]?\\s*`,
   'i'
 );
-const AMOUNT_RE = /(?:-\s*\$?\s*\d[\d,]*(?:[.,]\d{2})?|\$\s*\d[\d,]*(?:[.,]\d{2})?)/i;
+const AMOUNT_RE = /(?:[-+]?\s*\$?\s*\d[\d,]*(?:[.,]\d{2})?|\$?\s*\d[\d,]*[.,]\d{2})/i;
+const BARE_AMOUNT_RE = /(?:^|[^\d])(\d[\d,]*(?:[.,]\d{2}))(?!\d)/g;
 
 function normalizeOcrLine(line) {
   return String(line || '')
@@ -56,8 +57,19 @@ function extractDateFromLine(text) {
 
 function extractAmountMatch(text) {
   if (!text) return null;
-  const matches = normalizeOcrLine(text).match(AMOUNT_RE);
-  return matches ? matches[0] : null;
+  const normalized = normalizeOcrLine(text);
+  const matches = normalized.match(AMOUNT_RE);
+  if (matches && matches.length > 0) {
+    return matches[matches.length - 1];
+  }
+
+  const bareMatches = [];
+  let match;
+  while ((match = BARE_AMOUNT_RE.exec(normalized)) !== null) {
+    bareMatches.push(match[1]);
+  }
+
+  return bareMatches.length > 0 ? bareMatches[bareMatches.length - 1] : null;
 }
 
 function normalizeAmountToken(amountToken) {
@@ -260,6 +272,7 @@ function parseClassicTransactionText(text, lineEntries = [], wordEntries = []) {
     transactions.push({
       merchant,
       amount: amountText,
+      rawAmountText: amountText,
       date: currentDate,
       category: currentCategory,
       lineIndex: entry.index + 1,
@@ -368,6 +381,7 @@ function parseItemizedTransactionText(text, lineEntries = [], fallbackDate = nul
       transactions.push({
         merchant: merchantText,
         amount: amountText,
+        rawAmountText: amountText,
         date: dateFromGroup || currentDate || fallbackDate,
         category: null,
         lineIndex: currentGroup[0].index + 1,

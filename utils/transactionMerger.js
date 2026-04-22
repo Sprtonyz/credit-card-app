@@ -122,6 +122,7 @@ export function prepareForFirebase(transactions, source = 'image') {
     category: tx.category || null,
     date: tx.date,
     isPending: tx.isPending || false,
+    isRefund: Boolean(tx.isRefund) || Number(tx.amount) < 0,
     source: source,
     imageHash: tx.imageHash || null,
   }));

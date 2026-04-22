@@ -29,10 +29,31 @@ export function fixAmountFormatting(amountStr) {
     cleaned = cleaned.startsWith('-') ? `-${normalized}` : normalized;
   }
 
+  if (commaCount === 0 && periodCount === 0 && /^\d{3,6}$/.test(unsignedCleaned)) {
+    const normalized = `${unsignedCleaned.slice(0, -2)}.${unsignedCleaned.slice(-2)}`;
+    cleaned = cleaned.startsWith('-') ? `-${normalized}` : normalized;
+  }
+
   cleaned = cleaned.replace(/[^0-9.]/g, '');
 
   const amount = parseFloat(cleaned);
   return Number.isNaN(amount) ? 0 : Math.round(amount * 100) / 100;
+}
+
+function inferRefund(transaction) {
+  const rawAmountText = String(transaction?.rawAmountText || '').trim();
+  const rawLine = String(transaction?.rawLine || '').toLowerCase();
+  const merchant = String(transaction?.merchant || '').toLowerCase();
+  const amount = Number(transaction?.amount || 0);
+
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+
+  if (/^[-(]/.test(rawAmountText)) return false;
+
+  if (/\b(refund|reversal|credit|cash back|cashback)\b/.test(rawLine)) return true;
+  if (/\b(refund|reversal|credit|cash back|cashback)\b/.test(merchant)) return true;
+
+  return true;
 }
 
 export function fixMerchantName(merchant) {
@@ -155,13 +176,20 @@ export function fixCategory(category) {
 }
 
 export function correctTransaction(transaction) {
+  const amount = fixAmountFormatting(transaction.amount);
+  const isRefund = inferRefund({
+    ...transaction,
+    amount,
+  });
+
   return {
     ...transaction,
     merchant: fixMerchantName(transaction.merchant),
-    amount: fixAmountFormatting(transaction.amount),
+    amount: isRefund ? -Math.abs(amount) : amount,
     category: transaction.category ? fixCategory(transaction.category) : null,
     date: transaction.date ? fixDateFormatting(transaction.date) : null,
     isPending: !transaction.date || !fixDateFormatting(transaction.date),
+    isRefund,
   };
 }
 

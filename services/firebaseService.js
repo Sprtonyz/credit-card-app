@@ -6,6 +6,7 @@ import {
   orderByChild,
   equalTo,
   get,
+  remove,
   set,
 } from 'firebase/database';
 import {
@@ -29,6 +30,7 @@ export async function addTransactions(transactions) {
         category: tx.category || null,
         date: tx.date || formatLocalDate(getSimulatedTodayDate()),
         isPending: !tx.date || tx.isPending,
+        isRefund: Boolean(tx.isRefund) || Number(tx.amount) < 0,
         source: tx.source || 'image',
         uploadedDate: getSimulatedISOString(),
         uploadedDay: simulatedUploadDay,
@@ -112,6 +114,21 @@ export async function getAllTransactions() {
   }
 }
 
+export async function getAllSubmissions() {
+  try {
+    const snapshot = await get(ref(db, 'submissions'));
+
+    if (!snapshot.exists()) {
+      return {};
+    }
+
+    return snapshot.val();
+  } catch (error) {
+    console.error('Error getting all submissions:', error);
+    throw error;
+  }
+}
+
 export async function checkIfProcessed(imageHash) {
   try {
     const processedRef = ref(db, `processedTransactions/${imageHash}`);
@@ -135,6 +152,28 @@ export async function saveProcessedLog(imageHash, transactionIds, imageName) {
     });
   } catch (error) {
     console.error('Error saving processed log:', error);
+    throw error;
+  }
+}
+
+export async function deleteTransactionsByIds(transactionIds = []) {
+  try {
+    await Promise.all(
+      transactionIds.filter(Boolean).map((transactionId) => remove(ref(db, `transactions/${transactionId}`)))
+    );
+  } catch (error) {
+    console.error('Error deleting transactions:', error);
+    throw error;
+  }
+}
+
+export async function deleteProcessedLogs(imageHashes = []) {
+  try {
+    await Promise.all(
+      imageHashes.filter(Boolean).map((imageHash) => remove(ref(db, `processedTransactions/${imageHash}`)))
+    );
+  } catch (error) {
+    console.error('Error deleting processed logs:', error);
     throw error;
   }
 }

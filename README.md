@@ -80,6 +80,30 @@ A: Export new CSV from Westpac, upload to app. Old submissions remain in cache.
 **Q: What if there's a conflict?**  
 A: Transaction stays in backlog (yellow/red) until both users agree. Edit to change your assignment.
 
+## Email Notifications
+
+The admin upload page now includes an email notification step after an import succeeds.
+
+To enable it, set these environment variables in Vercel or your local `.env.local`:
+
+```bash
+RESEND_API_KEY=your_resend_api_key
+EMAIL_FROM=Westpac CC Tracker <onboarding@resend.dev>
+EMAIL_REPLY_TO=
+EMAIL_TEST_RECIPIENT=spr.tony@gmail.com
+```
+
+For a free first test, leave `EMAIL_FROM` on the `onboarding@resend.dev` sender and send only to your own inbox. The current mock recipient is `spr.tony@gmail.com`. When you want to email other people, switch `EMAIL_FROM` to a verified custom-domain sender and update the recipient list.
+
+This email feature needs a standard Next.js/Vercel deployment. Avoid the static `next export` path for the live app, because API routes do not run in a pure static export.
+
+The email includes:
+
+- Current pending count
+- How many items were imported in the latest upload
+- How many items were skipped as duplicates
+- A link to the app: [https://ccapp-nine.vercel.app](https://ccapp-nine.vercel.app)
+
 ---
 
 See SETUP_GUIDE.md for detailed instructions.

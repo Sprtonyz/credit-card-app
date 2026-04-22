@@ -271,6 +271,7 @@ export default function AdminUploadPage() {
   const [testEmailRecipient, setTestEmailRecipient] = useState('spr.tony@gmail.com');
   const [lastUploadUndo, setLastUploadUndo] = useState(null);
   const [confirmTonyEmail, setConfirmTonyEmail] = useState(false);
+  const [confirmNugsEmail, setConfirmNugsEmail] = useState(false);
 
   React.useEffect(() => {
     try {
@@ -316,6 +317,7 @@ export default function AdminUploadPage() {
     setEmailSubject(defaultSubject);
     setEmailStatus(null);
     setConfirmTonyEmail(false);
+    setConfirmNugsEmail(false);
   }, [step, successMessage]);
 
   React.useEffect(() => {
@@ -694,6 +696,21 @@ export default function AdminUploadPage() {
     await handleSendEmailNotification({
       profileNames: ['Tony'],
       forceRecipient: 'spr.tony@gmail.com',
+    });
+  };
+
+  const handleSendNugsEmail = async () => {
+    if (!confirmNugsEmail) {
+      setEmailStatus({
+        type: 'error',
+        message: 'Please tick the Nugs confirmation checkbox first.',
+      });
+      return;
+    }
+
+    await handleSendEmailNotification({
+      profileNames: ['Nugs'],
+      forceRecipient: 'nguyet_anh_le@hotmail.com',
     });
   };
 
@@ -1122,6 +1139,60 @@ export default function AdminUploadPage() {
                 className="mt-4 w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
               >
                 {isEmailSending ? 'Sending...' : 'Send Tony email'}
+              </button>
+            </div>
+
+            <div className="text-left bg-slate-900/60 border border-slate-700 rounded-lg p-5 mb-6">
+              <h3 className="text-lg font-semibold text-white mb-2">Nugs email test</h3>
+              <p className="text-sm text-slate-300 mb-4">
+                This will send only the Nugs profile summary to <span className="text-white">nguyet_anh_le@hotmail.com</span>.
+              </p>
+
+              <label className="flex items-start gap-3 rounded-lg border border-slate-700 bg-slate-950/70 p-3">
+                <input
+                  type="checkbox"
+                  checked={confirmNugsEmail}
+                  onChange={(e) => setConfirmNugsEmail(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500"
+                />
+                <span className="text-sm text-slate-200">
+                  I confirm I want to send the Nugs profile email to nguyet_anh_le@hotmail.com.
+                </span>
+              </label>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
+                  <p className="text-xs text-slate-400">Nugs spend</p>
+                  <p className="text-xl font-bold text-white">
+                    {notificationReports[1] ? `$${Number(notificationReports[1].stats.totalSpend || 0).toFixed(2)}` : '...'}
+                  </p>
+                </div>
+                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
+                  <p className="text-xs text-slate-400">New pending</p>
+                  <p className="text-xl font-bold text-white">
+                    {notificationReports[1] ? notificationReports[1].stats.pendingCount : '...'}
+                  </p>
+                </div>
+                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
+                  <p className="text-xs text-slate-400">Outstanding</p>
+                  <p className="text-xl font-bold text-white">
+                    {notificationReports[1] ? notificationReports[1].stats.outstandingCount : '...'}
+                  </p>
+                </div>
+                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
+                  <p className="text-xs text-slate-400">Conflicts</p>
+                  <p className="text-xl font-bold text-white">
+                    {notificationReports[1] ? notificationReports[1].stats.conflictsCount : '...'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleSendNugsEmail}
+                disabled={isEmailSending || !confirmNugsEmail}
+                className="mt-4 w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
+              >
+                {isEmailSending ? 'Sending...' : 'Send Nugs email'}
               </button>
 
               <button

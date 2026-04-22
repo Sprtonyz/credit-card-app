@@ -87,13 +87,15 @@ The admin upload page now includes an email notification step after an import su
 To enable it, set these environment variables in Vercel or your local `.env.local`:
 
 ```bash
-RESEND_API_KEY=your_resend_api_key
-EMAIL_FROM=Westpac CC Tracker <onboarding@resend.dev>
+GMAIL_USER=westpactracker@gmail.com
+GMAIL_APP_PASSWORD=your_gmail_app_password
+EMAIL_FROM=Westpac CC Tracker <westpactracker@gmail.com>
+EMAIL_FROM_NAME=Westpac CC Tracker
 EMAIL_REPLY_TO=
 EMAIL_TEST_RECIPIENT=spr.tony@gmail.com
 ```
 
-For a free first test, leave `EMAIL_FROM` on the `onboarding@resend.dev` sender and send only to your own inbox. The current mock recipient is `spr.tony@gmail.com`. When you want to email other people, switch `EMAIL_FROM` to a verified custom-domain sender and update the recipient list.
+This setup uses Gmail SMTP, so you do not need a custom domain. Create a Gmail app password for `westpactracker@gmail.com` and store it in `GMAIL_APP_PASSWORD`. The app will send from `westpactracker@gmail.com`, which can be used for both Tony and Nugs recipients.
 
 This email feature needs a standard Next.js/Vercel deployment. Avoid the static `next export` path for the live app, because API routes do not run in a pure static export.
 

@@ -1,5 +1,7 @@
-const RESEND_API_URL = 'https://api.resend.com/emails';
+import nodemailer from 'nodemailer';
+
 const DEFAULT_TEST_RECIPIENT = 'spr.tony@gmail.com';
+const DEFAULT_GMAIL_USER = 'westpactracker@gmail.com';
 
 function parseRecipients(value) {
   if (Array.isArray(value)) {
@@ -58,7 +60,7 @@ function buildEmailContent(report) {
     `${profileName} update`,
     '',
     `Spend: ${formatCurrency(stats.totalSpend)}`,
-    `Pending: ${formatCount(stats.pendingCount)}`,
+    `New pending: ${formatCount(stats.pendingCount)}`,
     `Outstanding: ${formatCount(stats.outstandingCount)}`,
     `Conflicts: ${formatCount(stats.conflictsCount)}`,
     `Unsures: ${formatCount(stats.unsuresCount)}`,
@@ -122,30 +124,34 @@ function buildEmailContent(report) {
   return { text, html };
 }
 
-async function sendResendEmail({ apiKey, from, replyTo, to, subject, text, html }) {
-  const response = await fetch(RESEND_API_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from,
-      to,
-      subject,
-      text,
-      html,
-      reply_to: replyTo,
-    }),
-  });
+function createTransport() {
+  const gmailUser = process.env.GMAIL_USER || DEFAULT_GMAIL_USER;
+  const appPassword = process.env.GMAIL_APP_PASSWORD;
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || data?.message || 'Failed to send email.');
+  if (!gmailUser || !appPassword) {
+    return null;
   }
 
-  return data;
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: gmailUser,
+      pass: appPassword,
+    },
+  });
+}
+
+async function sendEmail({ transporter, from, replyTo, to, subject, text, html }) {
+  const info = await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text,
+    html,
+    replyTo: replyTo || undefined,
+  });
+
+  return info;
 }
 
 export default async function handler(req, res) {
@@ -154,13 +160,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM || 'Westpac CC Tracker <onboarding@resend.dev>';
+  const transporter = createTransport();
+  const gmailUser = process.env.GMAIL_USER || DEFAULT_GMAIL_USER;
+  const senderName = process.env.EMAIL_FROM_NAME || 'Westpac CC Tracker';
+  const from = process.env.EMAIL_FROM || `${senderName} <${gmailUser}>`;
   const replyTo = process.env.EMAIL_REPLY_TO || undefined;
 
-  if (!apiKey) {
+  if (!transporter) {
     return res.status(500).json({
-      error: 'Missing RESEND_API_KEY environment variable.',
+      error: 'Missing GMAIL_USER or GMAIL_APP_PASSWORD environment variable.',
     });
   }
 
@@ -184,13 +192,7 @@ export default async function handler(req, res) {
   }
 
   if (recipients.length > 50) {
-    return res.status(400).json({ error: 'Resend allows up to 50 recipients per email.' });
-  }
-
-  if (from.includes('onboarding@resend.dev') && recipients.length > 1) {
-    return res.status(400).json({
-      error: 'The free onboarding sender is intended for a single personal test inbox.',
-    });
+    return res.status(400).json({ error: 'Too many recipients for one email.' });
   }
 
   const sent = [];
@@ -203,8 +205,8 @@ export default async function handler(req, res) {
       appUrl: report.appUrl || 'https://ccapp-nine.vercel.app',
     });
 
-    const data = await sendResendEmail({
-      apiKey,
+    const info = await sendEmail({
+      transporter,
       from,
       replyTo,
       to: recipients,
@@ -214,7 +216,7 @@ export default async function handler(req, res) {
     });
 
     sent.push({
-      id: data.id,
+      messageId: info.messageId,
       profileName,
       subject,
       recipients,
@@ -224,5 +226,6 @@ export default async function handler(req, res) {
   return res.status(200).json({
     ok: true,
     sent,
+    sender: from,
   });
 }

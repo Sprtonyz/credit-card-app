@@ -102,13 +102,6 @@ function OcrDiagnostics({ processedImages }) {
   );
 }
 
-function parseRecipientList(value) {
-  return String(value || '')
-    .split(/[\n,;]/)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
 const PROFILE_NAMES = ['Tony', 'Nugs'];
 
 function getSubmissionValue(sub, user) {
@@ -221,6 +214,23 @@ function buildProfileEmailReports(transactions, submissions, day) {
   });
 }
 
+function buildProcessedBatches(processedLogs = {}) {
+  return Object.entries(processedLogs)
+    .map(([imageHash, log]) => ({
+      imageHash,
+      imageName: log?.imageName || 'Unknown image',
+      uploadDate: log?.uploadDate || null,
+      uploadDay: log?.uploadDay || null,
+      extractedCount: Number(log?.extractedCount || 0),
+      transactionIds: Array.isArray(log?.transactions) ? log.transactions.filter(Boolean) : [],
+    }))
+    .sort((a, b) => {
+      const aTime = Date.parse(a.uploadDate || '') || 0;
+      const bTime = Date.parse(b.uploadDate || '') || 0;
+      return bTime - aTime;
+    });
+}
+
 function buildUndoPayload(addedRecords, processedImages) {
   const imageToTransactionIds = new Map();
 
@@ -263,15 +273,13 @@ export default function AdminUploadPage() {
   const [successMessage, setSuccessMessage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [authReady, setAuthReady] = useState(false);
-  const [emailRecipients, setEmailRecipients] = useState('spr.tony@gmail.com');
-  const [emailSubject, setEmailSubject] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
   const [emailStatus, setEmailStatus] = useState(null);
   const [notificationReports, setNotificationReports] = useState([]);
-  const [testEmailRecipient, setTestEmailRecipient] = useState('spr.tony@gmail.com');
   const [lastUploadUndo, setLastUploadUndo] = useState(null);
   const [confirmTonyEmail, setConfirmTonyEmail] = useState(false);
   const [confirmNugsEmail, setConfirmNugsEmail] = useState(false);
+  const [uploadedBatches, setUploadedBatches] = useState([]);
 
   React.useEffect(() => {
     try {
@@ -313,8 +321,6 @@ export default function AdminUploadPage() {
   React.useEffect(() => {
     if (step !== 'success') return;
 
-    const defaultSubject = `Credit card upload ready - ${getTodayDate()}`;
-    setEmailSubject(defaultSubject);
     setEmailStatus(null);
     setConfirmTonyEmail(false);
     setConfirmNugsEmail(false);
@@ -347,6 +353,28 @@ export default function AdminUploadPage() {
       cancelled = true;
     };
   }, [step, successMessage]);
+
+  React.useEffect(() => {
+    if (!authReady) return undefined;
+
+    let cancelled = false;
+
+    const loadUploadedBatches = async () => {
+      try {
+        const processedLogs = await getAllProcessedLogs();
+        if (cancelled) return;
+        setUploadedBatches(buildProcessedBatches(processedLogs || {}));
+      } catch (err) {
+        console.error('Failed to load uploaded batches:', err);
+      }
+    };
+
+    loadUploadedBatches();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, step, successMessage, lastUploadUndo]);
 
   const handleFirebaseSmokeTest = async () => {
     if (!authReady) return;
@@ -558,11 +586,10 @@ export default function AdminUploadPage() {
     setError(null);
     setSuccessMessage(null);
     setOcrPreviewImages([]);
-    setEmailRecipients('');
-    setEmailSubject('');
     setEmailStatus(null);
     setNotificationReports([]);
     setConfirmTonyEmail(false);
+    setConfirmNugsEmail(false);
   };
 
   const handleUndoLastUpload = async () => {
@@ -611,27 +638,66 @@ export default function AdminUploadPage() {
     }
   };
 
-  const handleSendEmailNotification = async ({ profileNames = PROFILE_NAMES, forceRecipient = null } = {}) => {
-    if (!authReady || !successMessage) return;
-
-    const recipients =
-      forceRecipient ? [forceRecipient] : parseRecipientList(emailRecipients);
-    if (recipients.length === 0) {
-      setEmailStatus({
-        type: 'error',
-        message: 'Add at least one recipient email address first.',
-      });
-      return;
-    }
+  const handleDeleteUploadedBatch = async (batch) => {
+    if (!authReady || !batch) return;
 
     const confirmText = [
-      `Send this notification to ${recipients.length} recipient${recipients.length === 1 ? '' : 's'}?`,
-      'This will email the current upload summary and link to the app.',
+      'Delete this uploaded batch?',
+      `${batch.imageName} (${batch.transactionIds.length} transaction${batch.transactionIds.length === 1 ? '' : 's'})`,
+      'This will remove the transactions and processed log from Firebase.',
     ].join('\n\n');
 
     if (!window.confirm(confirmText)) {
       return;
     }
+
+    setIsLoading(true);
+    setEmailStatus(null);
+
+    try {
+      await Promise.all([
+        deleteTransactionsByIds(batch.transactionIds),
+        deleteProcessedLogs([batch.imageHash]),
+      ]);
+
+      if (lastUploadUndo && lastUploadUndo.imageHashes?.includes(batch.imageHash)) {
+        setLastUploadUndo(null);
+      }
+
+      const processedLogs = await getAllProcessedLogs();
+      setUploadedBatches(buildProcessedBatches(processedLogs || {}));
+      setEmailStatus({
+        type: 'success',
+        message: `Deleted ${batch.transactionIds.length} transaction${batch.transactionIds.length === 1 ? '' : 's'} from ${batch.imageName}.`,
+      });
+    } catch (err) {
+      console.error('Failed to delete uploaded batch:', err);
+      setEmailStatus({
+        type: 'error',
+        message: err.message || 'Failed to delete the selected batch.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendSelectedEmails = async () => {
+    const selectedProfiles = [];
+    if (confirmTonyEmail) selectedProfiles.push('Tony');
+    if (confirmNugsEmail) selectedProfiles.push('Nugs');
+
+    if (selectedProfiles.length === 0) {
+      setEmailStatus({
+        type: 'error',
+        message: 'Tick Tony and/or Nugs before sending the emails.',
+      });
+      return;
+    }
+
+    const recipientsByProfile = {
+      Tony: 'spr.tony@gmail.com',
+      Nugs: 'nguyet_anh_le@hotmail.com',
+    };
 
     setIsEmailSending(true);
     setEmailStatus(null);
@@ -639,134 +705,51 @@ export default function AdminUploadPage() {
     try {
       const reports =
         notificationReports.length > 0
-          ? notificationReports.filter((report) => profileNames.includes(report.profileName))
+          ? notificationReports
           : buildProfileEmailReports(
               await getAllTransactions(),
               await getAllSubmissions(),
               getSavedSimulatedDay()
-            ).filter((report) => profileNames.includes(report.profileName));
-      const subjectPrefix = emailSubject.trim();
+            );
 
-      const response = await fetch('/api/send-notification-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: recipients,
-          reports: reports.map((report) => ({
-            ...report,
-            subject: subjectPrefix
-              ? `${subjectPrefix} - ${report.profileName}`
-              : report.subject,
-          })),
-        }),
-      });
+      for (const profileName of selectedProfiles) {
+        const report = reports.find((item) => item.profileName === profileName);
+        if (!report) {
+          throw new Error(`Could not build the ${profileName} email report.`);
+        }
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to send email notification.');
-      }
-
-      setEmailStatus({
-        type: 'success',
-        message: `Sent ${data.sent.length} profile email${data.sent.length === 1 ? '' : 's'} to ${data.sent[0]?.recipients?.length || recipients.length} recipient${(data.sent[0]?.recipients?.length || recipients.length) === 1 ? '' : 's'}.`,
-      });
-    } catch (err) {
-      console.error('Failed to send notification email:', err);
-      setEmailStatus({
-        type: 'error',
-        message: err.message || 'Failed to send email notification.',
-      });
-    } finally {
-      setIsEmailSending(false);
-    }
-  };
-
-  const handleSendTonyEmail = async () => {
-    if (!confirmTonyEmail) {
-      setEmailStatus({
-        type: 'error',
-        message: 'Please tick the confirmation checkbox first.',
-      });
-      return;
-    }
-
-    await handleSendEmailNotification({
-      profileNames: ['Tony'],
-      forceRecipient: 'spr.tony@gmail.com',
-    });
-  };
-
-  const handleSendNugsEmail = async () => {
-    if (!confirmNugsEmail) {
-      setEmailStatus({
-        type: 'error',
-        message: 'Please tick the Nugs confirmation checkbox first.',
-      });
-      return;
-    }
-
-    await handleSendEmailNotification({
-      profileNames: ['Nugs'],
-      forceRecipient: 'nguyet_anh_le@hotmail.com',
-    });
-  };
-
-  const handleSendTestEmail = async () => {
-    if (!authReady) return;
-
-    const recipient =
-      testEmailRecipient.trim() || window.prompt('Send a test email to which address?')?.trim();
-
-    if (!recipient) return;
-
-    const confirmed = window.confirm(
-      `Send a dummy test email to ${recipient}?\n\nThis will not read or change any transaction data.`
-    );
-
-    if (!confirmed) return;
-
-    setIsEmailSending(true);
-    setEmailStatus(null);
-
-    try {
-      const response = await fetch('/api/send-notification-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: [recipient],
-          subject: 'Test email from credit card app',
-          appUrl: 'https://ccapp-nine.vercel.app',
-          uploadDate: getTodayDate(),
-          note: 'This is a dummy test email. It does not reflect live transaction data.',
-          stats: {
-            pendingCount: 0,
-            importedCount: 0,
-            skippedCount: 0,
-            totalTransactions: 0,
+        const response = await fetch('/api/send-notification-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-        }),
-      });
+          body: JSON.stringify({
+            to: [recipientsByProfile[profileName]],
+            reports: [
+              {
+                ...report,
+                subject: report.subject,
+              },
+            ],
+          }),
+        });
 
-      const data = await response.json();
+        const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to send test email.');
+        if (!response.ok) {
+          throw new Error(data?.error || `Failed to send the ${profileName} email.`);
+        }
       }
 
       setEmailStatus({
         type: 'success',
-        message: `Test email sent to ${data.recipients.length} recipient${data.recipients.length === 1 ? '' : 's'}.`,
+        message: `Sent ${selectedProfiles.join(' and ')} email${selectedProfiles.length === 1 ? '' : 's'}.`,
       });
     } catch (err) {
-      console.error('Failed to send test email:', err);
+      console.error('Failed to send selected emails:', err);
       setEmailStatus({
         type: 'error',
-        message: err.message || 'Failed to send test email.',
+        message: err.message || 'Failed to send the selected emails.',
       });
     } finally {
       setIsEmailSending(false);
@@ -884,21 +867,146 @@ export default function AdminUploadPage() {
             )}
 
             <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/50 p-4">
-              <p className="text-sm text-slate-300 mb-3">
-                Email-only test: send a dummy notification without touching Firebase data.
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-sm text-slate-300">
+                  Uploaded batches in Firebase
+                </p>
+                <span className="text-xs text-slate-500">
+                  {uploadedBatches.length} batch{uploadedBatches.length === 1 ? '' : 'es'}
+                </span>
+              </div>
+              {uploadedBatches.length === 0 ? (
+                <p className="text-xs text-slate-500">No processed upload batches were found.</p>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-auto pr-1">
+                  {uploadedBatches.slice(0, 8).map((batch) => (
+                    <div
+                      key={batch.imageHash}
+                      className="rounded-lg border border-slate-700 bg-slate-950/80 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-white">
+                            {batch.imageName}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {batch.extractedCount} transaction{batch.extractedCount === 1 ? '' : 's'}
+                            {batch.uploadDate ? ` · ${batch.uploadDate}` : ''}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteUploadedBatch(batch)}
+                          disabled={isLoading}
+                          className="shrink-0 rounded-md bg-rose-700 px-3 py-2 text-xs font-medium text-white hover:bg-rose-600 disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="mt-2 text-xs text-slate-500">
+                Use this to remove an older 9-transaction upload from Firebase without touching everything else.
               </p>
-              <input
-                value={testEmailRecipient}
-                onChange={(e) => setTestEmailRecipient(e.target.value)}
-                placeholder="recipient@example.com"
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-              />
+            </div>
+
+            <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/50 p-4">
+              <p className="text-sm text-slate-300 mb-3">
+                Email notifications
+              </p>
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 rounded-lg border border-slate-700 bg-slate-950/70 p-3">
+                  <input
+                    type="checkbox"
+                    checked={confirmTonyEmail}
+                    onChange={(e) => setConfirmTonyEmail(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500"
+                  />
+                  <span className="text-sm text-slate-200">
+                    Send Tony summary to <span className="text-white">spr.tony@gmail.com</span>
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-3 rounded-lg border border-slate-700 bg-slate-950/70 p-3">
+                  <input
+                    type="checkbox"
+                    checked={confirmNugsEmail}
+                    onChange={(e) => setConfirmNugsEmail(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500"
+                  />
+                  <span className="text-sm text-slate-200">
+                    Send Nugs summary to <span className="text-white">nguyet_anh_le@hotmail.com</span>
+                  </span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
+                  <p className="text-xs text-slate-400">Tony spend</p>
+                  <p className="text-xl font-bold text-white">
+                    {notificationReports[0] ? `$${Number(notificationReports[0].stats.totalSpend || 0).toFixed(2)}` : '...'}
+                  </p>
+                </div>
+                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
+                  <p className="text-xs text-slate-400">Nugs spend</p>
+                  <p className="text-xl font-bold text-white">
+                    {notificationReports[1] ? `$${Number(notificationReports[1].stats.totalSpend || 0).toFixed(2)}` : '...'}
+                  </p>
+                </div>
+                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
+                  <p className="text-xs text-slate-400">Tony pending</p>
+                  <p className="text-xl font-bold text-white">
+                    {notificationReports[0] ? notificationReports[0].stats.pendingCount : '...'}
+                  </p>
+                </div>
+                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
+                  <p className="text-xs text-slate-400">Nugs pending</p>
+                  <p className="text-xl font-bold text-white">
+                    {notificationReports[1] ? notificationReports[1].stats.pendingCount : '...'}
+                  </p>
+                </div>
+              </div>
+
+              {emailStatus && (
+                <p
+                  className={`mt-4 text-sm ${emailStatus.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}
+                >
+                  {emailStatus.message}
+                </p>
+              )}
+
               <button
-                onClick={handleSendTestEmail}
-                disabled={isEmailSending || !authReady}
-                className="w-full mt-3 px-6 py-3 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
+                onClick={handleSendSelectedEmails}
+                disabled={isEmailSending || (!confirmTonyEmail && !confirmNugsEmail)}
+                className="mt-4 w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
               >
-                {isEmailSending ? 'Sending...' : 'Send dummy test email'}
+                {isEmailSending ? 'Sending...' : 'Send selected emails'}
+              </button>
+            </div>
+
+            <button
+              onClick={handleUndoLastUpload}
+              disabled={!lastUploadUndo || isLoading}
+              className="mt-3 w-full px-6 py-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
+            >
+              Undo last upload
+            </button>
+            <p className="mt-2 text-xs text-slate-500">
+              Removes only the latest successful import batch, not older uploads.
+            </p>
+
+            <div className="space-y-2 mt-4">
+              <Link href="/">
+                <a className="block w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition">
+                  Return to Main App
+                </a>
+              </Link>
+              <button
+                onClick={handleStartOver}
+                className="w-full px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-medium transition"
+              >
+                Upload More Images
               </button>
             </div>
           </div>
@@ -1068,149 +1176,8 @@ export default function AdminUploadPage() {
               </details>
             )}
 
-            <div className="text-left bg-slate-900/60 border border-slate-700 rounded-lg p-5 mb-6">
-              <h3 className="text-lg font-semibold text-white mb-2">Tony email test</h3>
-              <p className="text-sm text-slate-300 mb-4">
-                This will send only the Tony profile summary to <span className="text-white">spr.tony@gmail.com</span>.
-              </p>
-
-              <label className="flex items-start gap-3 rounded-lg border border-slate-700 bg-slate-950/70 p-3">
-                <input
-                  type="checkbox"
-                  checked={confirmTonyEmail}
-                  onChange={(e) => setConfirmTonyEmail(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500"
-                />
-                <span className="text-sm text-slate-200">
-                  I confirm I want to send the Tony profile email to spr.tony@gmail.com.
-                </span>
-              </label>
-
-              <label className="block mt-4">
-                <span className="block text-xs uppercase tracking-wider text-slate-400 mb-1">
-                  Subject prefix
-                </span>
-                <input
-                  value={emailSubject}
-                  onChange={(e) => setEmailSubject(e.target.value)}
-                  placeholder="Credit card upload summary"
-                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                />
-              </label>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">Tony spend</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[0] ? `$${Number(notificationReports[0].stats.totalSpend || 0).toFixed(2)}` : '...'}
-                  </p>
-                </div>
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">New pending</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[0] ? notificationReports[0].stats.pendingCount : '...'}
-                  </p>
-                </div>
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">Outstanding</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[0] ? notificationReports[0].stats.outstandingCount : '...'}
-                  </p>
-                </div>
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">Conflicts</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[0] ? notificationReports[0].stats.conflictsCount : '...'}
-                  </p>
-                </div>
-              </div>
-
-              {emailStatus && (
-                <p
-                  className={`mt-4 text-sm ${emailStatus.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}
-                >
-                  {emailStatus.message}
-                </p>
-              )}
-
-              <button
-                onClick={handleSendTonyEmail}
-                disabled={isEmailSending || !confirmTonyEmail}
-                className="mt-4 w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
-              >
-                {isEmailSending ? 'Sending...' : 'Send Tony email'}
-              </button>
-            </div>
-
-            <div className="text-left bg-slate-900/60 border border-slate-700 rounded-lg p-5 mb-6">
-              <h3 className="text-lg font-semibold text-white mb-2">Nugs email test</h3>
-              <p className="text-sm text-slate-300 mb-4">
-                This will send only the Nugs profile summary to <span className="text-white">nguyet_anh_le@hotmail.com</span>.
-              </p>
-
-              <label className="flex items-start gap-3 rounded-lg border border-slate-700 bg-slate-950/70 p-3">
-                <input
-                  type="checkbox"
-                  checked={confirmNugsEmail}
-                  onChange={(e) => setConfirmNugsEmail(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500"
-                />
-                <span className="text-sm text-slate-200">
-                  I confirm I want to send the Nugs profile email to nguyet_anh_le@hotmail.com.
-                </span>
-              </label>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">Nugs spend</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[1] ? `$${Number(notificationReports[1].stats.totalSpend || 0).toFixed(2)}` : '...'}
-                  </p>
-                </div>
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">New pending</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[1] ? notificationReports[1].stats.pendingCount : '...'}
-                  </p>
-                </div>
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">Outstanding</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[1] ? notificationReports[1].stats.outstandingCount : '...'}
-                  </p>
-                </div>
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">Conflicts</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[1] ? notificationReports[1].stats.conflictsCount : '...'}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={handleSendNugsEmail}
-                disabled={isEmailSending || !confirmNugsEmail}
-                className="mt-4 w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
-              >
-                {isEmailSending ? 'Sending...' : 'Send Nugs email'}
-              </button>
-
-              <button
-                onClick={handleUndoLastUpload}
-                disabled={!lastUploadUndo || isLoading}
-                className="mt-3 w-full px-6 py-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
-              >
-                Undo last upload
-              </button>
-              <p className="mt-2 text-xs text-slate-500">
-                Removes only the latest successful import batch, not older uploads.
-              </p>
-            </div>
-
             <div className="space-y-2">
-              <Link
-                href="/"
-              >
+              <Link href="/">
                 <a className="block w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition">
                   Return to Main App
                 </a>

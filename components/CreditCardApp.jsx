@@ -31,6 +31,7 @@ const APP_STATE_ROOT = 'cc_v4_app_state';
 const SHARED_DAY_OFFSET_KEY = `${APP_STATE_ROOT}/simulatedDayOffset`;
 const APP_VERSION = 'r3.19';
 const VERSION_KEY = 'cc_version';
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const DEMO_DAYS = {
   '0': [
@@ -89,14 +90,30 @@ function getSubmissionDay(sub, user) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function getSurfacedSubmissionValue(sub, user, day) {
-  const submittedDay = getSubmissionDay(sub, user);
-  if (submittedDay === null || submittedDay >= day) return null;
+function getSubmissionDateKeyEntry(entry) {
+  const explicitDateKey = entry?.dateKey;
+  if (explicitDateKey) return explicitDateKey;
+
+  const ts = Number(entry?.ts);
+  if (!Number.isFinite(ts)) return null;
+
+  const dayValue = Number(entry?.day);
+  const offset = Number.isFinite(dayValue) ? dayValue : 0;
+  return formatLocalDate(new Date(ts + offset * MS_PER_DAY));
+}
+
+function getSubmissionDateKey(sub, user) {
+  return getSubmissionDateKeyEntry(sub?.[user]);
+}
+
+function getSurfacedSubmissionValue(sub, user, referenceDateKey) {
+  const submittedDateKey = getSubmissionDateKey(sub, user);
+  if (!submittedDateKey || submittedDateKey >= referenceDateKey) return null;
   return getSubValue(sub, user);
 }
 
-function getSurfacedSubmissionStatus(sub, day) {
-  const values = USERS.map((u) => getSurfacedSubmissionValue(sub, u, day)).filter(Boolean);
+function getSurfacedSubmissionStatus(sub, referenceDateKey) {
+  const values = USERS.map((u) => getSurfacedSubmissionValue(sub, u, referenceDateKey)).filter(Boolean);
   const hasUnsure = values.includes('Unsure');
 
   return {
@@ -159,21 +176,21 @@ function getSubmissionStatus(sub) {
   };
 }
 
-function isVisibleForUser(tx, submissions, user, day) {
+function isVisibleForUser(tx, submissions, user, referenceDateKey) {
   if (!user) return true;
 
   const sub = submissions[tx.id] || {};
   const { resolved } = getSubmissionStatus(sub);
-  const submittedDay = getSubmissionDay(sub, user);
-  const submittedToday = submittedDay !== null && submittedDay === day;
+  const submittedDateKey = getSubmissionDateKey(sub, user);
+  const submittedToday = submittedDateKey !== null && submittedDateKey === referenceDateKey;
 
   return !resolved && !submittedToday;
 }
 
-function shouldCountForAssignee(sub, assignee, day) {
+function shouldCountForAssignee(sub, assignee, referenceDateKey) {
   const values = USERS.map((u) => {
-    const submittedDay = getSubmissionDay(sub, u);
-    return submittedDay !== null && submittedDay === day ? getSubValue(sub, u) : null;
+    const submittedDateKey = getSubmissionDateKey(sub, u);
+    return submittedDateKey !== null && submittedDateKey === referenceDateKey ? getSubValue(sub, u) : null;
   }).filter(Boolean);
   if (values.includes('Unsure')) return false;
   return values.includes(assignee);
@@ -1293,7 +1310,7 @@ export default function CreditCardApp() {
     const datedTransactions = [];
 
     firebaseTransactions.forEach((tx) => {
-      const visible = isVisibleForUser(tx, submissions, currentUser, day);
+      const visible = isVisibleForUser(tx, submissions, currentUser, referenceDateKey);
       if (!visible) return;
 
       const isPending = tx.isPending || !tx.date;
@@ -1338,7 +1355,7 @@ export default function CreditCardApp() {
 
     datedKeys.forEach((dateKey) => {
       const txs = (datedGroups[dateKey] || []).filter((tx) =>
-        isVisibleForUser(tx, submissions, currentUser, day)
+        isVisibleForUser(tx, submissions, currentUser, referenceDateKey)
       );
       if (txs.length === 0) return;
       sections.push({
@@ -1370,12 +1387,14 @@ export default function CreditCardApp() {
   }, [anyVisible, currentUser]);
 
   const myRemaining = useMemo(
-    () => sourceTransactions.filter((tx) => isVisibleForUser(tx, submissions, currentUser, day)).length,
-    [sourceTransactions, submissions, currentUser, day]
+    () =>
+      sourceTransactions.filter((tx) => isVisibleForUser(tx, submissions, currentUser, referenceDateKey)).length,
+    [sourceTransactions, submissions, currentUser, referenceDateKey]
   );
   const otherRemaining = useMemo(
-    () => sourceTransactions.filter((tx) => isVisibleForUser(tx, submissions, otherUser, day)).length,
-    [sourceTransactions, submissions, otherUser, day]
+    () =>
+      sourceTransactions.filter((tx) => isVisibleForUser(tx, submissions, otherUser, referenceDateKey)).length,
+    [sourceTransactions, submissions, otherUser, referenceDateKey]
   );
 
   const userTallies = useMemo(() => {
@@ -1383,21 +1402,21 @@ export default function CreditCardApp() {
     USERS.forEach((u) => {
       out[u] = Object.entries(submissions).reduce((acc, [txId, sub]) => {
         const tx = transactionsById[txId];
-        if (!tx || !shouldCountForAssignee(sub, u, day)) return acc;
+        if (!tx || !shouldCountForAssignee(sub, u, referenceDateKey)) return acc;
         return acc + Number(tx.amount || 0);
       }, 0);
     });
     return out;
-  }, [submissions, transactionsById, day]);
+  }, [submissions, transactionsById, referenceDateKey]);
 
   const macTally = useMemo(
     () =>
       Object.entries(submissions).reduce((acc, [txId, sub]) => {
         const tx = transactionsById[txId];
-        if (!tx || !shouldCountForAssignee(sub, 'Macquarie', day)) return acc;
+        if (!tx || !shouldCountForAssignee(sub, 'Macquarie', referenceDateKey)) return acc;
         return acc + Number(tx.amount || 0);
       }, 0),
-    [submissions, transactionsById, day]
+    [submissions, transactionsById, referenceDateKey]
   );
 
   const handleAssign = async (txId, value, event) => {
@@ -1417,12 +1436,13 @@ export default function CreditCardApp() {
       },
     }));
 
-    try {
-      await set(ref(db, `submissions/${txId}/${currentUser}`), {
-        day,
-        ts: Date.now(),
-        value,
-      });
+      try {
+        await set(ref(db, `submissions/${txId}/${currentUser}`), {
+          day,
+          dateKey: referenceDateKey,
+          ts: Date.now(),
+          value,
+        });
 
       if (shouldReward) {
         updateActivePet((pet) => ({
@@ -1448,13 +1468,14 @@ export default function CreditCardApp() {
       return next;
     });
 
-    try {
-      if (last.prev) {
-        await set(ref(db, `submissions/${last.txId}/${last.user}`), {
-          day,
-          ts: last.prev.ts || Date.now(),
-          value: last.prev.value,
-        });
+      try {
+        if (last.prev) {
+          await set(ref(db, `submissions/${last.txId}/${last.user}`), {
+            day,
+            dateKey: getSubmissionDateKeyEntry(last.prev),
+            ts: last.prev.ts || Date.now(),
+            value: last.prev.value,
+          });
       } else {
         await set(ref(db, `submissions/${last.txId}/${last.user}`), null);
       }

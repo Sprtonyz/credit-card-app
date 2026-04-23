@@ -17,7 +17,9 @@ import {
   deleteProcessedLogs,
   clearUploadedData,
 } from '../services/firebaseService';
-import { getSavedSimulatedDay } from '../utils/simulationDate';
+import { formatLocalDate } from '../utils/simulationDate';
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function buildAllTransactions(processedImages) {
   const allTransactions = [];
@@ -115,6 +117,22 @@ function getSubmissionDay(sub, user) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function getSubmissionDateKeyEntry(entry) {
+  const explicitDateKey = entry?.dateKey;
+  if (explicitDateKey) return explicitDateKey;
+
+  const ts = Number(entry?.ts);
+  if (!Number.isFinite(ts)) return null;
+
+  const dayValue = Number(entry?.day);
+  const offset = Number.isFinite(dayValue) ? dayValue : 0;
+  return formatLocalDate(new Date(ts + offset * MS_PER_DAY));
+}
+
+function getSubmissionDateKey(sub, user) {
+  return getSubmissionDateKeyEntry(sub?.[user]);
+}
+
 function getSubmissionStatus(sub) {
   const values = PROFILE_NAMES.map((u) => getSubmissionValue(sub, u)).filter(Boolean);
   const hasUnsure = values.includes('Unsure');
@@ -128,21 +146,21 @@ function getSubmissionStatus(sub) {
   };
 }
 
-function isVisibleForUser(tx, submissions, user, day) {
+function isVisibleForUser(tx, submissions, user, todayKey) {
   if (!user) return true;
 
   const sub = submissions[tx.id] || {};
   const { resolved } = getSubmissionStatus(sub);
-  const submittedDay = getSubmissionDay(sub, user);
-  const submittedToday = submittedDay !== null && submittedDay === day;
+  const submittedDateKey = getSubmissionDateKey(sub, user);
+  const submittedToday = submittedDateKey !== null && submittedDateKey === todayKey;
 
   return !resolved && !submittedToday;
 }
 
-function shouldCountForAssignee(sub, assignee, day) {
+function shouldCountForAssignee(sub, assignee, todayKey) {
   const values = PROFILE_NAMES.map((u) => {
-    const submittedDay = getSubmissionDay(sub, u);
-    return submittedDay !== null && submittedDay === day ? getSubmissionValue(sub, u) : null;
+    const submittedDateKey = getSubmissionDateKey(sub, u);
+    return submittedDateKey !== null && submittedDateKey === todayKey ? getSubmissionValue(sub, u) : null;
   }).filter(Boolean);
   if (values.includes('Unsure')) return false;
   return values.includes(assignee);
@@ -161,17 +179,17 @@ function daysBetween(olderKey, newerKey) {
   return Math.floor((newerMs - olderMs) / 86400000);
 }
 
-function buildProfileEmailReports(transactions, submissions, day) {
+function buildProfileEmailReports(transactions, submissions) {
   const todayKey = getTodayDate();
 
   return PROFILE_NAMES.map((profileName) => {
     const visibleTransactions = transactions.filter((tx) =>
-      isVisibleForUser(tx, submissions, profileName, day)
+      isVisibleForUser(tx, submissions, profileName, todayKey)
     );
 
     const totalSpend = Object.entries(submissions).reduce((acc, [txId, sub]) => {
       const tx = transactions.find((item) => item.id === txId);
-      if (!tx || !shouldCountForAssignee(sub, profileName, day)) return acc;
+      if (!tx || !shouldCountForAssignee(sub, profileName, todayKey)) return acc;
       return acc + Number(tx.amount || 0);
     }, 0);
 
@@ -353,7 +371,7 @@ export default function AdminUploadPage() {
         if (cancelled) return;
 
         setNotificationReports(
-          buildProfileEmailReports(allTransactions, allSubmissions || {}, getSavedSimulatedDay())
+          buildProfileEmailReports(allTransactions, allSubmissions || {})
         );
       } catch (err) {
         console.error('Failed to load notification reports:', err);
@@ -714,11 +732,7 @@ export default function AdminUploadPage() {
       const reports =
         notificationReports.length > 0
           ? notificationReports
-          : buildProfileEmailReports(
-              await getAllTransactions(),
-              await getAllSubmissions(),
-              getSavedSimulatedDay()
-            );
+          : buildProfileEmailReports(await getAllTransactions(), await getAllSubmissions());
 
       for (const profileName of selectedProfiles) {
         const report = reports.find((item) => item.profileName === profileName);

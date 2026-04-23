@@ -3,7 +3,7 @@ import Link from 'next/link';
 import ImageUploader from './ImageUploader';
 import ImageReviewModal from './ImageReviewModal';
 import { processImages } from '../utils/imageProcessor';
-import { detectDuplicatesAcrossImages } from '../utils/duplicateDetection';
+import { detectDuplicatesAcrossImages, getKeptTransactionIndices } from '../utils/duplicateDetection';
 import { mergeTransactions, prepareForFirebase } from '../utils/transactionMerger';
 import { ensureAnonymousAuth } from '../utils/firebaseAuth';
 import {
@@ -256,6 +256,19 @@ function buildUndoPayload(addedRecords, processedImages) {
         imageName: image.fileName,
         transactionIds: imageToTransactionIds.get(image.imageHash) || [],
       })),
+  };
+}
+
+function getUploadResultStats(summary = {}, addedCount = 0) {
+  const skippedByReason = summary?.skippedByReason || {};
+
+  return {
+    added: Number(addedCount || 0),
+    skippedExisting:
+      Number(skippedByReason.already_exists_overlap || 0) +
+      Number(skippedByReason.already_exists_yesterday || 0) +
+      Number(skippedByReason.already_processed || 0),
+    skippedCurrentUpload: Number(skippedByReason.duplicate_in_upload || 0),
   };
 }
 
@@ -536,13 +549,8 @@ export default function AdminUploadPage() {
     setError(null);
 
     try {
-      const { results, detection } = await runOcrPipeline();
-
-      if (detection.duplicates.length > 0 || detection.flagged.length > 0) {
-        setStep('review');
-      } else {
-        await handleConfirmTransactions([], results);
-      }
+    const { results, detection } = await runOcrPipeline();
+      await handleConfirmTransactions(getKeptTransactionIndices(detection), results);
     } catch (err) {
       console.error('Error processing images:', err);
       setError(err.message || 'Failed to process images. Please try again.');
@@ -1058,7 +1066,7 @@ export default function AdminUploadPage() {
 
             <ImageReviewModal
               duplicates={duplicateDetection.duplicates}
-              flagged={duplicateDetection.flagged}
+              flagged={[]}
               onConfirm={handleConfirmTransactions}
               onCancel={() => setStep('upload')}
               isLoading={isLoading}
@@ -1103,7 +1111,7 @@ export default function AdminUploadPage() {
                 </div>
                 <div className="bg-slate-900 rounded p-3 text-center">
                   <p className="text-2xl font-bold text-yellow-400">
-                    {duplicateDetection.summary.flaggedGroups}
+                    0
                   </p>
                   <p className="text-xs text-slate-400">Flagged</p>
                 </div>
@@ -1144,6 +1152,33 @@ export default function AdminUploadPage() {
                 ? `${successMessage.added} new transaction${successMessage.added !== 1 ? 's' : ''} added successfully.`
                 : 'All transactions were duplicates or already processed.'}
             </p>
+
+            {(() => {
+              const resultStats = getUploadResultStats(
+                successMessage.summary || lastMergeReport?.summary,
+                successMessage.added
+              );
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 text-left">
+                  <div className="bg-slate-900 rounded-lg border border-emerald-500/30 p-4">
+                    <p className="text-xs uppercase tracking-wider text-emerald-300">New Added</p>
+                    <p className="text-2xl font-bold text-white mt-1">{resultStats.added}</p>
+                    <p className="text-xs text-slate-400 mt-1">Transactions written to Firebase</p>
+                  </div>
+                  <div className="bg-slate-900 rounded-lg border border-amber-500/30 p-4">
+                    <p className="text-xs uppercase tracking-wider text-amber-300">Skipped Existing</p>
+                    <p className="text-2xl font-bold text-white mt-1">{resultStats.skippedExisting}</p>
+                    <p className="text-xs text-slate-400 mt-1">Matched against earlier uploads</p>
+                  </div>
+                  <div className="bg-slate-900 rounded-lg border border-sky-500/30 p-4">
+                    <p className="text-xs uppercase tracking-wider text-sky-300">Skipped In Upload</p>
+                    <p className="text-2xl font-bold text-white mt-1">{resultStats.skippedCurrentUpload}</p>
+                    <p className="text-xs text-slate-400 mt-1">Collapsed inside this OCR batch</p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {successMessage.skipped > 0 && (
               <p className="text-slate-400 text-sm mb-6">

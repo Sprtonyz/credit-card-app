@@ -1,10 +1,18 @@
 import Fuse from 'fuse.js';
 
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function calculateSimilarity(str1, str2) {
   if (!str1 || !str2) return 0;
 
-  const s1 = str1.toString().toLowerCase();
-  const s2 = str2.toString().toLowerCase();
+  const s1 = normalizeText(str1);
+  const s2 = normalizeText(str2);
 
   if (s1 === s2) return 100;
 
@@ -21,42 +29,93 @@ function calculateSimilarity(str1, str2) {
   return 0;
 }
 
-function areTransactionsDuplicates(tx1, tx2, merchantThreshold = 90) {
+function normalizeDateKey(value) {
+  if (!value) return null;
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+function normalizeAmountKey(value) {
+  const amount = Number.parseFloat(value);
+  if (!Number.isFinite(amount)) return null;
+  return Math.abs(amount).toFixed(2);
+}
+
+function buildTransactionKey(tx) {
+  const amountKey = normalizeAmountKey(tx.amount);
+  const merchantKey = normalizeText(tx.merchant);
+  const dateKey = normalizeDateKey(tx.date);
+
+  if (!amountKey || !merchantKey) return null;
+
+  return [dateKey || 'no-date', amountKey, merchantKey].join('|');
+}
+
+function getDuplicateMatch(tx1, tx2, merchantThreshold = 90) {
   if (Math.abs(parseFloat(tx1.amount) - parseFloat(tx2.amount)) > 0.01) {
-    return false;
+    return null;
   }
 
   const merchantSimilarity = calculateSimilarity(tx1.merchant, tx2.merchant);
   if (merchantSimilarity < merchantThreshold) {
-    return false;
+    return null;
+  }
+
+  const date1 = normalizeDateKey(tx1.date);
+  const date2 = normalizeDateKey(tx2.date);
+
+  if (date1 && date2 && date1 !== date2) {
+    return null;
   }
 
   if (tx1.category && tx2.category) {
     const categorySimilarity = calculateSimilarity(tx1.category, tx2.category);
     if (categorySimilarity < 80) {
-      return false;
+      return null;
     }
   }
 
-  return true;
+  return {
+    match: true,
+    reason: date1 && date2 ? 'same_day_match' : 'date_missing_match',
+  };
+}
+
+function isSameSource(tx1, tx2) {
+  if (tx1.imageHash && tx2.imageHash && tx1.imageHash === tx2.imageHash) {
+    return true;
+  }
+
+  const rawLine1 = normalizeText(tx1.rawLine);
+  const rawLine2 = normalizeText(tx2.rawLine);
+  return rawLine1 && rawLine1 === rawLine2;
 }
 
 export function detectDuplicates(transactions) {
   const duplicates = [];
   const unique = [];
-  const flagged = [];
   const processed = new Set();
+  const seenKeys = new Map();
 
   for (let i = 0; i < transactions.length; i++) {
     if (processed.has(i)) continue;
 
     const current = transactions[i];
+    const currentKey = buildTransactionKey(current);
     const group = [{ index: i, transaction: current }];
 
     for (let j = i + 1; j < transactions.length; j++) {
       if (processed.has(j)) continue;
 
-      if (areTransactionsDuplicates(current, transactions[j])) {
+      const match = getDuplicateMatch(current, transactions[j]);
+      if (!match) continue;
+
+      const candidateKey = buildTransactionKey(transactions[j]);
+      if (match.match && currentKey && candidateKey) {
         group.push({ index: j, transaction: transactions[j] });
         processed.add(j);
       }
@@ -66,42 +125,19 @@ export function detectDuplicates(transactions) {
 
     if (group.length > 1) {
       duplicates.push(group);
-    } else {
+    } else if (currentKey && !seenKeys.has(currentKey)) {
       unique.push({ index: i, transaction: current });
-    }
-  }
-
-  for (let i = 0; i < transactions.length; i++) {
-    for (let j = i + 1; j < transactions.length; j++) {
-      const tx1 = transactions[i];
-      const tx2 = transactions[j];
-
-      if (
-        Math.abs(parseFloat(tx1.amount) - parseFloat(tx2.amount)) < 0.01 &&
-        tx1.merchant === tx2.merchant &&
-        !duplicates.some((group) => group.some((item) => item.index === i)) &&
-        !duplicates.some((group) => group.some((item) => item.index === j))
-      ) {
-        flagged.push({
-          group: [
-            { index: i, transaction: tx1 },
-            { index: j, transaction: tx2 },
-          ],
-          reason: 'same_amount_merchant',
-        });
-      }
+      seenKeys.set(currentKey, i);
     }
   }
 
   return {
     unique,
     duplicates,
-    flagged,
     summary: {
       total: transactions.length,
       uniqueCount: unique.length,
       duplicateGroups: duplicates.length,
-      flaggedGroups: flagged.length,
     },
   };
 }
@@ -111,7 +147,7 @@ export function detectDuplicatesAcrossImages(processedImages) {
   const imageMap = {};
 
   processedImages.forEach((image, imageIdx) => {
-    image.transactions.forEach((tx) => {
+    (image.transactions || []).forEach((tx) => {
       const idx = allTransactions.length;
       allTransactions.push(tx);
       imageMap[idx] = {
@@ -135,13 +171,6 @@ export function detectDuplicatesAcrossImages(processedImages) {
         imageSource: imageMap[item.index],
       })),
     })),
-    flagged: detection.flagged.map((flagged) => ({
-      group: flagged.group.map((item) => ({
-        ...item,
-        imageSource: imageMap[item.index],
-      })),
-      reason: flagged.reason,
-    })),
     summary: detection.summary,
     imageCount: processedImages.length,
   };
@@ -150,4 +179,22 @@ export function detectDuplicatesAcrossImages(processedImages) {
 export function selectTransactionsFromDuplicates(allTransactions, selectedIndices) {
   const selected = new Set(selectedIndices);
   return allTransactions.filter((tx, idx) => selected.has(idx));
+}
+
+export function getKeptTransactionIndices(detection) {
+  const kept = new Set();
+
+  (detection?.unique || []).forEach((item) => {
+    kept.add(item.index);
+  });
+
+  (detection?.duplicates || []).forEach((group) => {
+    if (Array.isArray(group) && group[0]) {
+      kept.add(group[0].index);
+    } else if (group?.group?.[0]) {
+      kept.add(group.group[0].index);
+    }
+  });
+
+  return Array.from(kept).sort((a, b) => a - b);
 }

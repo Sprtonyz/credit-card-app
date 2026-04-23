@@ -1,23 +1,95 @@
 import { getTodayDate } from '../services/firebaseService';
 import { shiftDateKey } from './simulationDate';
 
-function transactionExists(newTx, existingTxs) {
-  return existingTxs.some((existing) => {
-    if (Math.abs(parseFloat(newTx.amount) - parseFloat(existing.amount)) > 0.01) {
-      return false;
-    }
+const MERCHANT_STOP_WORDS = new Set([
+  'au',
+  'notau',
+  'australia',
+  'pending',
+  'posted',
+  'category',
+  'in',
+  'progress',
+]);
 
-    const newMerchant = (newTx.merchant || '').toUpperCase();
-    const existingMerchant = (existing.merchant || '').toUpperCase();
-    if (newMerchant !== existingMerchant) {
-      return false;
-    }
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-    if (newTx.date !== existing.date) {
-      return false;
-    }
+function tokenizeMerchant(value) {
+  return normalizeText(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token && !MERCHANT_STOP_WORDS.has(token));
+}
 
+function normalizeAmountKey(value) {
+  const amount = Number.parseFloat(value);
+  if (!Number.isFinite(amount)) return null;
+  return Math.abs(amount).toFixed(2);
+}
+
+function normalizeMerchantKey(value) {
+  const tokens = tokenizeMerchant(value);
+  if (tokens.length === 0) return normalizeText(value);
+  return tokens.join(' ');
+}
+
+function buildTransactionKey(tx) {
+  const amountKey = normalizeAmountKey(tx.amount);
+  const merchantKey = normalizeMerchantKey(tx.merchant);
+  const dateKey = tx.date || null;
+
+  if (!amountKey || !merchantKey || !dateKey) return null;
+
+  return [dateKey, amountKey, merchantKey].join('|');
+}
+
+function haveComparableDates(newTx, existingTx) {
+  // Pending rows are stored with the upload day, so exact date equality is not
+  // a reliable overlap signal across separate screenshot uploads.
+  if (newTx.isPending || existingTx.isPending) {
     return true;
+  }
+
+  if (newTx.date && existingTx.date) {
+    return newTx.date === existingTx.date;
+  }
+
+  return false;
+}
+
+function merchantLooksSame(newTx, existingTx) {
+  const newMerchant = normalizeMerchantKey(newTx.merchant);
+  const existingMerchant = normalizeMerchantKey(existingTx.merchant);
+
+  if (!newMerchant || !existingMerchant) return false;
+  if (newMerchant === existingMerchant) return true;
+  if (newMerchant.includes(existingMerchant) || existingMerchant.includes(newMerchant)) return true;
+
+  const newTokens = tokenizeMerchant(newTx.merchant);
+  const existingTokens = tokenizeMerchant(existingTx.merchant);
+  if (newTokens.length === 0 || existingTokens.length === 0) return false;
+
+  const sharedTokens = newTokens.filter((token) => existingTokens.includes(token));
+  const shorterLength = Math.min(newTokens.length, existingTokens.length);
+
+  return sharedTokens.length >= 2 && sharedTokens.length >= shorterLength - 1;
+}
+
+function transactionExists(newTx, existingTxs) {
+  const newAmountKey = normalizeAmountKey(newTx.amount);
+  if (!newAmountKey) return false;
+
+  return existingTxs.some((existing) => {
+    const existingAmountKey = normalizeAmountKey(existing.amount);
+    if (!existingAmountKey || existingAmountKey !== newAmountKey) return false;
+    if (!haveComparableDates(newTx, existing)) return false;
+    return merchantLooksSame(newTx, existing);
   });
 }
 
@@ -29,6 +101,7 @@ export function mergeTransactions(
   const toAdd = [];
   const skipped = [];
   const today = getTodayDate();
+  const batchKeys = new Set();
 
   for (const tx of newTransactions) {
     const txWithDate = {
@@ -36,6 +109,7 @@ export function mergeTransactions(
       date: tx.date || today,
       isPending: !tx.date,
     };
+    const txKey = buildTransactionKey(txWithDate);
 
     const imageHash = tx.imageHash;
     if (imageHash && processedLog[imageHash]) {
@@ -47,10 +121,18 @@ export function mergeTransactions(
       continue;
     }
 
+    if (txKey && batchKeys.has(txKey)) {
+      skipped.push({
+        transaction: txWithDate,
+        reason: 'duplicate_in_upload',
+      });
+      continue;
+    }
+
     if (transactionExists(txWithDate, existingTransactions)) {
       skipped.push({
         transaction: txWithDate,
-        reason: 'already_exists',
+        reason: 'already_exists_overlap',
       });
       continue;
     }
@@ -76,6 +158,9 @@ export function mergeTransactions(
       }
     }
 
+    if (txKey) {
+      batchKeys.add(txKey);
+    }
     toAdd.push(txWithDate);
   }
 
@@ -88,7 +173,8 @@ export function mergeTransactions(
       skipped: skipped.length,
       skippedByReason: {
         already_processed: skipped.filter((s) => s.reason === 'already_processed').length,
-        already_exists: skipped.filter((s) => s.reason === 'already_exists').length,
+        duplicate_in_upload: skipped.filter((s) => s.reason === 'duplicate_in_upload').length,
+        already_exists_overlap: skipped.filter((s) => s.reason === 'already_exists_overlap').length,
         already_exists_yesterday: skipped.filter((s) => s.reason === 'already_exists_yesterday').length,
       },
     },

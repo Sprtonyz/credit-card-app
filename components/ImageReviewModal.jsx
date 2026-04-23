@@ -71,6 +71,18 @@ export default function ImageReviewModal({
     return null;
   }
 
+  const getFlaggedMessage = (reason) => {
+    if (reason === 'possible_repeat_charge') {
+      return 'These charges look like the same merchant and amount, but on different dates. Please confirm whether they are separate transactions.';
+    }
+
+    if (reason === 'missing_date_ambiguous') {
+      return 'These charges match on merchant and amount, but the OCR did not capture enough date context to be certain.';
+    }
+
+    return 'Found multiple similar transactions. Are these different transactions?';
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-slate-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-slate-700">
@@ -153,7 +165,7 @@ export default function ImageReviewModal({
                 Flagged Transaction {flaggedIdx + 1}
               </h3>
               <p className="text-sm text-slate-300 mb-3">
-                Found multiple {flaggedItem.reason === 'same_amount_merchant' ? 'identical charges' : 'similar transactions'}. Are these different transactions?
+                {getFlaggedMessage(flaggedItem.reason)}
               </p>
 
               <div className="space-y-2 mb-3">
@@ -170,6 +182,11 @@ export default function ImageReviewModal({
                     <p className="text-xs text-slate-400">
                       {item.transaction.lineIndex ? `OCR line: ${item.transaction.lineIndex}` : 'OCR line: unknown'}
                     </p>
+                    {item.transaction.date ? (
+                      <p className="text-xs text-slate-400">
+                        Date: {item.transaction.date}
+                      </p>
+                    ) : null}
                     {item.transaction.rawLine ? (
                       <p className="text-xs text-slate-500 font-mono mt-1 break-all">
                         {item.transaction.rawLine}

@@ -19,7 +19,6 @@ import {
 } from '../services/firebaseService';
 import { formatLocalDate } from '../utils/simulationDate';
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function buildAllTransactions(processedImages) {
   const allTransactions = [];
@@ -123,10 +122,7 @@ function getSubmissionDateKeyEntry(entry) {
 
   const ts = Number(entry?.ts);
   if (!Number.isFinite(ts)) return null;
-
-  const dayValue = Number(entry?.day);
-  const offset = Number.isFinite(dayValue) ? dayValue : 0;
-  return formatLocalDate(new Date(ts + offset * MS_PER_DAY));
+  return formatLocalDate(new Date(ts));
 }
 
 function getSubmissionDateKey(sub, user) {
@@ -157,11 +153,8 @@ function isVisibleForUser(tx, submissions, user, todayKey) {
   return !resolved && !submittedToday;
 }
 
-function shouldCountForAssignee(sub, assignee, todayKey) {
-  const values = PROFILE_NAMES.map((u) => {
-    const submittedDateKey = getSubmissionDateKey(sub, u);
-    return submittedDateKey !== null && submittedDateKey === todayKey ? getSubmissionValue(sub, u) : null;
-  }).filter(Boolean);
+function shouldCountForAssignee(sub, assignee) {
+  const values = PROFILE_NAMES.map((u) => getSubmissionValue(sub, u)).filter(Boolean);
   if (values.includes('Unsure')) return false;
   return values.includes(assignee);
 }
@@ -189,7 +182,7 @@ function buildProfileEmailReports(transactions, submissions) {
 
     const totalSpend = Object.entries(submissions).reduce((acc, [txId, sub]) => {
       const tx = transactions.find((item) => item.id === txId);
-      if (!tx || !shouldCountForAssignee(sub, profileName, todayKey)) return acc;
+      if (!tx || !shouldCountForAssignee(sub, profileName)) return acc;
       return acc + Number(tx.amount || 0);
     }, 0);
 

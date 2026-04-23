@@ -31,7 +31,6 @@ const APP_STATE_ROOT = 'cc_v4_app_state';
 const SHARED_DAY_OFFSET_KEY = `${APP_STATE_ROOT}/simulatedDayOffset`;
 const APP_VERSION = 'r3.19';
 const VERSION_KEY = 'cc_version';
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const DEMO_DAYS = {
   '0': [
@@ -96,10 +95,7 @@ function getSubmissionDateKeyEntry(entry) {
 
   const ts = Number(entry?.ts);
   if (!Number.isFinite(ts)) return null;
-
-  const dayValue = Number(entry?.day);
-  const offset = Number.isFinite(dayValue) ? dayValue : 0;
-  return formatLocalDate(new Date(ts + offset * MS_PER_DAY));
+  return formatLocalDate(new Date(ts));
 }
 
 function getSubmissionDateKey(sub, user) {
@@ -187,11 +183,8 @@ function isVisibleForUser(tx, submissions, user, referenceDateKey) {
   return !resolved && !submittedToday;
 }
 
-function shouldCountForAssignee(sub, assignee, referenceDateKey) {
-  const values = USERS.map((u) => {
-    const submittedDateKey = getSubmissionDateKey(sub, u);
-    return submittedDateKey !== null && submittedDateKey === referenceDateKey ? getSubValue(sub, u) : null;
-  }).filter(Boolean);
+function shouldCountForAssignee(sub, assignee) {
+  const values = USERS.map((u) => getSubValue(sub, u)).filter(Boolean);
   if (values.includes('Unsure')) return false;
   return values.includes(assignee);
 }
@@ -1400,23 +1393,23 @@ export default function CreditCardApp() {
   const userTallies = useMemo(() => {
     const out = {};
     USERS.forEach((u) => {
-      out[u] = Object.entries(submissions).reduce((acc, [txId, sub]) => {
-        const tx = transactionsById[txId];
-        if (!tx || !shouldCountForAssignee(sub, u, referenceDateKey)) return acc;
-        return acc + Number(tx.amount || 0);
-      }, 0);
-    });
-    return out;
-  }, [submissions, transactionsById, referenceDateKey]);
+        out[u] = Object.entries(submissions).reduce((acc, [txId, sub]) => {
+          const tx = transactionsById[txId];
+          if (!tx || !shouldCountForAssignee(sub, u)) return acc;
+          return acc + Number(tx.amount || 0);
+        }, 0);
+      });
+      return out;
+  }, [submissions, transactionsById]);
 
   const macTally = useMemo(
-    () =>
-      Object.entries(submissions).reduce((acc, [txId, sub]) => {
-        const tx = transactionsById[txId];
-        if (!tx || !shouldCountForAssignee(sub, 'Macquarie', referenceDateKey)) return acc;
-        return acc + Number(tx.amount || 0);
-      }, 0),
-    [submissions, transactionsById, referenceDateKey]
+      () =>
+        Object.entries(submissions).reduce((acc, [txId, sub]) => {
+          const tx = transactionsById[txId];
+          if (!tx || !shouldCountForAssignee(sub, 'Macquarie')) return acc;
+          return acc + Number(tx.amount || 0);
+        }, 0),
+    [submissions, transactionsById]
   );
 
   const handleAssign = async (txId, value, event) => {

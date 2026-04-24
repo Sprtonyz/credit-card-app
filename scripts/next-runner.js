@@ -11,7 +11,7 @@ if (!supported.has(command)) {
 }
 
 const nextBin = path.join(__dirname, '..', 'node_modules', 'next', 'dist', 'bin', 'next');
-const distDir = command === 'dev' ? '.next-dev' : '.next-build';
+const distDir = command === 'dev' ? '.next-dev' : '.next';
 
 const child = spawn(process.execPath, [nextBin, command, ...forwardedArgs], {
   stdio: 'inherit',

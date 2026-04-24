@@ -1,0 +1,38 @@
+
+> credit-card-consolidation@1.0.0 build C:\Users\Tony\Documents\GitHub\credit-card-app
+> node ./node_modules/next/dist/bin/next build
+
+info  - Loaded env from C:\Users\Tony\Documents\GitHub\credit-card-app\.env.local
+warn  - No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+info  - Linting and checking validity of types...
+info  - Creating an optimized production build...
+info  - Compiled successfully
+info  - Collecting page data...
+info  - Generating static pages (0/4)
+info  - Generating static pages (1/4)
+info  - Generating static pages (2/4)
+info  - Generating static pages (3/4)
+info  - Generating static pages (4/4)
+info  - Finalizing page optimization...
+
+Route (pages)                              Size     First Load JS
+┌ ○ /                                      2.01 kB        81.8 kB
+├   /_app                                  0 B            79.8 kB
+├ ○ /404                                   194 B            80 kB
+├ ○ /admin/upload                          2 kB           81.8 kB
+└ λ /api/send-notification-email           0 B            79.8 kB
++ First Load JS shared by all              88.2 kB
+  ├ chunks/framework-4556c45dd113b893.js   45.2 kB
+  ├ chunks/main-637205b74733a654.js        32.3 kB
+  ├ chunks/pages/_app-74e544c3030725a8.js  554 B
+  ├ chunks/webpack-07a9bf0975be19a0.js     1.74 kB
+  └ css/b4ac8e9290d0ba17.css               8.35 kB
+
+λ  (Server)  server-side renders at runtime (uses getInitialProps or getServerSideProps)
+○  (Static)  automatically rendered as static HTML (uses no initial props)
+

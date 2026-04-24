@@ -29,7 +29,7 @@ const PRESENCE_ROOT = 'cc_v4_presence';
 const PRESENCE_TTL_MS = 12000;
 const APP_STATE_ROOT = 'cc_v4_app_state';
 const SHARED_DAY_OFFSET_KEY = `${APP_STATE_ROOT}/simulatedDayOffset`;
-const APP_VERSION = 'r3.19';
+const APP_VERSION = '5.0';
 const VERSION_KEY = 'cc_version';
 
 const DEMO_DAYS = {
@@ -102,6 +102,10 @@ function getSubmissionDateKey(sub, user) {
   return getSubmissionDateKeyEntry(sub?.[user]);
 }
 
+function hasSubmissionOnDate(sub, user, referenceDateKey) {
+  return getSubmissionDateKey(sub, user) === referenceDateKey;
+}
+
 function getSurfacedSubmissionValue(sub, user, referenceDateKey) {
   const submittedDateKey = getSubmissionDateKey(sub, user);
   if (!submittedDateKey || submittedDateKey >= referenceDateKey) return null;
@@ -111,10 +115,13 @@ function getSurfacedSubmissionValue(sub, user, referenceDateKey) {
 function getSurfacedSubmissionStatus(sub, referenceDateKey) {
   const values = USERS.map((u) => getSurfacedSubmissionValue(sub, u, referenceDateKey)).filter(Boolean);
   const hasUnsure = values.includes('Unsure');
+  const allPicked = values.length === USERS.length;
 
   return {
-    conflict: values.length === USERS.length && !hasUnsure && new Set(values).size > 1,
+    resolved: allPicked && !hasUnsure && new Set(values).size === 1,
+    conflict: allPicked && !hasUnsure && new Set(values).size > 1,
     unsure: hasUnsure,
+    anyPicked: values.length > 0,
   };
 }
 
@@ -176,17 +183,44 @@ function isVisibleForUser(tx, submissions, user, referenceDateKey) {
   if (!user) return true;
 
   const sub = submissions[tx.id] || {};
-  const { resolved } = getSubmissionStatus(sub);
+  const { resolved } = getSurfacedSubmissionStatus(sub, referenceDateKey);
   const submittedDateKey = getSubmissionDateKey(sub, user);
   const submittedToday = submittedDateKey !== null && submittedDateKey === referenceDateKey;
 
   return !resolved && !submittedToday;
 }
 
-function shouldCountForAssignee(sub, assignee) {
-  const values = USERS.map((u) => getSubValue(sub, u)).filter(Boolean);
-  if (values.includes('Unsure')) return false;
-  return values.includes(assignee);
+function shouldCountForAssignee(sub, assignee, referenceDateKey) {
+  const hasCurrentDaySubmission = USERS.some((user) => hasSubmissionOnDate(sub, user, referenceDateKey));
+  if (hasCurrentDaySubmission) {
+    const liveValues = USERS.map((u) => getSubValue(sub, u)).filter((value) => value && value !== 'Unsure');
+    return liveValues.includes(assignee);
+  }
+
+  const status = getSurfacedSubmissionStatus(sub, referenceDateKey);
+  if (!status.resolved) return false;
+
+  const values = USERS.map((u) => getSurfacedSubmissionValue(sub, u, referenceDateKey)).filter(Boolean);
+  return values[0] === assignee;
+}
+
+function getTallyBreakdownEntries(submissions, transactionsById, assignee, referenceDateKey) {
+  return Object.entries(submissions)
+    .map(([txId, sub]) => {
+      const tx = transactionsById[txId];
+      if (!tx || !shouldCountForAssignee(sub, assignee, referenceDateKey)) return null;
+
+      const hasCurrentDaySubmission = USERS.some((user) => hasSubmissionOnDate(sub, user, referenceDateKey));
+      return {
+        ...tx,
+        assignmentState: hasCurrentDaySubmission ? 'Today' : 'Locked',
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (b.amount !== a.amount) return b.amount - a.amount;
+      return String(a.desc).localeCompare(String(b.desc));
+    });
 }
 
 function normalizeFirebaseTransaction(id, tx) {
@@ -413,11 +447,11 @@ const ConfettiCanvas = forwardRef(function ConfettiCanvas(_, ref) {
   return <canvas ref={canvasRef} id="confetti-canvas" style={{ display: 'none' }} />;
 });
 
-function TransactionCard({ tx, sub, currentUser, currentDay, onAssign }) {
+function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
   const otherUser = getOtherUser(currentUser);
-  const mySub = getSurfacedSubmissionValue(sub, currentUser, currentDay);
-  const otherSub = getSurfacedSubmissionValue(sub, otherUser, currentDay);
-  const { conflict, unsure } = getSurfacedSubmissionStatus(sub, currentDay);
+  const mySub = getSurfacedSubmissionValue(sub, currentUser, referenceDateKey);
+  const otherSub = getSurfacedSubmissionValue(sub, otherUser, referenceDateKey);
+  const { conflict, unsure } = getSurfacedSubmissionStatus(sub, referenceDateKey);
   const isRefund = Boolean(tx.isRefund || Number(tx.amount) < 0);
   const amountClass = isRefund ? 'text-emerald-300' : 'text-white';
   const cardClass = isRefund ? 'refund' : '';
@@ -816,7 +850,7 @@ function PetCanvas({ petType = 'classic' }) {
   return <canvas ref={ref} />;
 }
 
-function TxGroup({ title, date, dayKey, txs, submissions, currentUser, currentDay, onAssign }) {
+function TxGroup({ title, date, dayKey, txs, submissions, currentUser, referenceDateKey, onAssign }) {
   const isPending = title === 'Pending';
 
   return (
@@ -833,7 +867,7 @@ function TxGroup({ title, date, dayKey, txs, submissions, currentUser, currentDa
           tx={tx}
           sub={submissions[tx.id] || {}}
           currentUser={currentUser}
-          currentDay={currentDay}
+          referenceDateKey={referenceDateKey}
           onAssign={onAssign}
         />
       ))}
@@ -849,6 +883,60 @@ function AllDone({ msg }) {
         <h2 className="all-done-title">{msg.title}</h2>
         <p className="all-done-sub">{msg.sub}</p>
         <span className="all-done-badge">{'\u{1F4B3}'} all transactions assigned</span>
+      </div>
+    </div>
+  );
+}
+
+function TallyBreakdownModal({ assignee, total, items, onClose }) {
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="breakdown-overlay" onClick={onClose}>
+      <div className="breakdown-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="breakdown-header">
+          <div>
+            <p className="breakdown-eyebrow">{assignee} own assignments</p>
+            <h3 className="breakdown-title">${total.toFixed(2)}</h3>
+            <p className="breakdown-sub">
+              {items.length} transaction{items.length === 1 ? '' : 's'} currently counted
+            </p>
+          </div>
+          <button className="breakdown-close" onClick={onClose} aria-label="Close breakdown">
+            ×
+          </button>
+        </div>
+
+        {items.length ? (
+          <div className="breakdown-list">
+            {items.map((item) => (
+              <div key={item.id} className="breakdown-row">
+                <div className="breakdown-copy">
+                  <div className="breakdown-merchant">{item.desc}</div>
+                  <div className="breakdown-meta">
+                    <span>{item.assignmentState}</span>
+                    <span>{formatShortDate(item.date || item.uploadedDay || '') || 'Pending'}</span>
+                  </div>
+                </div>
+                <div className={`breakdown-amount ${item.amount < 0 ? 'refund' : ''}`}>
+                  {item.amount < 0 ? '-$' : '$'}
+                  {Math.abs(item.amount).toFixed(2)}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="breakdown-empty">
+            No counted transactions for {assignee.toLowerCase()} right now.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -929,6 +1017,7 @@ export default function CreditCardApp() {
   const [onlineUsers, setOnlineUsers] = useState({});
   const [firebaseTransactions, setFirebaseTransactions] = useState(null);
   const [previewOnly, setPreviewOnly] = useState(false);
+  const [breakdownUser, setBreakdownUser] = useState(null);
   const doneMsg = useRef(DONE[Math.floor(Math.random() * DONE.length)]);
   const confettiRef = useRef(null);
   const confettiFiredRef = useRef(false);
@@ -1395,21 +1484,29 @@ export default function CreditCardApp() {
     USERS.forEach((u) => {
         out[u] = Object.entries(submissions).reduce((acc, [txId, sub]) => {
           const tx = transactionsById[txId];
-          if (!tx || !shouldCountForAssignee(sub, u)) return acc;
+          if (!tx || !shouldCountForAssignee(sub, u, referenceDateKey)) return acc;
           return acc + Number(tx.amount || 0);
         }, 0);
       });
       return out;
-  }, [submissions, transactionsById]);
+  }, [submissions, transactionsById, referenceDateKey]);
+
+  const tallyBreakdowns = useMemo(
+    () =>
+      Object.fromEntries(
+        USERS.map((user) => [user, getTallyBreakdownEntries(submissions, transactionsById, user, referenceDateKey)])
+      ),
+    [submissions, transactionsById, referenceDateKey]
+  );
 
   const macTally = useMemo(
       () =>
         Object.entries(submissions).reduce((acc, [txId, sub]) => {
           const tx = transactionsById[txId];
-          if (!tx || !shouldCountForAssignee(sub, 'Macquarie')) return acc;
+          if (!tx || !shouldCountForAssignee(sub, 'Macquarie', referenceDateKey)) return acc;
           return acc + Number(tx.amount || 0);
         }, 0),
-    [submissions, transactionsById]
+    [submissions, transactionsById, referenceDateKey]
   );
 
   const handleAssign = async (txId, value, event) => {
@@ -1498,6 +1595,7 @@ export default function CreditCardApp() {
     setShowPetDebug(false);
     setShowDevTools(false);
     setCurrentUser(null);
+    setBreakdownUser(null);
     setPetProfiles({});
     setLevelUpMsg(null);
     setCoinPops([]);
@@ -1653,11 +1751,15 @@ export default function CreditCardApp() {
           {USERS.map((u, i) => (
             <React.Fragment key={u}>
               {i > 0 && <div style={{ width: '1px', background: 'rgba(255,255,255,0.05)' }} />}
-              <div className={`tally-item ${u === currentUser ? 'me' : ''} ${u.toLowerCase()}`}>
+              <button
+                type="button"
+                className={`tally-item tally-trigger ${u === currentUser ? 'me' : ''} ${u.toLowerCase()}`}
+                onClick={() => setBreakdownUser(u)}
+              >
                 <div className="tally-name">{u}{u === currentUser ? ' (you)' : ''}</div>
                 <div className="tally-amount">${(userTallies[u] || 0).toFixed(2)}</div>
                 <div className="tally-note">own assignments</div>
-              </div>
+              </button>
             </React.Fragment>
           ))}
         </div>
@@ -1709,7 +1811,7 @@ export default function CreditCardApp() {
             txs={section.txs}
             submissions={submissions}
             currentUser={currentUser}
-            currentDay={day}
+            referenceDateKey={referenceDateKey}
             onAssign={handleAssign}
           />
         ))}
@@ -1727,6 +1829,14 @@ export default function CreditCardApp() {
           <span className="coin-pop-text">+1</span>
         </div>
       ))}
+      {breakdownUser && (
+        <TallyBreakdownModal
+          assignee={breakdownUser}
+          total={userTallies[breakdownUser] || 0}
+          items={tallyBreakdowns[breakdownUser] || []}
+          onClose={() => setBreakdownUser(null)}
+        />
+      )}
       <ConfettiCanvas ref={confettiRef} />
       </div>
 

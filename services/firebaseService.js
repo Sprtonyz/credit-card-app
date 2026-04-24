@@ -129,6 +129,21 @@ export async function getAllSubmissions() {
   }
 }
 
+export async function getPresenceEntries() {
+  try {
+    const snapshot = await get(ref(db, 'cc_v4_presence'));
+
+    if (!snapshot.exists()) {
+      return {};
+    }
+
+    return snapshot.val();
+  } catch (error) {
+    console.error('Error getting presence entries:', error);
+    throw error;
+  }
+}
+
 export async function checkIfProcessed(imageHash) {
   try {
     const processedRef = ref(db, `processedTransactions/${imageHash}`);

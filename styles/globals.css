@@ -293,6 +293,30 @@ body {
   border-right: 1px solid rgba(255,255,255,0.05);
 }
 
+.tally-trigger {
+  appearance: none;
+  background: transparent;
+  border-top: none;
+  border-left: none;
+  border-bottom: none;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.16s ease, transform 0.16s ease;
+}
+
+.tally-trigger:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.tally-trigger:active {
+  transform: translateY(1px);
+}
+
+.tally-trigger:focus-visible {
+  outline: 1px solid rgba(96,165,250,0.45);
+  outline-offset: -1px;
+}
+
 .tally-name {
   font-size: 0.5rem;
   letter-spacing: 0.18em;
@@ -357,6 +381,137 @@ body {
   padding: 0.45rem 0.5rem;
   border-left: 1px solid rgba(255,255,255,0.05);
   background: rgba(255,255,255,0.01);
+}
+
+.breakdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 450;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(3, 6, 12, 0.66);
+  backdrop-filter: blur(10px);
+}
+
+.breakdown-modal {
+  width: min(100%, 420px);
+  max-height: min(78vh, 640px);
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background:
+    radial-gradient(circle at top left, rgba(96,165,250,0.08), transparent 40%),
+    linear-gradient(180deg, rgba(19, 25, 37, 0.98), rgba(7, 11, 19, 0.98));
+  box-shadow: 0 26px 70px rgba(0,0,0,0.45);
+}
+
+.breakdown-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 1rem 1rem 0.8rem;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.breakdown-eyebrow {
+  font-size: 0.56rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #64748b;
+  margin: 0 0 0.2rem;
+}
+
+.breakdown-title {
+  margin: 0;
+  font-family: 'Fraunces', serif;
+  font-size: 1.6rem;
+  font-weight: 300;
+  color: #f8fafc;
+}
+
+.breakdown-sub {
+  margin: 0.18rem 0 0;
+  font-size: 0.66rem;
+  color: #94a3b8;
+}
+
+.breakdown-close {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: #cbd5e1;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem 1rem;
+  overflow: auto;
+  max-height: calc(min(78vh, 640px) - 100px);
+}
+
+.breakdown-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.8rem 0.85rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.025);
+}
+
+.breakdown-copy {
+  min-width: 0;
+}
+
+.breakdown-merchant {
+  font-size: 0.76rem;
+  color: #f8fafc;
+  line-height: 1.35;
+}
+
+.breakdown-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.breakdown-meta span {
+  padding: 0.18rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(148,163,184,0.1);
+}
+
+.breakdown-amount {
+  flex-shrink: 0;
+  font-family: 'Fraunces', serif;
+  font-size: 0.98rem;
+  color: #e2e8f0;
+}
+
+.breakdown-amount.refund {
+  color: #86efac;
+}
+
+.breakdown-empty {
+  padding: 1.2rem 1rem 1.1rem;
+  font-size: 0.72rem;
+  color: #94a3b8;
 }
 
 #confetti-canvas {

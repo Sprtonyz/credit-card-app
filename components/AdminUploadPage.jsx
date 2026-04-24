@@ -7,17 +7,16 @@ import { detectDuplicatesAcrossImages, getKeptTransactionIndices } from '../util
 import { mergeTransactions, prepareForFirebase } from '../utils/transactionMerger';
 import { ensureAnonymousAuth } from '../utils/firebaseAuth';
 import {
-  addTransactions,
   getAllTransactions,
   getAllSubmissions,
-  getTodayDate,
+  getPresenceEntries,
   saveProcessedLog,
   getAllProcessedLogs,
   deleteTransactionsByIds,
   deleteProcessedLogs,
   clearUploadedData,
 } from '../services/firebaseService';
-import { formatLocalDate } from '../utils/simulationDate';
+import { formatLocalDate, formatLocalDateTime } from '../utils/simulationDate';
 
 
 function buildAllTransactions(processedImages) {
@@ -129,8 +128,31 @@ function getSubmissionDateKey(sub, user) {
   return getSubmissionDateKeyEntry(sub?.[user]);
 }
 
+function hasSubmissionOnDate(sub, user, referenceDateKey) {
+  return getSubmissionDateKey(sub, user) === referenceDateKey;
+}
+
 function getSubmissionStatus(sub) {
   const values = PROFILE_NAMES.map((u) => getSubmissionValue(sub, u)).filter(Boolean);
+  const hasUnsure = values.includes('Unsure');
+  const allPicked = values.length === PROFILE_NAMES.length;
+
+  return {
+    resolved: allPicked && !hasUnsure && new Set(values).size === 1,
+    conflict: allPicked && !hasUnsure && new Set(values).size > 1,
+    unsure: hasUnsure,
+    anyPicked: values.length > 0,
+  };
+}
+
+function getSurfacedSubmissionValue(sub, user, referenceDateKey) {
+  const submittedDateKey = getSubmissionDateKey(sub, user);
+  if (!submittedDateKey || submittedDateKey >= referenceDateKey) return null;
+  return getSubmissionValue(sub, user);
+}
+
+function getSurfacedSubmissionStatus(sub, referenceDateKey) {
+  const values = PROFILE_NAMES.map((u) => getSurfacedSubmissionValue(sub, u, referenceDateKey)).filter(Boolean);
   const hasUnsure = values.includes('Unsure');
   const allPicked = values.length === PROFILE_NAMES.length;
 
@@ -146,17 +168,27 @@ function isVisibleForUser(tx, submissions, user, todayKey) {
   if (!user) return true;
 
   const sub = submissions[tx.id] || {};
-  const { resolved } = getSubmissionStatus(sub);
+  const { resolved } = getSurfacedSubmissionStatus(sub, todayKey);
   const submittedDateKey = getSubmissionDateKey(sub, user);
   const submittedToday = submittedDateKey !== null && submittedDateKey === todayKey;
 
   return !resolved && !submittedToday;
 }
 
-function shouldCountForAssignee(sub, assignee) {
-  const values = PROFILE_NAMES.map((u) => getSubmissionValue(sub, u)).filter(Boolean);
-  if (values.includes('Unsure')) return false;
-  return values.includes(assignee);
+function shouldCountForAssignee(sub, assignee, referenceDateKey) {
+  const hasCurrentDaySubmission = PROFILE_NAMES.some((user) => hasSubmissionOnDate(sub, user, referenceDateKey));
+  if (hasCurrentDaySubmission) {
+    const liveValues = PROFILE_NAMES.map((u) => getSubmissionValue(sub, u)).filter(
+      (value) => value && value !== 'Unsure'
+    );
+    return liveValues.includes(assignee);
+  }
+
+  const status = getSurfacedSubmissionStatus(sub, referenceDateKey);
+  if (!status.resolved) return false;
+
+  const values = PROFILE_NAMES.map((u) => getSurfacedSubmissionValue(sub, u, referenceDateKey)).filter(Boolean);
+  return values[0] === assignee;
 }
 
 function dateToMs(dateKey) {
@@ -182,7 +214,7 @@ function buildProfileEmailReports(transactions, submissions) {
 
     const totalSpend = Object.entries(submissions).reduce((acc, [txId, sub]) => {
       const tx = transactions.find((item) => item.id === txId);
-      if (!tx || !shouldCountForAssignee(sub, profileName)) return acc;
+      if (!tx || !shouldCountForAssignee(sub, profileName, todayKey)) return acc;
       return acc + Number(tx.amount || 0);
     }, 0);
 
@@ -201,12 +233,12 @@ function buildProfileEmailReports(transactions, submissions) {
     });
 
     const conflictsCount = visibleTransactions.filter((tx) => {
-      const status = getSubmissionStatus(submissions[tx.id] || {});
+      const status = getSurfacedSubmissionStatus(submissions[tx.id] || {}, todayKey);
       return status.conflict;
     }).length;
 
     const unsuresCount = visibleTransactions.filter((tx) => {
-      const status = getSubmissionStatus(submissions[tx.id] || {});
+      const status = getSurfacedSubmissionStatus(submissions[tx.id] || {}, todayKey);
       return status.unsure;
     }).length;
 
@@ -283,6 +315,51 @@ function getUploadResultStats(summary = {}, addedCount = 0) {
   };
 }
 
+function formatActivityTimestamp(ts) {
+  const value = Number(ts);
+  if (!Number.isFinite(value) || value <= 0) return 'No activity yet';
+  return formatLocalDateTime(new Date(value));
+}
+
+function getLatestSubmissionEntryForUser(submissions = {}, user) {
+  return Object.entries(submissions).reduce((latest, [txId, submission]) => {
+    const entry = submission?.[user];
+    const ts = Number(entry?.ts);
+
+    if (!Number.isFinite(ts)) return latest;
+    if (!latest || ts > latest.ts) {
+      return {
+        txId,
+        ts,
+        value: entry?.value || null,
+        dateKey: entry?.dateKey || null,
+      };
+    }
+
+    return latest;
+  }, null);
+}
+
+function buildAdminActivityLog(presenceEntries = {}, submissions = {}) {
+  return PROFILE_NAMES.map((user) => {
+    const activePresenceEntries = Object.values(presenceEntries || {}).filter(
+      (entry) => entry && typeof entry === 'object' && entry.user === user
+    );
+    const latestPresenceTs = activePresenceEntries.reduce((latest, entry) => {
+      const ts = Number(entry?.ts);
+      return Number.isFinite(ts) && ts > latest ? ts : latest;
+    }, 0);
+    const latestSubmission = getLatestSubmissionEntryForUser(submissions, user);
+
+    return {
+      user,
+      isOnline: activePresenceEntries.length > 0,
+      latestPresenceTs: latestPresenceTs || null,
+      latestSubmission,
+    };
+  });
+}
+
 const LAST_UPLOAD_UNDO_KEY = 'cc_last_upload_undo';
 
 export default function AdminUploadPage() {
@@ -304,6 +381,7 @@ export default function AdminUploadPage() {
   const [confirmTonyEmail, setConfirmTonyEmail] = useState(false);
   const [confirmNugsEmail, setConfirmNugsEmail] = useState(false);
   const [uploadedBatches, setUploadedBatches] = useState([]);
+  const [adminActivityLog, setAdminActivityLog] = useState([]);
 
   React.useEffect(() => {
     try {
@@ -400,53 +478,32 @@ export default function AdminUploadPage() {
     };
   }, [authReady, step, successMessage, lastUploadUndo]);
 
-  const handleFirebaseSmokeTest = async () => {
-    if (!authReady) return;
-    setIsLoading(true);
-    setError(null);
-    setStep('processing');
+  React.useEffect(() => {
+    if (!authReady) return undefined;
 
-    const marker = `FIREBASE TEST ${new Date().toISOString()}`;
-    const testTransaction = {
-      merchant: marker,
-      amount: 1.23,
-      category: 'Test',
-      date: getTodayDate(),
-      isPending: false,
-      source: 'manual-test',
-      uploadedDate: new Date().toISOString(),
-      imageHash: `smoke-${Date.now()}`,
-      owner: null,
+    let cancelled = false;
+
+    const loadAdminActivity = async () => {
+      try {
+        const [presenceEntries, submissions] = await Promise.all([
+          getPresenceEntries(),
+          getAllSubmissions(),
+        ]);
+        if (cancelled) return;
+        setAdminActivityLog(buildAdminActivityLog(presenceEntries || {}, submissions || {}));
+      } catch (err) {
+        console.error('Failed to load admin activity log:', err);
+      }
     };
 
-    try {
-      const ids = await addTransactions([testTransaction]);
-      const allTransactions = await getAllTransactions();
-      const written = allTransactions.find(
-        (tx) => tx.merchant === marker && Number(tx.amount) === 1.23
-      );
+    loadAdminActivity();
+    const interval = window.setInterval(loadAdminActivity, 10000);
 
-      if (!written) {
-        throw new Error('Write completed but the test transaction was not readable back from Firebase');
-      }
-
-      setSuccessMessage({
-        added: 1,
-        skipped: 0,
-        summary: {
-          marker,
-          id: ids[0],
-        },
-      });
-      setStep('success');
-    } catch (err) {
-      console.error('Firebase smoke test failed:', err);
-      setError(err.message || 'Firebase write test failed');
-      setStep('upload');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [authReady, step, successMessage]);
 
   const runOcrPipeline = async () => {
     const results = await processImages(
@@ -843,14 +900,6 @@ export default function AdminUploadPage() {
             </button>
 
             <button
-              onClick={handleFirebaseSmokeTest}
-              disabled={isLoading || !authReady}
-              className="w-full mt-3 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
-              >
-              Test Firebase Write
-            </button>
-
-            <button
               onClick={handlePreviewOcr}
               disabled={uploadedFiles.length === 0 || isLoading || !authReady}
               className="w-full mt-3 px-6 py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-white font-medium transition"
@@ -880,51 +929,6 @@ export default function AdminUploadPage() {
                 </button>
               </div>
             )}
-
-            <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/50 p-4">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <p className="text-sm text-slate-300">
-                  Uploaded batches in Firebase
-                </p>
-                <span className="text-xs text-slate-500">
-                  {uploadedBatches.length} batch{uploadedBatches.length === 1 ? '' : 'es'}
-                </span>
-              </div>
-              {uploadedBatches.length === 0 ? (
-                <p className="text-xs text-slate-500">No processed upload batches were found.</p>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-auto pr-1">
-                  {uploadedBatches.slice(0, 8).map((batch) => (
-                    <div
-                      key={batch.imageHash}
-                      className="rounded-lg border border-slate-700 bg-slate-950/80 p-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-white">
-                            {batch.imageName}
-                          </p>
-                          <p className="text-xs text-slate-400 mt-1">
-                            {batch.extractedCount} transaction{batch.extractedCount === 1 ? '' : 's'}
-                            {batch.uploadDate ? ` · ${batch.uploadDate}` : ''}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteUploadedBatch(batch)}
-                          disabled={isLoading}
-                          className="shrink-0 rounded-md bg-rose-700 px-3 py-2 text-xs font-medium text-white hover:bg-rose-600 disabled:opacity-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="mt-2 text-xs text-slate-500">
-                Use this to remove an older 9-transaction upload from Firebase without touching everything else.
-              </p>
-            </div>
 
             <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/50 p-4">
               <p className="text-sm text-slate-300 mb-3">
@@ -998,6 +1002,97 @@ export default function AdminUploadPage() {
               >
                 {isEmailSending ? 'Sending...' : 'Send selected emails'}
               </button>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/50 p-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-sm text-slate-300">
+                  User activity log
+                </p>
+                <span className="text-xs text-slate-500">
+                  Refreshes every 10s
+                </span>
+              </div>
+              <div className="space-y-2">
+                {adminActivityLog.map((entry) => (
+                  <div
+                    key={entry.user}
+                    className="rounded-lg border border-slate-700 bg-slate-950/80 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-white">{entry.user}</p>
+                      <span
+                        className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                          entry.isOnline
+                            ? 'bg-emerald-500/15 text-emerald-300'
+                            : 'bg-slate-700 text-slate-300'
+                        }`}
+                      >
+                        {entry.isOnline ? 'Online now' : 'Offline'}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-400">
+                      Last online: {formatActivityTimestamp(entry.latestPresenceTs)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Last assignment:{' '}
+                      {entry.latestSubmission
+                        ? `${formatActivityTimestamp(entry.latestSubmission.ts)}${entry.latestSubmission.value ? ` (${entry.latestSubmission.value})` : ''}`
+                        : 'No assignments yet'}
+                    </p>
+                    {entry.latestSubmission?.dateKey ? (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Assignment date: {entry.latestSubmission.dateKey}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/50 p-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-sm text-slate-300">
+                  Uploaded batches in Firebase
+                </p>
+                <span className="text-xs text-slate-500">
+                  {uploadedBatches.length} batch{uploadedBatches.length === 1 ? '' : 'es'}
+                </span>
+              </div>
+              {uploadedBatches.length === 0 ? (
+                <p className="text-xs text-slate-500">No processed upload batches were found.</p>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-auto pr-1">
+                  {uploadedBatches.slice(0, 8).map((batch) => (
+                    <div
+                      key={batch.imageHash}
+                      className="rounded-lg border border-slate-700 bg-slate-950/80 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-white">
+                            {batch.imageName}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {batch.extractedCount} transaction{batch.extractedCount === 1 ? '' : 's'}
+                            {batch.uploadDate ? ` | ${batch.uploadDate}` : ''}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteUploadedBatch(batch)}
+                          disabled={isLoading}
+                          className="shrink-0 rounded-md bg-rose-700 px-3 py-2 text-xs font-medium text-white hover:bg-rose-600 disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="mt-2 text-xs text-slate-500">
+                Use this to remove an older 9-transaction upload from Firebase without touching everything else.
+              </p>
             </div>
 
             <button
@@ -1210,7 +1305,7 @@ export default function AdminUploadPage() {
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mt-1">
-                        Date: {item.transaction.date || 'n/a'} · Image: {item.transaction.imageHash || 'n/a'}
+                        Date: {item.transaction.date || 'n/a'} Â· Image: {item.transaction.imageHash || 'n/a'}
                       </p>
                     </div>
                   ))}

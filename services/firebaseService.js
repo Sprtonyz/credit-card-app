@@ -131,7 +131,7 @@ export async function getAllSubmissions() {
 
 export async function getPresenceEntries() {
   try {
-    const snapshot = await get(ref(db, 'cc_v4_presence'));
+    const snapshot = await get(ref(db, 'cc_v5_presence'));
 
     if (!snapshot.exists()) {
       return {};

@@ -1,4 +1,4 @@
-export const SIMULATED_DAY_KEY = 'cc_v4_day_offset';
+export const SIMULATED_DAY_KEY = 'cc_v5_day_offset';
 export const SIMULATED_TIME_ZONE = 'Australia/Melbourne';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -71,8 +71,7 @@ export function shiftDateKey(dateKey, days) {
   ).padStart(2, '0')}`;
 }
 
-export function getSimulatedNow(baseDate = new Date()) {
-  const offset = getSavedSimulatedDay();
+export function getSimulatedNow(baseDate = new Date(), offset = getSavedSimulatedDay()) {
   return new Date(baseDate.getTime() + offset * MS_PER_DAY);
 }
 

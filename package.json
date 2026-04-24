@@ -4,10 +4,10 @@
   "description": "Credit card transaction conflict resolution app",
   "private": true,
   "scripts": {
-    "dev": "node ./node_modules/next/dist/bin/next dev",
-    "build": "node ./node_modules/next/dist/bin/next build",
-    "start": "node ./node_modules/next/dist/bin/next start",
-    "export": "node ./node_modules/next/dist/bin/next build && node ./node_modules/next/dist/bin/next export"
+    "dev": "node ./scripts/next-runner.js dev",
+    "build": "node ./scripts/next-runner.js build",
+    "start": "node ./scripts/next-runner.js start",
+    "export": "node ./scripts/next-runner.js build && node ./scripts/next-runner.js export"
   },
   "dependencies": {
     "firebase": "^9.23.0",

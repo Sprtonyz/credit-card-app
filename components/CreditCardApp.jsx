@@ -19,17 +19,27 @@ import {
   setSavedSimulatedDay,
 } from '../utils/simulationDate';
 import { ensureAnonymousAuth } from '../utils/firebaseAuth';
+import {
+  applyPetActionProgress,
+  getFeedBenefits,
+  getMoodLabel,
+  derivePetMood,
+  getPetLevel,
+  getXpForLevel,
+  normalizePetState,
+  resolvePetType,
+} from '../utils/petProgression';
 
 const USERS = ['Tony', 'Nugs'];
 const ASSIGN_OPTS = ['Unsure', 'Macquarie', 'Tony', 'Nugs'];
-const STORAGE_KEY = 'cc_v4_subs';
-const USER_KEY = 'cc_v4_user';
-const PET_STORAGE_KEY = 'cc_v4_pet_state';
-const PRESENCE_ROOT = 'cc_v4_presence';
+const STORAGE_KEY = 'cc_v5_subs';
+const USER_KEY = 'cc_v5_user';
+const PET_STORAGE_KEY = 'cc_v5_pet_state';
+const PRESENCE_ROOT = 'cc_v5_presence';
 const PRESENCE_TTL_MS = 12000;
-const APP_STATE_ROOT = 'cc_v4_app_state';
+const APP_STATE_ROOT = 'cc_v5_app_state';
 const SHARED_DAY_OFFSET_KEY = `${APP_STATE_ROOT}/simulatedDayOffset`;
-const APP_VERSION = '5.0';
+const APP_VERSION = '5.2';
 const VERSION_KEY = 'cc_version';
 
 const DEMO_DAYS = {
@@ -135,29 +145,6 @@ function getOptionClassName(value) {
 
 function formatAssignmentLabel(value) {
   return value === 'Macquarie' ? 'MAC' : value;
-}
-
-function getDefaultPetState(user) {
-  return {
-    coins: 0,
-    food: 0,
-    hp: 60,
-    xp: 0,
-    petType: 'classic',
-  };
-}
-
-function getPetLevel(xp) {
-  return Math.floor(Math.sqrt(Math.max(0, xp) / 10)) + 1;
-}
-
-function getXpForLevel(level) {
-  return level * level * 10;
-}
-
-function normalizePetType(value) {
-  if (value === 'shiny' || value === 'ember' || value === 'classic') return value;
-  return 'classic';
 }
 
 function hasConflict(sub) {
@@ -518,11 +505,29 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
   );
 }
 
-function PetBar({ hp, coins, food, level, xp, xpNeeded, onBuyFood, onFeedPet, petType }) {
+function PetBar({
+  hp,
+  coins,
+  food,
+  level,
+  xp,
+  xpNeeded,
+  streak,
+  mood,
+  missions,
+  showMissions,
+  onToggleMissions,
+  onBuyFood,
+  onFeedPet,
+  petType,
+}) {
+  const completedMissions = missions.filter(
+    (mission) => Number(mission?.target || 0) > 0 && Number(mission?.progress || 0) >= Number(mission?.target || 0)
+  ).length;
   return (
     <>
       <div className="shop-bar">
-        <span className="shop-coins">{'\u{1FA99}'} {coins}</span>
+        <span className="shop-coins"><span className="coin-inline" aria-hidden="true" /> {coins}</span>
         <span className="shop-food">{'\u{1F356}'} x{food}</span>
         <div className="shop-divider-v" />
         <div className="shop-hp-wrap">
@@ -535,9 +540,10 @@ function PetBar({ hp, coins, food, level, xp, xpNeeded, onBuyFood, onFeedPet, pe
           </div>
           <span className="shop-hp-val">{hp}</span>
         </div>
+        <span className={`pet-chip pet-mood mood-${mood}`}>mood: {getMoodLabel(mood)}</span>
         <div className="shop-divider-v" />
         <button className="shop-btn buy" disabled={coins < 1} onClick={onBuyFood}>
-          buy food 1{'\u{1FA99}'}
+          buy food 1 <span className="coin-inline" aria-hidden="true" />
         </button>
         <button className="shop-btn feed" disabled={food < 1} onClick={onFeedPet}>
           feed {'\u{1F356}'}
@@ -546,7 +552,50 @@ function PetBar({ hp, coins, food, level, xp, xpNeeded, onBuyFood, onFeedPet, pe
         <span className="pet-level">
           Lv.{level} - {xp}/{xpNeeded} xp
         </span>
+        <span className={`pet-chip pet-streak ${streak > 0 ? 'is-hot' : ''}`}>streak {streak}</span>
+        <button className="pet-chip pet-quests-btn" onClick={onToggleMissions}>
+          quests {completedMissions}/{missions.length}
+        </button>
       </div>
+      {showMissions && (
+        <div className="pet-missions-panel">
+          <div className="pet-missions-head">
+            <div>
+              <div className="pet-missions-title">daily missions</div>
+              <div className="pet-missions-sub">small bonuses that keep the loop warm</div>
+            </div>
+            <button className="pet-missions-close" onClick={onToggleMissions}>
+              hide
+            </button>
+          </div>
+          <div className="pet-missions-list">
+            {missions.map((mission) => {
+              const progress = mission.target > 0 ? Math.round((mission.progress / mission.target) * 100) : 0;
+              const isComplete =
+                Number(mission?.target || 0) > 0 && Number(mission?.progress || 0) >= Number(mission?.target || 0);
+              return (
+                <div key={mission.id} className={`pet-mission ${isComplete ? 'done' : ''}`}>
+                  <div className="pet-mission-top">
+                    <span className="pet-mission-title">{mission.title}</span>
+                    <span className="pet-mission-progress">
+                      {mission.progress}/{mission.target}
+                    </span>
+                  </div>
+                  <div className="pet-mission-bar">
+                    <div className="pet-mission-fill" style={{ width: `${progress}%` }} />
+                  </div>
+                  <div className="pet-mission-reward">
+                    reward {mission.reward.coins ? `+${mission.reward.coins} coins` : ''}
+                    {mission.reward.food ? ` +${mission.reward.food} food` : ''}
+                    {mission.reward.xp ? ` +${mission.reward.xp} xp` : ''}
+                    {isComplete ? ' done' : ''}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className="pet-footer">
         <PetCanvas petType={petType} />
       </div>
@@ -1005,8 +1054,10 @@ export default function CreditCardApp() {
   const [showSwitch, setShowSwitch] = useState(false);
   const [showMac, setShowMac] = useState(false);
   const [showPetDebug, setShowPetDebug] = useState(false);
+  const [showPetMissions, setShowPetMissions] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
   const [petProfiles, setPetProfiles] = useState({});
+  const [petProfilesHydrated, setPetProfilesHydrated] = useState(false);
   const [coinPops, setCoinPops] = useState([]);
   const [levelUpMsg, setLevelUpMsg] = useState(null);
   const [day, setDay] = useState(() => getSavedSimulatedDay());
@@ -1018,19 +1069,30 @@ export default function CreditCardApp() {
   const [firebaseTransactions, setFirebaseTransactions] = useState(null);
   const [previewOnly, setPreviewOnly] = useState(false);
   const [breakdownUser, setBreakdownUser] = useState(null);
+  const [questDebugLog, setQuestDebugLog] = useState([]);
+  const [submissionsHydrated, setSubmissionsHydrated] = useState(false);
   const doneMsg = useRef(DONE[Math.floor(Math.random() * DONE.length)]);
   const confettiRef = useRef(null);
   const confettiFiredRef = useRef(false);
   const presenceTabIdRef = useRef(null);
   const prevPetLevelRef = useRef(1);
   const petLevelReadyRef = useRef(false);
+  const lastQuestSnapshotRef = useRef('');
+
+  const appendQuestDebugLog = (label, details = {}) => {
+    const timestamp = new Date().toISOString();
+    const entry = `${timestamp} | ${label} | ${JSON.stringify(details)}`;
+    setQuestDebugLog((prev) => [...prev.slice(-79), entry]);
+  };
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const forceLanding = searchParams.get('landing') === '1' || searchParams.get('reset') === '1';
 
     if (localStorage.getItem(VERSION_KEY) !== APP_VERSION) {
+      localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(USER_KEY);
+      localStorage.removeItem(PET_STORAGE_KEY);
       localStorage.setItem(VERSION_KEY, APP_VERSION);
     }
 
@@ -1050,11 +1112,13 @@ export default function CreditCardApp() {
         setSubmissions({});
       }
     }
+    setSubmissionsHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (!submissionsHydrated) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions));
-  }, [submissions]);
+  }, [submissions, submissionsHydrated]);
 
   useEffect(() => {
     setSavedSimulatedDay(day);
@@ -1071,7 +1135,9 @@ export default function CreditCardApp() {
   useEffect(() => {
     const syncDayOffset = (event) => {
       if (event.key !== SIMULATED_DAY_KEY) return;
-      setDay(getSavedSimulatedDay());
+      const nextDay = getSavedSimulatedDay();
+      appendQuestDebugLog('storage_sync_day', { nextDay });
+      setDay(nextDay);
     };
 
     window.addEventListener('storage', syncDayOffset);
@@ -1086,11 +1152,32 @@ export default function CreditCardApp() {
       dayOffsetRef,
       (snapshot) => {
         const raw = snapshot.val();
-        const nextDay = Number.isFinite(Number(raw)) ? Number(raw) : 0;
+        if (raw === null || raw === undefined || raw === '') {
+          const savedDay = getSavedSimulatedDay();
+          appendQuestDebugLog('firebase_day_empty', { savedDay });
+          setDay(savedDay);
+          if (savedDay !== 0) {
+            set(dayOffsetRef, savedDay).catch((error) => {
+              console.error('Failed to seed shared simulated day:', error);
+              appendQuestDebugLog('firebase_seed_failed', {
+                savedDay,
+                message: error?.message || String(error),
+              });
+            });
+          }
+          return;
+        }
+
+        const nextDay = Number(raw);
+        if (!Number.isFinite(nextDay)) return;
+        appendQuestDebugLog('firebase_day_value', { raw, nextDay });
         setSavedSimulatedDay(nextDay);
         setDay(nextDay);
       },
       () => {
+        appendQuestDebugLog('firebase_day_read_failed', {
+          fallbackDay: getSavedSimulatedDay(),
+        });
         setDay(getSavedSimulatedDay());
       }
     );
@@ -1113,39 +1200,60 @@ export default function CreditCardApp() {
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
-        setPetProfiles(parsed);
+        const todayKey = formatLocalDate(getSimulatedNow());
+        const normalized = Object.fromEntries(
+          Object.entries(parsed).map(([user, state]) => [user, normalizePetState(state, todayKey)])
+        );
+        setPetProfiles(normalized);
       }
     } catch (error) {
       console.warn('Failed to load pet state from localStorage:', error);
+    } finally {
+      setPetProfilesHydrated(true);
     }
   }, []);
 
   useEffect(() => {
+    if (!petProfilesHydrated) return;
     localStorage.setItem(PET_STORAGE_KEY, JSON.stringify(petProfiles));
-  }, [petProfiles]);
+  }, [petProfiles, petProfilesHydrated]);
 
-  useEffect(() => {
+  const syncPetProfilesForDate = (dateKey, reason = 'sync_pet_profiles') => {
     if (!currentUser) return;
     setPetProfiles((prev) => {
-      if (prev[currentUser]) {
-        const normalized = normalizePetType(prev[currentUser].petType);
-        if (normalized === prev[currentUser].petType) return prev;
-        return {
-          ...prev,
-          [currentUser]: {
-            ...prev[currentUser],
-            petType: normalized,
-          },
-        };
+      const next = { ...prev };
+      let changed = false;
+
+      Object.entries(prev).forEach(([user, state]) => {
+        const normalized = normalizePetState(state, dateKey);
+        if (JSON.stringify(state) !== JSON.stringify(normalized)) {
+          next[user] = normalized;
+          changed = true;
+        }
+      });
+
+      if (!next[currentUser]) {
+        next[currentUser] = normalizePetState(null, dateKey);
+        changed = true;
       }
-      return {
-        ...prev,
-        [currentUser]: getDefaultPetState(currentUser),
-      };
+
+      if (!changed) return prev;
+
+      appendQuestDebugLog(reason, {
+        currentUser,
+        dateKey,
+        missionIds: (next[currentUser]?.missions || []).map((mission) => mission.id),
+        resetKeys: (next[currentUser]?.missions || []).map((mission) => mission.resetKey),
+      });
+      return next;
     });
     setLevelUpMsg(null);
     petLevelReadyRef.current = false;
-  }, [currentUser]);
+  };
+
+  useEffect(() => {
+    syncPetProfilesForDate(referenceDateKey, 'reference_date_changed');
+  }, [currentUser, referenceDateKey]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -1171,7 +1279,9 @@ export default function CreditCardApp() {
     return () => unsubscribe();
   }, [authReady]);
 
-  const petState = currentUser ? petProfiles[currentUser] || getDefaultPetState(currentUser) : getDefaultPetState('Tony');
+  const petState = currentUser
+    ? petProfiles[currentUser] || normalizePetState(null, referenceDateKey)
+    : normalizePetState(null, referenceDateKey);
   const petLevel = getPetLevel(petState.xp);
   const xpBase = getXpForLevel(petLevel - 1);
   const xpNeeded = getXpForLevel(petLevel) - xpBase;
@@ -1180,7 +1290,34 @@ export default function CreditCardApp() {
   const food = petState.food;
   const hp = petState.hp;
   const petXp = petState.xp;
-  const petType = normalizePetType(petState.petType);
+  const streak = petState.streak;
+  const mood = derivePetMood(petState, referenceDateKey);
+  const missions = petState.missions || [];
+  const petType = resolvePetType(petState.petType, petLevel, streak);
+
+  useEffect(() => {
+    const missionSummary = missions.map((mission) => ({
+      id: mission.id,
+      resetKey: mission.resetKey,
+      progress: mission.progress,
+      target: mission.target,
+    }));
+    const snapshot = JSON.stringify({
+      day,
+      currentUser,
+      referenceDateKey,
+      missionSummary,
+    });
+
+    if (snapshot === lastQuestSnapshotRef.current) return;
+    lastQuestSnapshotRef.current = snapshot;
+    appendQuestDebugLog('quest_snapshot', {
+      day,
+      currentUser,
+      referenceDateKey,
+      missionSummary,
+    });
+  }, [day, currentUser, referenceDateKey, missions]);
 
   useEffect(() => {
     if (!petLevelReadyRef.current) {
@@ -1204,11 +1341,11 @@ export default function CreditCardApp() {
   const updateActivePet = (updater) => {
     if (!currentUser) return;
     setPetProfiles((prev) => {
-      const current = prev[currentUser] || getDefaultPetState(currentUser);
+      const current = normalizePetState(prev[currentUser] || null, referenceDateKey);
       const nextPet = typeof updater === 'function' ? updater(current) : updater;
       return {
         ...prev,
-        [currentUser]: nextPet,
+        [currentUser]: normalizePetState(nextPet, referenceDateKey),
       };
     });
   };
@@ -1233,22 +1370,47 @@ export default function CreditCardApp() {
   const buyFood = () => {
     updateActivePet((pet) => {
       if (pet.coins < 1) return pet;
-      return {
-        ...pet,
-        coins: pet.coins - 1,
-        food: pet.food + 1,
-      };
+      return applyPetActionProgress(
+        {
+          ...pet,
+          coins: pet.coins - 1,
+          food: pet.food + 1,
+        },
+        {
+          dateKey: referenceDateKey,
+          kind: 'buy_food',
+        }
+      ).pet;
     });
   };
 
   const feedPet = () => {
     updateActivePet((pet) => {
       if (pet.food < 1) return pet;
+      const feedMood = derivePetMood(pet, referenceDateKey);
+      const feedGain = getFeedBenefits(feedMood);
+      return applyPetActionProgress(pet, {
+        dateKey: referenceDateKey,
+        kind: 'feed',
+        hpGain: feedGain.hp,
+        xpGain: feedGain.xp,
+      }).pet;
+    });
+  };
+
+  const resetActivePetQuests = () => {
+    if (!currentUser) return;
+    updateActivePet((pet) => {
+      const fresh = normalizePetState(null, referenceDateKey);
+      appendQuestDebugLog('manual_reset_quests', {
+        day,
+        currentUser,
+        referenceDateKey,
+        missionIds: fresh.missions.map((mission) => mission.id),
+      });
       return {
         ...pet,
-        food: pet.food - 1,
-        hp: Math.min(100, Math.max(0, pet.hp + 10)),
-        xp: pet.xp + 10,
+        missions: fresh.missions,
       };
     });
   };
@@ -1306,9 +1468,9 @@ export default function CreditCardApp() {
     if (!authReady) return undefined;
 
     if (!presenceTabIdRef.current) {
-      const savedTabId = sessionStorage.getItem('cc_v4_presence_tab');
+      const savedTabId = sessionStorage.getItem('cc_v5_presence_tab');
       presenceTabIdRef.current = savedTabId || `tab_${Math.random().toString(36).slice(2)}`;
-      sessionStorage.setItem('cc_v4_presence_tab', presenceTabIdRef.current);
+      sessionStorage.setItem('cc_v5_presence_tab', presenceTabIdRef.current);
     }
 
     const presencePath = presenceTabIdRef.current;
@@ -1360,7 +1522,7 @@ export default function CreditCardApp() {
     () => Object.fromEntries((sourceTransactions || []).map((tx) => [tx.id, tx])),
     [sourceTransactions]
   );
-  const simulatedNow = useMemo(() => getSimulatedNow(new Date(clockTick)), [clockTick, day]);
+  const simulatedNow = useMemo(() => getSimulatedNow(new Date(clockTick), day), [clockTick, day]);
   const referenceDateKey = useMemo(() => formatLocalDate(simulatedNow), [simulatedNow]);
   const liveDateTimeLabel = useMemo(() => formatLocalDateTime(simulatedNow), [simulatedNow]);
   const otherUser = currentUser ? getOtherUser(currentUser) : USERS[0];
@@ -1513,9 +1675,16 @@ export default function CreditCardApp() {
     if (!currentUser) return;
     const previousValue = submissions[txId]?.[currentUser]?.value ?? null;
     const shouldReward = previousValue !== value;
+    const previousPetState = shouldReward ? normalizePetState(petProfiles[currentUser], referenceDateKey) : null;
     setUndoStack((prev) => [
       ...prev,
-      { txId, user: currentUser, prev: submissions[txId]?.[currentUser] || null },
+      {
+        txId,
+        user: currentUser,
+        prev: submissions[txId]?.[currentUser] || null,
+        petUser: currentUser,
+        petPrev: previousPetState,
+      },
     ]);
 
     setSubmissions((prev) => ({
@@ -1535,10 +1704,13 @@ export default function CreditCardApp() {
         });
 
       if (shouldReward) {
-        updateActivePet((pet) => ({
-          ...pet,
-          coins: pet.coins + 1,
-        }));
+        updateActivePet((pet) =>
+          applyPetActionProgress(pet, {
+            dateKey: referenceDateKey,
+            kind: 'assign',
+            coinReward: 1,
+          }).pet
+        );
         addCoinPop(event);
       }
     } catch (err) {
@@ -1557,6 +1729,12 @@ export default function CreditCardApp() {
       else delete next[last.txId][last.user];
       return next;
     });
+    if (last.petPrev && last.petUser) {
+      setPetProfiles((prev) => ({
+        ...prev,
+        [last.petUser]: normalizePetState(last.petPrev, referenceDateKey),
+      }));
+    }
 
       try {
         if (last.prev) {
@@ -1575,13 +1753,73 @@ export default function CreditCardApp() {
   };
 
   const stepDay = () =>
-    set(ref(db, SHARED_DAY_OFFSET_KEY), day + 1).catch((err) => {
-      console.error('Failed to update shared simulated day:', err);
-    });
+    {
+      const nextDay = day + 1;
+      const nextDateKey = formatLocalDate(getSimulatedNow(new Date(clockTick), nextDay));
+      appendQuestDebugLog('step_day_clicked', {
+        previousDay: day,
+        nextDay,
+        referenceDateKey,
+        nextDateKey,
+      });
+      syncPetProfilesForDate(nextDateKey, 'step_day_sync_pet_profiles');
+      setSavedSimulatedDay(nextDay);
+      setDay(nextDay);
+      set(ref(db, SHARED_DAY_OFFSET_KEY), nextDay).catch((err) => {
+        console.error('Failed to update shared simulated day:', err);
+        appendQuestDebugLog('step_day_write_failed', {
+          nextDay,
+          message: err?.message || String(err),
+        });
+      });
+    };
   const resetDay = () => {
+    const resetDateKey = formatLocalDate(getSimulatedNow(new Date(clockTick), 0));
+    appendQuestDebugLog('reset_day_clicked', {
+      previousDay: day,
+      referenceDateKey,
+      resetDateKey,
+    });
+    syncPetProfilesForDate(resetDateKey, 'reset_day_sync_pet_profiles');
+    setSavedSimulatedDay(0);
+    setDay(0);
     set(ref(db, SHARED_DAY_OFFSET_KEY), 0).catch((err) => {
       console.error('Failed to reset shared simulated day:', err);
+      appendQuestDebugLog('reset_day_write_failed', {
+        message: err?.message || String(err),
+      });
     });
+  };
+
+  const copyQuestDebugLog = async () => {
+    const payload = [
+      `day=${day}`,
+      `referenceDateKey=${referenceDateKey}`,
+      `currentUser=${currentUser || ''}`,
+      ...questDebugLog,
+    ].join('\n');
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(payload);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = payload;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      appendQuestDebugLog('copied_debug_log', { lines: questDebugLog.length });
+    } catch (error) {
+      console.error('Failed to copy quest debug log:', error);
+      appendQuestDebugLog('copy_debug_log_failed', {
+        message: error?.message || String(error),
+      });
+    }
   };
 
   const clearCache = async () => {
@@ -1593,6 +1831,7 @@ export default function CreditCardApp() {
     setUndoStack([]);
     setShowMac(false);
     setShowPetDebug(false);
+    setShowPetMissions(false);
     setShowDevTools(false);
     setCurrentUser(null);
     setBreakdownUser(null);
@@ -1689,13 +1928,13 @@ export default function CreditCardApp() {
             </button>
             <span className="dev-sep">|</span>
             <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, coins: pet.coins + 5 }))}>
-              +5{'\u{1FA99}'}
+              +5 <span className="coin-inline" aria-hidden="true" />
             </button>
             <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, food: pet.food + 3 }))}>
               +3{'\u{1F356}'}
             </button>
             <button className="reset-btn" onClick={() => updateActivePet((pet) => ({ ...pet, coins: 0 }))}>
-              0{'\u{1FA99}'}
+              0 <span className="coin-inline" aria-hidden="true" />
             </button>
             <span className="dev-sep">|</span>
             <button
@@ -1708,6 +1947,9 @@ export default function CreditCardApp() {
             >
               pet {showPetDebug ? '\u25B2' : '\u25BC'}
             </button>
+            <button className="day-btn" onClick={copyQuestDebugLog}>
+              copy debug
+            </button>
             <span className="dev-sep">|</span>
             <button className="clear-btn" onClick={clearCache}>
               {'\u{1F5D1}'} clear
@@ -1715,33 +1957,56 @@ export default function CreditCardApp() {
           </div>
 
           {showPetDebug && (
-            <div className="pet-debug-row">
-              <span className="dev-label">pet type:</span>
-              {['classic', 'shiny', 'ember'].map((type) => (
-                <button
-                  key={type}
-                  className="day-btn"
-                  style={{
-                    background: petType === type ? 'rgba(96,165,250,0.2)' : '',
-                    borderColor: petType === type ? 'rgba(96,165,250,0.4)' : '',
-                  }}
-                  onClick={() => updateActivePet((pet) => ({ ...pet, petType: type }))}
-                >
-                  {type}
+            <>
+              <div className="pet-debug-row">
+                <span className="dev-label">pet type:</span>
+                {['classic', 'shiny', 'ember'].map((type) => (
+                  <button
+                    key={type}
+                    className="day-btn"
+                    style={{
+                      background: petType === type ? 'rgba(96,165,250,0.2)' : '',
+                      borderColor: petType === type ? 'rgba(96,165,250,0.4)' : '',
+                    }}
+                    onClick={() => updateActivePet((pet) => ({ ...pet, petType: type }))}
+                  >
+                    {type}
+                  </button>
+                ))}
+                <span className="dev-sep">|</span>
+                <span className="dev-label">xp:{petXp} lv:{petLevel}</span>
+                <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, xp: pet.xp + 30 }))}>
+                  +30xp
                 </button>
-              ))}
-              <span className="dev-sep">|</span>
-              <span className="dev-label">xp:{petXp} lv:{petLevel}</span>
-              <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, xp: pet.xp + 30 }))}>
-                +30xp
-              </button>
-              <button className="reset-btn" onClick={() => updateActivePet((pet) => ({ ...pet, xp: 0 }))}>
-                0xp
-              </button>
-              <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, hp: 100 }))}>
-                +hp
-              </button>
-            </div>
+                <button className="reset-btn" onClick={() => updateActivePet((pet) => ({ ...pet, xp: 0 }))}>
+                  0xp
+                </button>
+                <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, hp: 100 }))}>
+                  +hp
+                </button>
+                <button className="reset-btn" onClick={resetActivePetQuests}>
+                  reset quests
+                </button>
+              </div>
+              <div
+                style={{
+                  marginTop: '10px',
+                  maxHeight: '180px',
+                  overflowY: 'auto',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '10px',
+                  padding: '10px',
+                  background: 'rgba(5,10,20,0.55)',
+                  fontSize: '11px',
+                  lineHeight: 1.45,
+                  color: 'rgba(255,255,255,0.78)',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {questDebugLog.length ? questDebugLog.join('\n') : 'No quest debug entries yet.'}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -1847,6 +2112,11 @@ export default function CreditCardApp() {
         level={petLevel}
         xp={xpThisLevel}
         xpNeeded={xpNeeded}
+        streak={streak}
+        mood={mood}
+        missions={missions}
+        showMissions={showPetMissions}
+        onToggleMissions={() => setShowPetMissions((v) => !v)}
         onBuyFood={buyFood}
         onFeedPet={feedPet}
         petType={petType}

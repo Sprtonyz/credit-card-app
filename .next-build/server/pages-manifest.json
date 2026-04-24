@@ -1,0 +1,9 @@
+{
+  "/_error": "pages/_error.js",
+  "/admin/upload": "pages/admin/upload.html",
+  "/api/send-notification-email": "pages/api/send-notification-email.js",
+  "/": "pages/index.html",
+  "/_document": "pages/_document.js",
+  "/_app": "pages/_app.js",
+  "/404": "pages/404.html"
+}

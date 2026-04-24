@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import ImageUploader from './ImageUploader';
 import ImageReviewModal from './ImageReviewModal';
+import TransactionSelectionReview from './TransactionSelectionReview';
 import { processImages } from '../utils/imageProcessor';
-import { detectDuplicatesAcrossImages, getKeptTransactionIndices } from '../utils/duplicateDetection';
+import { detectDuplicatesAcrossImages } from '../utils/duplicateDetection';
 import { mergeTransactions, prepareForFirebase } from '../utils/transactionMerger';
 import { ensureAnonymousAuth } from '../utils/firebaseAuth';
 import {
+  addTransactions,
   getAllTransactions,
   getAllSubmissions,
   getPresenceEntries,
@@ -15,6 +17,7 @@ import {
   deleteTransactionsByIds,
   deleteProcessedLogs,
   clearUploadedData,
+  getTodayDate,
 } from '../services/firebaseService';
 import { formatLocalDate, formatLocalDateTime } from '../utils/simulationDate';
 
@@ -35,6 +38,55 @@ function buildAllTransactions(processedImages) {
   });
 
   return allTransactions;
+}
+
+function buildManualReviewItems(processedImages, duplicateDetection, existingTransactions, processedLogs = {}) {
+  const allTransactions = buildAllTransactions(processedImages);
+  const duplicateIndices = new Set();
+
+  (duplicateDetection?.duplicates || []).forEach((group) => {
+    const items = Array.isArray(group) ? group : group?.group || [];
+    items.forEach((item) => duplicateIndices.add(item.index));
+  });
+
+  const reviewItems = allTransactions.map((tx, index) => {
+    let reason = null;
+    let defaultSelected = true;
+
+    if (duplicateIndices.has(index)) {
+      reason = 'duplicate_in_upload';
+      defaultSelected = false;
+    } else {
+      const singleMergeResult = mergeTransactions([tx], existingTransactions, processedLogs);
+      if (singleMergeResult.toAdd.length === 0 && singleMergeResult.skipped.length > 0) {
+        reason = singleMergeResult.skipped[0].reason;
+        defaultSelected = false;
+      }
+    }
+
+    return {
+      index,
+      transaction: tx,
+      imageName: tx.imageName,
+      reason,
+      defaultSelected,
+    };
+  });
+
+  return {
+    items: reviewItems,
+    summary: {
+      total: reviewItems.length,
+      defaultSelected: reviewItems.filter((item) => item.defaultSelected).length,
+      duplicateInUpload: reviewItems.filter((item) => item.reason === 'duplicate_in_upload').length,
+      skippedExisting: reviewItems.filter(
+        (item) =>
+          item.reason === 'already_exists_overlap' ||
+          item.reason === 'already_exists_yesterday' ||
+          item.reason === 'already_processed'
+      ).length,
+    },
+  };
 }
 
 function OcrDiagnostics({ processedImages }) {
@@ -368,6 +420,7 @@ export default function AdminUploadPage() {
   const [processedImages, setProcessedImages] = useState([]);
   const [ocrPreviewImages, setOcrPreviewImages] = useState([]);
   const [duplicateDetection, setDuplicateDetection] = useState(null);
+  const [manualReview, setManualReview] = useState(null);
   const [lastMergeReport, setLastMergeReport] = useState(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
@@ -528,10 +581,11 @@ export default function AdminUploadPage() {
 
   const handleImagesSelected = (files) => {
     setUploadedFiles(files);
+    setManualReview(null);
     setError(null);
   };
 
-  const handleConfirmTransactions = async (keptIndices, processedOverride = processedImages) => {
+  const handleConfirmTransactions = async (selectedIndices = null, processedOverride = processedImages) => {
     if (!authReady) return;
     setIsLoading(true);
     setStep('processing');
@@ -539,8 +593,8 @@ export default function AdminUploadPage() {
     try {
       let allTransactions = buildAllTransactions(processedOverride);
 
-      if (keptIndices.length > 0) {
-        allTransactions = allTransactions.filter((_, idx) => keptIndices.includes(idx));
+      if (Array.isArray(selectedIndices)) {
+        allTransactions = allTransactions.filter((_, idx) => selectedIndices.includes(idx));
       }
 
       const existingTransactions = await getAllTransactions();
@@ -593,6 +647,7 @@ export default function AdminUploadPage() {
         skipped: mergeResult.skipped.length,
         summary: mergeResult.summary,
       });
+      setManualReview(null);
       setLastUploadUndo(undoPayload);
       setStep('success');
     } catch (err) {
@@ -617,8 +672,13 @@ export default function AdminUploadPage() {
     setError(null);
 
     try {
-    const { results, detection } = await runOcrPipeline();
-      await handleConfirmTransactions(getKeptTransactionIndices(detection), results);
+      const { results, detection } = await runOcrPipeline();
+      const [existingTransactions, processedLogs] = await Promise.all([
+        getAllTransactions(),
+        getAllProcessedLogs(),
+      ]);
+      setManualReview(buildManualReviewItems(results, detection, existingTransactions, processedLogs || {}));
+      setStep('review');
     } catch (err) {
       console.error('Error processing images:', err);
       setError(err.message || 'Failed to process images. Please try again.');
@@ -657,6 +717,7 @@ export default function AdminUploadPage() {
     setUploadedFiles([]);
     setProcessedImages([]);
     setDuplicateDetection(null);
+    setManualReview(null);
     setLastMergeReport(null);
     setProgress(0);
     setError(null);
@@ -1159,20 +1220,30 @@ export default function AdminUploadPage() {
                 </div>
                 <div className="bg-slate-900 rounded p-3 text-center">
                   <p className="text-2xl font-bold text-yellow-400">
-                    {duplicateDetection.summary.flaggedGroups}
+                    0
                   </p>
                   <p className="text-xs text-slate-400">Flagged</p>
                 </div>
               </div>
             </div>
 
-            <ImageReviewModal
-              duplicates={duplicateDetection.duplicates}
-              flagged={[]}
-              onConfirm={handleConfirmTransactions}
-              onCancel={() => setStep('upload')}
-              isLoading={isLoading}
-            />
+            {manualReview ? (
+              <TransactionSelectionReview
+                items={manualReview.items}
+                summary={manualReview.summary}
+                onConfirm={(selectedIndices) => handleConfirmTransactions(selectedIndices, processedImages)}
+                onCancel={() => setStep('upload')}
+                isLoading={isLoading}
+              />
+            ) : (
+              <ImageReviewModal
+                duplicates={duplicateDetection.duplicates}
+                flagged={[]}
+                onConfirm={handleConfirmTransactions}
+                onCancel={() => setStep('upload')}
+                isLoading={isLoading}
+              />
+            )}
           </>
         )}
 
@@ -1224,7 +1295,7 @@ export default function AdminUploadPage() {
 
             <div className="flex gap-3 mt-5">
               <button
-                onClick={() => handleConfirmTransactions([], ocrPreviewImages)}
+                onClick={() => handleConfirmTransactions(null, ocrPreviewImages)}
                 disabled={isLoading}
                 className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
               >

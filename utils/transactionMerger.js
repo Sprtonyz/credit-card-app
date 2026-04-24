@@ -27,6 +27,53 @@ function tokenizeMerchant(value) {
     .filter((token) => token && !MERCHANT_STOP_WORDS.has(token));
 }
 
+function normalizeMerchantToken(token) {
+  return String(token || '')
+    .toLowerCase()
+    .replace(/0/g, 'o')
+    .replace(/[1|]/g, 'i')
+    .replace(/5/g, 's')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function getEditDistance(a, b) {
+  const left = String(a || '');
+  const right = String(b || '');
+  const rows = Array.from({ length: left.length + 1 }, () => new Array(right.length + 1).fill(0));
+
+  for (let i = 0; i <= left.length; i += 1) rows[i][0] = i;
+  for (let j = 0; j <= right.length; j += 1) rows[0][j] = j;
+
+  for (let i = 1; i <= left.length; i += 1) {
+    for (let j = 1; j <= right.length; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return rows[left.length][right.length];
+}
+
+function tokensLookSimilar(a, b) {
+  const left = normalizeMerchantToken(a);
+  const right = normalizeMerchantToken(b);
+
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.includes(right) || right.includes(left)) return true;
+
+  const maxLength = Math.max(left.length, right.length);
+  const editDistance = getEditDistance(left, right);
+
+  if (maxLength <= 4) return editDistance === 1;
+  if (maxLength <= 8) return editDistance <= 1;
+  return editDistance <= 2;
+}
+
 function normalizeAmountKey(value) {
   const amount = Number.parseFloat(value);
   if (!Number.isFinite(amount)) return null;
@@ -49,11 +96,19 @@ function buildTransactionKey(tx) {
   return [dateKey, amountKey, merchantKey].join('|');
 }
 
+function getReferenceDateKey(tx) {
+  return tx.uploadedDay || tx.date || null;
+}
+
 function haveComparableDates(newTx, existingTx) {
-  // Pending rows are stored with the upload day, so exact date equality is not
-  // a reliable overlap signal across separate screenshot uploads.
+  // Be conservative with pending rows so recurring merchants with the same
+  // amount on different days are not auto-collapsed as duplicates.
   if (newTx.isPending || existingTx.isPending) {
-    return true;
+    const newReferenceDate = getReferenceDateKey(newTx);
+    const existingReferenceDate = getReferenceDateKey(existingTx);
+
+    if (!newReferenceDate || !existingReferenceDate) return false;
+    return newReferenceDate === existingReferenceDate;
   }
 
   if (newTx.date && existingTx.date) {
@@ -75,10 +130,24 @@ function merchantLooksSame(newTx, existingTx) {
   const existingTokens = tokenizeMerchant(existingTx.merchant);
   if (newTokens.length === 0 || existingTokens.length === 0) return false;
 
-  const sharedTokens = newTokens.filter((token) => existingTokens.includes(token));
+  const sharedTokens = newTokens.filter((token) =>
+    existingTokens.some((existingToken) => tokensLookSimilar(token, existingToken))
+  );
   const shorterLength = Math.min(newTokens.length, existingTokens.length);
 
-  return sharedTokens.length >= 2 && sharedTokens.length >= shorterLength - 1;
+  if (sharedTokens.length >= 2 && sharedTokens.length >= shorterLength - 1) {
+    return true;
+  }
+
+  const normalizedNew = normalizeMerchantToken(newMerchant);
+  const normalizedExisting = normalizeMerchantToken(existingMerchant);
+  if (!normalizedNew || !normalizedExisting) return false;
+
+  const maxLength = Math.max(normalizedNew.length, normalizedExisting.length);
+  const editDistance = getEditDistance(normalizedNew, normalizedExisting);
+
+  if (maxLength <= 10) return editDistance <= 2;
+  return editDistance <= 3;
 }
 
 function transactionExists(newTx, existingTxs) {

@@ -45,6 +45,13 @@ function normalizeAmountKey(value) {
   return Math.abs(amount).toFixed(2);
 }
 
+function buildMerchantAmountKey(tx) {
+  const amountKey = normalizeAmountKey(tx?.amount);
+  const merchantKey = normalizeText(tx?.merchant);
+  if (!amountKey || !merchantKey) return null;
+  return `${merchantKey}|${amountKey}`;
+}
+
 function buildTransactionKey(tx) {
   const amountKey = normalizeAmountKey(tx.amount);
   const merchantKey = normalizeText(tx.merchant);
@@ -53,6 +60,27 @@ function buildTransactionKey(tx) {
   if (!amountKey || !merchantKey) return null;
 
   return [dateKey || 'no-date', amountKey, merchantKey].join('|');
+}
+
+function getContextNeighbors(tx) {
+  const before = Array.isArray(tx?.dedupeNeighbors?.before)
+    ? tx.dedupeNeighbors.before.filter(Boolean)
+    : [];
+  const after = Array.isArray(tx?.dedupeNeighbors?.after)
+    ? tx.dedupeNeighbors.after.filter(Boolean)
+    : [];
+
+  return { before, after };
+}
+
+function hasContextOverlap(tx1, tx2) {
+  const context1 = getContextNeighbors(tx1);
+  const context2 = getContextNeighbors(tx2);
+
+  const beforeOverlap = context1.before.some((value) => context2.before.includes(value));
+  const afterOverlap = context1.after.some((value) => context2.after.includes(value));
+
+  return beforeOverlap || afterOverlap;
 }
 
 function getDuplicateMatch(tx1, tx2, merchantThreshold = 90) {
@@ -70,6 +98,15 @@ function getDuplicateMatch(tx1, tx2, merchantThreshold = 90) {
 
   if (date1 && date2 && date1 !== date2) {
     return null;
+  }
+
+  if (!date1 || !date2) {
+    // When OCR cannot confidently recover a date, only auto-collapse rows if
+    // they come from the same source line or their surrounding neighbors look
+    // like the same overlapping screenshot region.
+    if (!isSameSource(tx1, tx2) && !hasContextOverlap(tx1, tx2)) {
+      return null;
+    }
   }
 
   if (tx1.category && tx2.category) {
@@ -145,11 +182,31 @@ export function detectDuplicates(transactions) {
 export function detectDuplicatesAcrossImages(processedImages) {
   const allTransactions = [];
   const imageMap = {};
+  const CONTEXT_WINDOW = 2;
 
   processedImages.forEach((image, imageIdx) => {
-    (image.transactions || []).forEach((tx) => {
+    const imageTransactions = image.transactions || [];
+
+    imageTransactions.forEach((tx, txIdx) => {
       const idx = allTransactions.length;
-      allTransactions.push(tx);
+      const before = [];
+      const after = [];
+
+      for (let offset = 1; offset <= CONTEXT_WINDOW; offset += 1) {
+        const previousTx = imageTransactions[txIdx - offset];
+        const nextTx = imageTransactions[txIdx + offset];
+
+        if (previousTx) before.push(buildMerchantAmountKey(previousTx));
+        if (nextTx) after.push(buildMerchantAmountKey(nextTx));
+      }
+
+      allTransactions.push({
+        ...tx,
+        dedupeNeighbors: {
+          before,
+          after,
+        },
+      });
       imageMap[idx] = {
         imageIndex: imageIdx,
         imageName: image.fileName,

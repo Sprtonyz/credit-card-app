@@ -39,7 +39,7 @@ const PRESENCE_ROOT = 'cc_v5_presence';
 const PRESENCE_TTL_MS = 12000;
 const APP_STATE_ROOT = 'cc_v5_app_state';
 const SHARED_DAY_OFFSET_KEY = `${APP_STATE_ROOT}/simulatedDayOffset`;
-const APP_VERSION = '5.2';
+const APP_VERSION = '5.6';
 const VERSION_KEY = 'cc_version';
 
 const DEMO_DAYS = {

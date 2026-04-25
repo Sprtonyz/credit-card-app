@@ -1357,6 +1357,11 @@ body {
   flex-wrap: wrap;
 }
 
+.pet-scale-input {
+  width: 96px;
+  accent-color: #60a5fa;
+}
+
 .coin-inline {
   display: inline-block;
   width: 0.72rem;

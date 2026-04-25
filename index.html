@@ -182,6 +182,7 @@
         .shop-btn.feed:not(:disabled):active{background:rgba(74,222,128,0.2);}
         /* Pet debug row */
         .pet-debug-row{background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.04);padding:0.22rem 0.75rem;display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;}
+        .pet-scale-input{width:92px;accent-color:#60a5fa;}
         @keyframes xpPop{0%{transform:scale(1)}40%{transform:scale(1.3);color:#c4b5fd}100%{transform:scale(1)}}
         /* Level-up VFX */
         .levelup-overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:600;}
@@ -493,11 +494,11 @@ function TxCard({tx,txKey,simDelta,currentUser,subs,onAssign,collapsing,nowMs}){
 /* ── PetCanvas — pixel pet (cat/dog/duck) walking with HP bar ── */
 const PETS_DATA={
     cat:{
-        pal:{1:'#f59e0b',2:'#b45309',3:'#fde68a',4:'#fda4af',5:'#1a1040'},
-        frames:[
-            [[0,0,1,1,0,0,0,0],[0,2,0,0,2,0,0,0],[0,1,1,1,1,1,0,0],[1,1,5,1,5,1,1,0],[1,1,3,4,3,1,1,0],[1,3,1,1,1,3,1,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[2,0,0,0,0,0,2,0],[2,0,0,0,0,0,2,0]],
-            [[0,0,1,1,0,0,0,0],[0,2,0,0,2,0,0,0],[0,1,1,1,1,1,0,0],[1,1,5,1,5,1,1,0],[1,1,3,4,3,1,1,0],[1,3,1,1,1,3,1,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[0,2,1,1,1,2,0,0],[0,2,0,0,2,0,0,0],[0,0,2,2,0,0,0,0]],
-        ],
+        kind:'image',
+        width:208,
+        height:229,
+        frameDuration:500,
+        frames:['./sprite/1.png','./sprite/2.png','./sprite/3.png'],
     },
     dog:{
         pal:{1:'#d97706',2:'#92400e',3:'#fde68a',4:'#fda4af',5:'#1a1040'},
@@ -515,32 +516,70 @@ const PETS_DATA={
     },
 };
 
-function PetCanvas({petType,hp}){
+const PET_IMAGE_CACHE={};
+
+function getPetRenderMetrics(petType,scalePercent){
+    const pet=PETS_DATA[petType]||PETS_DATA.cat;
+    if(pet.kind==='image'){
+        const pct=Math.max(5,scalePercent||25)/100;
+        const drawWidth=Math.max(1,Math.round(pet.width*pct));
+        const drawHeight=Math.max(1,Math.round(pet.height*pct));
+        const canvasHeight=Math.max(54,drawHeight+14);
+        return{drawWidth,drawHeight,canvasHeight,groundY:drawHeight+8};
+    }
+    const pixelSize=3;
+    const rows=pet.frames[0]||[];
+    const drawWidth=(rows[0]?.length||8)*pixelSize;
+    const drawHeight=rows.length*pixelSize;
+    const canvasHeight=Math.max(54,drawHeight+14);
+    return{drawWidth,drawHeight,canvasHeight,groundY:drawHeight+8,pixelSize};
+}
+
+function getPetFrameImage(src){
+    if(!PET_IMAGE_CACHE[src]){
+        const img=new Image();
+        const entry={img,loaded:false,error:false};
+        img.onload=()=>{entry.loaded=true;};
+        img.onerror=()=>{entry.error=true;};
+        img.src=src;
+        PET_IMAGE_CACHE[src]=entry;
+    }
+    return PET_IMAGE_CACHE[src];
+}
+
+function PetCanvas({petType,hp,scalePercent}){
     const cvRef=useRef(null);
-    const st=useRef({x:30,dir:1,frame:0,tick:0});
+    const st=useRef({x:30,dir:1,frame:0,lastTs:0,frameElapsed:0});
     const hpRef=useRef(hp);
     const typeRef=useRef(petType);
+    const scaleRef=useRef(scalePercent);
     useEffect(()=>{hpRef.current=hp;},[hp]);
     useEffect(()=>{typeRef.current=petType;},[petType]);
+    useEffect(()=>{scaleRef.current=scalePercent;},[scalePercent]);
 
     useEffect(()=>{
         const cv=cvRef.current;
         if(!cv)return;
         const ctx=cv.getContext('2d');
-        const S=3,SW=8,SH=12;
 
         function resize(){
             cv.width=cv.parentElement?.clientWidth||window.innerWidth;
-            cv.height=SH*S+14; // 14 = 5 (HP bar area) + 9 (ground + pad)
+            cv.height=getPetRenderMetrics(typeRef.current,scaleRef.current).canvasHeight;
         }
         resize();
         window.addEventListener('resize',resize);
 
         let raf;
-        function loop(){
+        function loop(now){
             const s=st.current;
             const pet=PETS_DATA[typeRef.current]||PETS_DATA.cat;
+            s.frame=s.frame%pet.frames.length;
             const curHp=hpRef.current??60;
+            const metrics=getPetRenderMetrics(typeRef.current,scaleRef.current);
+            if(cv.height!==metrics.canvasHeight)cv.height=metrics.canvasHeight;
+            if(!s.lastTs)s.lastTs=now;
+            const delta=Math.min(50,now-s.lastTs);
+            s.lastTs=now;
             ctx.clearRect(0,0,cv.width,cv.height);
 
             // HP bar (top, 3px)
@@ -553,27 +592,54 @@ function PetCanvas({petType,hp}){
 
             // Ground line
             ctx.fillStyle='rgba(255,255,255,0.05)';
-            ctx.fillRect(0,SH*S+8,cv.width,1);
+            ctx.fillRect(0,metrics.groundY,cv.width,1);
 
             // Walk logic
-            s.tick++;
-            if(s.tick%6===0){
-                s.x+=s.dir;
-                if(s.tick%12===0) s.frame=1-s.frame;
-                const maxX=cv.width-SW*S-12;
-                if(s.x>=maxX){s.x=maxX;s.dir=-1;}
-                else if(s.x<=12){s.x=12;s.dir=1;}
+            const walkSpeed=pet.kind==='image'?24:10;
+            s.x+=s.dir*walkSpeed*delta/1000;
+            if(pet.kind==='image'){
+                s.frameElapsed+=delta;
+                if(s.frameElapsed>=pet.frameDuration){
+                    s.frame=(s.frame+1)%pet.frames.length;
+                    s.frameElapsed=0;
+                }
+            }else{
+                s.frameElapsed+=delta;
+                if(s.frameElapsed>=180){
+                    s.frame=1-s.frame;
+                    s.frameElapsed=0;
+                }
+            }
+            const maxX=Math.max(12,cv.width-metrics.drawWidth-12);
+            if(s.x>=maxX){s.x=maxX;s.dir=-1;}
+            else if(s.x<=12){s.x=12;s.dir=1;}
+
+            if(pet.kind==='image'){
+                pet.frames.forEach(getPetFrameImage);
             }
 
             // Draw sprite (offset 5px down for HP bar)
             ctx.save();
-            if(s.dir<0){ctx.translate(s.x+SW*S,5);ctx.scale(-1,1);}
+            if(s.dir<0){ctx.translate(s.x+metrics.drawWidth,5);ctx.scale(-1,1);}
             else{ctx.translate(s.x,5);}
-            const rows=pet.frames[s.frame];
-            for(let r=0;r<rows.length;r++){
-                for(let c=0;c<rows[r].length;c++){
-                    const p=rows[r][c];
-                    if(p&&pet.pal[p]){ctx.fillStyle=pet.pal[p];ctx.fillRect(c*S,r*S,S,S);}
+            if(pet.kind==='image'){
+                const frameEntry=getPetFrameImage(pet.frames[s.frame]);
+                if(frameEntry.loaded){
+                    ctx.drawImage(frameEntry.img,0,0,metrics.drawWidth,metrics.drawHeight);
+                }else{
+                    ctx.fillStyle='rgba(96,165,250,0.16)';
+                    ctx.fillRect(0,0,metrics.drawWidth,metrics.drawHeight);
+                    ctx.strokeStyle='rgba(96,165,250,0.35)';
+                    ctx.strokeRect(0.5,0.5,Math.max(1,metrics.drawWidth-1),Math.max(1,metrics.drawHeight-1));
+                }
+            }else{
+                const rows=pet.frames[s.frame];
+                const pixelSize=metrics.pixelSize||3;
+                for(let r=0;r<rows.length;r++){
+                    for(let c=0;c<rows[r].length;c++){
+                        const p=rows[r][c];
+                        if(p&&pet.pal[p]){ctx.fillStyle=pet.pal[p];ctx.fillRect(c*pixelSize,r*pixelSize,pixelSize,pixelSize);}
+                    }
                 }
             }
             ctx.restore();
@@ -618,6 +684,7 @@ function App(){
     const [petHp,setPetHp]=useState(60);
     const [petXp,setPetXp]=useState(0);
     const [petType,setPetType]=useState('cat');
+    const [petScalePct,setPetScalePct]=useState(25);
     const [coinPops,setCoinPops]=useState([]);
     const [showPetDebug,setShowPetDebug]=useState(false);
     const [showDevTools,setShowDevTools]=useState(false);
@@ -902,6 +969,10 @@ function App(){
     const xpForLevel=n=>n*n*10;
     const xpThisLevel=petXp-xpForLevel(petLevel-1);
     const xpNeeded=xpForLevel(petLevel)-xpForLevel(petLevel-1);
+    const petMetrics=getPetRenderMetrics(petType,petScalePct);
+    const petFooterHeight=petMetrics.canvasHeight;
+    const shopBarBottom=petFooterHeight;
+    const appBottomPadding=petFooterHeight+64;
 
     const undo=()=>{
         if(!undoStack.length)return;
@@ -1116,7 +1187,25 @@ connected===null?'connecting…':connected?'synced 5.0':'offline'
                 React.createElement('button',{className:'reset-btn',title:'reset xp',
                     onClick:()=>petRef.child(user+'/xp').set(0)},'0xp'),
                 React.createElement('button',{className:'day-btn',title:'fill HP',
-                    onClick:()=>petRef.child(user+'/hp').set(100)},'+hp')
+                    onClick:()=>petRef.child(user+'/hp').set(100)},'+hp'),
+                React.createElement('span',{className:'dev-sep'},'|'),
+                React.createElement('span',{className:'dev-label'},'size:'+petScalePct+'%'),
+                React.createElement('button',{className:'reset-btn',title:'shrink pet',
+                    onClick:()=>setPetScalePct(v=>Math.max(5,v-5))},'-5%'),
+                React.createElement('input',{
+                    className:'pet-scale-input',
+                    type:'range',
+                    min:'5',
+                    max:'100',
+                    step:'5',
+                    value:String(petScalePct),
+                    onChange:e=>setPetScalePct(Math.max(5,Math.min(100,Number(e.target.value)||25)))
+                }),
+                React.createElement('button',{className:'day-btn',title:'grow pet',
+                    onClick:()=>setPetScalePct(v=>Math.min(100,v+5))},'+5%'),
+                React.createElement('button',{className:'reset-btn',title:'reset pet size',
+                    onClick:()=>setPetScalePct(25)},'25%'),
+                React.createElement('span',{className:'dev-label'},petMetrics.drawWidth+'x'+petMetrics.drawHeight)
             )
         ),
 
@@ -1158,7 +1247,7 @@ connected===null?'connecting…':connected?'synced 5.0':'offline'
         )),
 
         // Shop bar — horizontal, centered, pinned above pet footer
-        React.createElement('div',{className:'shop-bar'},
+        React.createElement('div',{className:'shop-bar',style:{bottom:shopBarBottom+'px'}},
             React.createElement('span',{className:'shop-coins'},'🪙 '+myCoins),
             React.createElement('span',{className:'shop-food'},'🍖 ×'+myFood),
             React.createElement('div',{className:'shop-divider-v'}),
@@ -1186,7 +1275,7 @@ connected===null?'connecting…':connected?'synced 5.0':'offline'
                 'Lv.'+petLevel+' · '+xpThisLevel+'/'+xpNeeded+' xp')
         ),
 
-        React.createElement('div',{className:'app'},
+        React.createElement('div',{className:'app',style:{paddingBottom:appBottomPadding+'px'}},
             React.createElement('div',{className:'app-header'},
                 React.createElement('h1',{className:'app-title'},'💳 Transactions'),
                 React.createElement('div',{className:'header-right'},
@@ -1233,8 +1322,8 @@ connected===null?'connecting…':connected?'synced 5.0':'offline'
         ),
 
         // Pixel pet footer — walks back and forth
-        React.createElement('div',{className:'pet-footer'},
-            React.createElement(PetCanvas,{petType,hp:petHp})
+        React.createElement('div',{className:'pet-footer',style:{height:petFooterHeight+'px'}},
+            React.createElement(PetCanvas,{petType,hp:petHp,scalePercent:petScalePct})
         )
     );
 }

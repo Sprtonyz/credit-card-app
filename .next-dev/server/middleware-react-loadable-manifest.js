@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST={"admin\\upload.js -> ../../components/AdminUploadPage":{"id":"admin\\upload.js -> ../../components/AdminUploadPage","files":["static/chunks/components_AdminUploadPage_jsx.js"]},"index.js -> ../components/CreditCardApp":{"id":"index.js -> ../components/CreditCardApp","files":["static/chunks/components_CreditCardApp_jsx.js"]}}
+self.__REACT_LOADABLE_MANIFEST={"index.js -> ../components/CreditCardApp":{"id":"index.js -> ../components/CreditCardApp","files":["static/chunks/components_CreditCardApp_jsx.js"]}}

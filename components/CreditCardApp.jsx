@@ -1673,8 +1673,24 @@ export default function CreditCardApp() {
 
   const handleAssign = async (txId, value, event) => {
     if (!currentUser) return;
-    const previousValue = submissions[txId]?.[currentUser]?.value ?? null;
-    const shouldReward = previousValue !== value;
+    const txSubmissions = submissions[txId] || {};
+    const currentSubmission = txSubmissions[currentUser] || null;
+    const previousValue = currentSubmission?.value ?? null;
+    const previousStatus = getSubmissionStatus(txSubmissions);
+    const ts = Date.now();
+    const nextSubmission = {
+      ...(currentSubmission || {}),
+      day,
+      dateKey: referenceDateKey,
+      ts,
+      value,
+    };
+    const nextStatus = getSubmissionStatus({
+      ...txSubmissions,
+      [currentUser]: nextSubmission,
+    });
+    const earnedCloseReward = !previousStatus.resolved && nextStatus.resolved;
+    const shouldReward = previousValue !== value || earnedCloseReward;
     const previousPetState = shouldReward ? normalizePetState(petProfiles[currentUser], referenceDateKey) : null;
     setUndoStack((prev) => [
       ...prev,
@@ -1691,7 +1707,7 @@ export default function CreditCardApp() {
       ...prev,
       [txId]: {
         ...prev[txId],
-        [currentUser]: { value, ts: Date.now() },
+        [currentUser]: nextSubmission,
       },
     }));
 
@@ -1699,7 +1715,7 @@ export default function CreditCardApp() {
         await set(ref(db, `submissions/${txId}/${currentUser}`), {
           day,
           dateKey: referenceDateKey,
-          ts: Date.now(),
+          ts,
           value,
         });
 

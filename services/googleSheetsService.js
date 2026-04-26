@@ -11,27 +11,55 @@ function firstAvailableEnv(names) {
   return null;
 }
 
+function getServiceAccountCredentials() {
+  const jsonValue = firstAvailableEnv(['GOOGLE_SERVICE_ACCOUNT_JSON', 'GOOGLE_CREDENTIALS_JSON']);
+  if (jsonValue) {
+    try {
+      const parsed = JSON.parse(jsonValue);
+      const clientEmail = parsed?.client_email || parsed?.email || null;
+      const privateKey = parsed?.private_key || parsed?.key || null;
+
+      if (!clientEmail || !privateKey) {
+        throw new Error(
+          'GOOGLE_SERVICE_ACCOUNT_JSON must include client_email and private_key.'
+        );
+      }
+
+      return {
+        clientEmail,
+        privateKey,
+      };
+    } catch (error) {
+      throw new Error(
+        `Invalid GOOGLE_SERVICE_ACCOUNT_JSON: ${error?.message || 'could not parse JSON.'}`
+      );
+    }
+  }
+
+  const clientEmail = firstAvailableEnv(['GOOGLE_SERVICE_ACCOUNT_EMAIL', 'GOOGLE_CLIENT_EMAIL']);
+  const privateKey = firstAvailableEnv([
+    'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY',
+    'GOOGLE_PRIVATE_KEY',
+  ]);
+
+  if (!clientEmail || !privateKey) {
+    throw new Error(
+      'Missing Google service account credentials. Set GOOGLE_SERVICE_ACCOUNT_JSON, or set GOOGLE_SERVICE_ACCOUNT_EMAIL/GOOGLE_CLIENT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY/GOOGLE_PRIVATE_KEY in Vercel.'
+    );
+  }
+
+  return {
+    clientEmail,
+    privateKey,
+  };
+}
+
 function getSpreadsheetId() {
   return process.env.GOOGLE_SHEETS_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
 }
 
 function getGoogleAuth() {
-  const clientEmail = firstAvailableEnv(['GOOGLE_SERVICE_ACCOUNT_EMAIL', 'GOOGLE_CLIENT_EMAIL']);
-  if (!clientEmail) {
-    throw new Error(
-      'Missing Google service account email. Set GOOGLE_SERVICE_ACCOUNT_EMAIL or GOOGLE_CLIENT_EMAIL in Vercel.'
-    );
-  }
-
-  const privateKey = firstAvailableEnv([
-    'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY',
-    'GOOGLE_PRIVATE_KEY',
-  ]);
-  if (!privateKey) {
-    throw new Error(
-      'Missing Google service account private key. Set GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY or GOOGLE_PRIVATE_KEY in Vercel.'
-    );
-  }
+  const { clientEmail, privateKey } = getServiceAccountCredentials();
 
   return new google.auth.JWT({
     email: clientEmail,

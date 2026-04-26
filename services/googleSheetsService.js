@@ -3,12 +3,12 @@ import { google } from 'googleapis';
 const DEFAULT_SPREADSHEET_ID = '1GJj79D8DovXaocK1o_9mVBmy5H5yCVuKWCZNc62jdVc';
 const SOURCE_SHEET_NAME = 'Sheet1';
 
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
+function firstAvailableEnv(names) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
   }
-  return value;
+  return null;
 }
 
 function getSpreadsheetId() {
@@ -16,12 +16,26 @@ function getSpreadsheetId() {
 }
 
 function getGoogleAuth() {
-  const clientEmail = requiredEnv('GOOGLE_SERVICE_ACCOUNT_EMAIL');
-  const privateKey = requiredEnv('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY').replace(/\\n/g, '\n');
+  const clientEmail = firstAvailableEnv(['GOOGLE_SERVICE_ACCOUNT_EMAIL', 'GOOGLE_CLIENT_EMAIL']);
+  if (!clientEmail) {
+    throw new Error(
+      'Missing Google service account email. Set GOOGLE_SERVICE_ACCOUNT_EMAIL or GOOGLE_CLIENT_EMAIL in Vercel.'
+    );
+  }
+
+  const privateKey = firstAvailableEnv([
+    'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY',
+    'GOOGLE_PRIVATE_KEY',
+  ]);
+  if (!privateKey) {
+    throw new Error(
+      'Missing Google service account private key. Set GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY or GOOGLE_PRIVATE_KEY in Vercel.'
+    );
+  }
 
   return new google.auth.JWT({
     email: clientEmail,
-    key: privateKey,
+    key: privateKey.replace(/\\n/g, '\n'),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
 }

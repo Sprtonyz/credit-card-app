@@ -29,6 +29,11 @@
       "static/chunks/webpack.js",
       "static/chunks/main.js",
       "static/chunks/pages/admin/statement-import.js"
+    ],
+    "/admin/upload": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/admin/upload.js"
     ]
   },
   "ampFirstPages": []

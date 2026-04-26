@@ -4,6 +4,10 @@ import ImageUploader from './ImageUploader';
 import ImageReviewModal from './ImageReviewModal';
 import TransactionSelectionReview from './TransactionSelectionReview';
 import { processImages } from '../utils/imageProcessor';
+import {
+  enrichProcessedLogsWithFingerprints,
+  findProcessedLogMatch,
+} from '../utils/importFingerprint';
 import { detectDuplicatesAcrossImages } from '../utils/duplicateDetection';
 import { mergeTransactions, prepareForFirebase } from '../utils/transactionMerger';
 import {
@@ -12,8 +16,8 @@ import {
 import { useAdminDashboardData } from '../hooks/useAdminDashboardData';
 import {
   addTransactions,
+  appendImportAuditEntry,
   getAllTransactions,
-  getAllSubmissions,
   saveProcessedLog,
   getAllProcessedLogs,
   deleteTransactionsByIds,
@@ -34,6 +38,7 @@ function buildAllTransactions(processedImages) {
       allTransactions.push({
         ...tx,
         imageHash: image.imageHash,
+        imageFingerprint: image.imageFingerprint,
         imageName: image.fileName,
       });
     });
@@ -44,34 +49,96 @@ function buildAllTransactions(processedImages) {
 
 function buildManualReviewItems(processedImages, duplicateDetection, existingTransactions, processedLogs = {}) {
   const allTransactions = buildAllTransactions(processedImages);
-  const duplicateIndices = new Set();
+  const duplicateMap = new Map();
 
   (duplicateDetection?.duplicates || []).forEach((group) => {
     const items = Array.isArray(group) ? group : group?.group || [];
-    items.forEach((item) => duplicateIndices.add(item.index));
+    items.forEach((item, itemIndex) => {
+      const sibling = items.find((candidate) => candidate.index !== item.index) || items[itemIndex];
+      duplicateMap.set(item.index, {
+        reason: item?.duplicateMatch?.merchantSimilarity && item.duplicateMatch.merchantSimilarity < 98
+          ? 'flagged_for_review'
+          : 'duplicate_in_upload',
+        duplicateMatch: item?.duplicateMatch || sibling?.duplicateMatch || null,
+        matchedTransaction: sibling?.transaction || null,
+      });
+    });
   });
 
   const reviewItems = allTransactions.map((tx, index) => {
-    let reason = null;
-    let defaultSelected = true;
+    const duplicateInfo = duplicateMap.get(index);
+    const txForReview = duplicateInfo
+      ? {
+          ...tx,
+          duplicateMatch: duplicateInfo.duplicateMatch,
+        }
+      : tx;
+    const processedMatch = findProcessedLogMatch(txForReview, processedLogs || {});
+    const processedEntry = processedMatch?.log || null;
+    const singleMergeResult = mergeTransactions([txForReview], existingTransactions, processedLogs);
+    const flaggedDecision = singleMergeResult.flagged?.[0] || null;
+    const skippedDecision = singleMergeResult.skipped?.[0] || null;
+    const readyDecision = singleMergeResult.decisions?.find((decision) => decision.outcome === 'import_ready') || null;
 
-    if (duplicateIndices.has(index)) {
-      reason = 'duplicate_in_upload';
+    let reason = 'ready_to_import';
+    let defaultSelected = true;
+    let explanation = readyDecision?.explanation || 'Ready to import.';
+    let confidence = readyDecision?.confidence || null;
+    let trace = readyDecision?.trace || null;
+    let existingMatch = null;
+
+    if (processedEntry) {
+      reason = 'already_processed';
       defaultSelected = false;
-    } else {
-      const singleMergeResult = mergeTransactions([tx], existingTransactions, processedLogs);
-      if (singleMergeResult.toAdd.length === 0 && singleMergeResult.skipped.length > 0) {
-        reason = singleMergeResult.skipped[0].reason;
-        defaultSelected = false;
-      }
+      explanation = processedEntry.uploadDay
+        ? `Skipped because this screenshot appears to have already been imported on ${processedEntry.uploadDay}${processedMatch?.matchType === 'fingerprint' ? ' (matched by screenshot contents).' : '.'}`
+        : 'Skipped because this screenshot appears to have already been imported.';
+      confidence = skippedDecision?.confidence || singleMergeResult.decisions?.[0]?.confidence || confidence;
+      trace = skippedDecision?.trace || singleMergeResult.decisions?.[0]?.trace || trace;
+    } else if (flaggedDecision) {
+      reason = flaggedDecision.reason;
+      defaultSelected = false;
+      explanation = flaggedDecision.explanation;
+      confidence = flaggedDecision.confidence;
+      trace = flaggedDecision.trace;
+      existingMatch = flaggedDecision.existingMatch || null;
+    } else if (skippedDecision) {
+      reason = skippedDecision.reason;
+      defaultSelected = false;
+      explanation = skippedDecision.explanation;
+      confidence = skippedDecision.confidence;
+      trace = skippedDecision.trace;
+      existingMatch = skippedDecision.existingMatch || null;
+    } else if (duplicateInfo) {
+      reason = duplicateInfo.reason;
+      defaultSelected = false;
+      explanation =
+        duplicateInfo.reason === 'flagged_for_review'
+          ? 'Flagged for review because another item in this upload is similar, but the duplicate match is fuzzy.'
+          : 'Skipped because another item in this upload appears to be the same transaction.';
+      confidence = singleMergeResult.decisions?.[0]?.confidence || confidence;
+      trace = {
+        ...(singleMergeResult.decisions?.[0]?.trace || {}),
+        duplicateEvaluation: duplicateInfo.duplicateMatch
+          ? {
+              reason: duplicateInfo.duplicateMatch.reason || null,
+              merchantSimilarity: duplicateInfo.duplicateMatch.merchantSimilarity ?? null,
+              sameSource: duplicateInfo.duplicateMatch.sameSource ?? null,
+            }
+          : null,
+      };
     }
 
     return {
       index,
-      transaction: tx,
+      transaction: txForReview,
       imageName: tx.imageName,
       reason,
       defaultSelected,
+      explanation,
+      confidence,
+      trace,
+      existingMatch,
     };
   });
 
@@ -81,6 +148,7 @@ function buildManualReviewItems(processedImages, duplicateDetection, existingTra
       total: reviewItems.length,
       defaultSelected: reviewItems.filter((item) => item.defaultSelected).length,
       duplicateInUpload: reviewItems.filter((item) => item.reason === 'duplicate_in_upload').length,
+      flagged: reviewItems.filter((item) => item.reason === 'flagged_for_review').length,
       skippedExisting: reviewItems.filter(
         (item) =>
           item.reason === 'already_exists_overlap' ||
@@ -186,6 +254,7 @@ function buildUndoPayload(addedRecords, processedImages) {
 
 function getUploadResultStats(summary = {}, addedCount = 0) {
   const skippedByReason = summary?.skippedByReason || {};
+  const flaggedByReason = summary?.flaggedByReason || {};
 
   return {
     added: Number(addedCount || 0),
@@ -194,8 +263,28 @@ function getUploadResultStats(summary = {}, addedCount = 0) {
       Number(skippedByReason.already_exists_yesterday || 0) +
       Number(skippedByReason.already_processed || 0),
     skippedCurrentUpload: Number(skippedByReason.duplicate_in_upload || 0),
+    flaggedForReview: Number(flaggedByReason.flagged_for_review || 0),
   };
 }
+
+function getReviewSummaryStats(manualReview, duplicateDetection) {
+  const reviewSummary = manualReview?.summary || {};
+  const total = Number(reviewSummary.total ?? duplicateDetection?.summary?.total ?? 0);
+  const flagged = Number(reviewSummary.flagged || 0);
+  const duplicates =
+    Number(reviewSummary.duplicateInUpload || 0) +
+    Number(reviewSummary.skippedExisting || 0);
+  const unique = Math.max(0, total - duplicates - flagged);
+
+  return {
+    total,
+    unique,
+    duplicates,
+    flagged,
+  };
+}
+
+const ADMIN_UPLOAD_VERSION = '1.0.5';
 
 export default function AdminUploadPage() {
   const [step, setStep] = useState('upload');
@@ -216,6 +305,7 @@ export default function AdminUploadPage() {
     confirmNugsEmail,
     confirmTonyEmail,
     emailStatus,
+    importAuditHistory,
     lastUploadUndo,
     loadNotificationReports,
     notificationReports,
@@ -264,28 +354,54 @@ export default function AdminUploadPage() {
       let allTransactions = buildAllTransactions(processedOverride);
 
       if (Array.isArray(selectedIndices)) {
-        allTransactions = allTransactions.filter((_, idx) => selectedIndices.includes(idx));
+        allTransactions = allTransactions
+          .filter((_, idx) => selectedIndices.includes(idx))
+          .map((tx) => ({
+            ...tx,
+            adminReviewApproved: true,
+          }));
       }
 
       const existingTransactions = await getAllTransactions();
-      const processedLogs = await getAllProcessedLogs();
+      const rawProcessedLogs = await getAllProcessedLogs();
+      const processedLogs = enrichProcessedLogsWithFingerprints(rawProcessedLogs || {}, existingTransactions);
 
       const mergeResult = mergeTransactions(
         allTransactions,
         existingTransactions,
-        processedLogs || {}
+        processedLogs
       );
       setLastMergeReport({
         skipped: mergeResult.skipped,
+        flagged: mergeResult.flagged,
+        decisions: mergeResult.decisions,
         summary: mergeResult.summary,
       });
+
+      if (mergeResult.flagged.length > 0) {
+        setManualReview(
+          buildManualReviewItems(processedOverride, duplicateDetection, existingTransactions, processedLogs || {})
+        
+        );
+        setSuccessMessage({
+          added: 0,
+          skipped: mergeResult.skipped.length,
+          flagged: mergeResult.flagged.length,
+          message: 'Some transactions need manual review before they can be imported.',
+          summary: mergeResult.summary,
+        });
+        setStep('review');
+        return;
+      }
 
       if (mergeResult.toAdd.length === 0) {
         setLastUploadUndo(null);
         setSuccessMessage({
           added: 0,
           skipped: mergeResult.skipped.length,
+          flagged: mergeResult.flagged.length,
           message: 'No new transactions to add. All were duplicates or already processed.',
+          summary: mergeResult.summary,
         });
         setStep('success');
         return;
@@ -308,13 +424,40 @@ export default function AdminUploadPage() {
           .filter(Boolean);
 
         if (imageTransactionIds.length > 0) {
-          await saveProcessedLog(image.imageHash, imageTransactionIds, image.fileName);
+          await saveProcessedLog(
+            image.imageHash,
+            imageTransactionIds,
+            image.fileName,
+            image.imageFingerprint || null
+          );
         }
       }
+
+      await appendImportAuditEntry({
+        type: 'import_batch',
+        images: processedOverride.map((image) => ({
+          imageHash: image.imageHash || null,
+          imageName: image.fileName || 'Unknown image',
+        })),
+        summary: mergeResult.summary,
+        decisions: mergeResult.decisions.map((decision) => ({
+          merchant: decision.transaction?.merchant || null,
+          amount: Number(decision.transaction?.amount || 0),
+          date: decision.transaction?.date || null,
+          imageName: decision.transaction?.imageName || null,
+          outcome: decision.outcome,
+          reasonCode: decision.reasonCode,
+          explanation: decision.explanation,
+          confidenceLevel: decision.confidence?.level || null,
+          confidenceScore: decision.confidence?.score ?? null,
+          trace: decision.trace,
+        })),
+      });
 
       setSuccessMessage({
         added: mergeResult.toAdd.length,
         skipped: mergeResult.skipped.length,
+        flagged: mergeResult.flagged.length,
         summary: mergeResult.summary,
       });
       setManualReview(null);
@@ -347,7 +490,14 @@ export default function AdminUploadPage() {
         getAllTransactions(),
         getAllProcessedLogs(),
       ]);
-      setManualReview(buildManualReviewItems(results, detection, existingTransactions, processedLogs || {}));
+      setManualReview(
+        buildManualReviewItems(
+          results,
+          detection,
+          existingTransactions,
+          enrichProcessedLogsWithFingerprints(processedLogs || {}, existingTransactions)
+        )
+      );
       setStep('review');
     } catch (err) {
       console.error('Error processing images:', err);
@@ -406,8 +556,11 @@ export default function AdminUploadPage() {
     const confirmText = [
       'Undo the last upload batch?',
       `This will remove ${transactionIds.length} transaction${transactionIds.length === 1 ? '' : 's'} and their processed logs.`,
+      imageBreakdown.length > 0
+        ? `Affected images: ${imageBreakdown.map((item) => `${item.imageName} (${item.transactionIds.length})`).join(', ')}`
+        : null,
       'Older uploads will stay intact.',
-    ].join('\n\n');
+    ].filter(Boolean).join('\n\n');
 
     if (!window.confirm(confirmText)) {
       return;
@@ -421,6 +574,18 @@ export default function AdminUploadPage() {
         deleteTransactionsByIds(transactionIds),
         deleteProcessedLogs(imageHashes),
       ]);
+
+      await appendImportAuditEntry({
+        type: 'undo_batch',
+        images: imageBreakdown.map((image) => ({
+          imageHash: image.imageHash,
+          imageName: image.imageName,
+        })),
+        summary: {
+          removedTransactions: transactionIds.length,
+          removedImages: imageHashes.length,
+        },
+      });
 
       setLastUploadUndo(null);
       setSuccessMessage({
@@ -451,8 +616,9 @@ export default function AdminUploadPage() {
     const confirmText = [
       'Delete this uploaded batch?',
       `${batch.imageName} (${batch.transactionIds.length} transaction${batch.transactionIds.length === 1 ? '' : 's'})`,
+      batch.uploadDate ? `Imported: ${formatLocalDateTime(new Date(batch.uploadDate))}` : null,
       'This will remove the transactions and processed log from Firebase.',
-    ].join('\n\n');
+    ].filter(Boolean).join('\n\n');
 
     if (!window.confirm(confirmText)) {
       return;
@@ -466,6 +632,20 @@ export default function AdminUploadPage() {
         deleteTransactionsByIds(batch.transactionIds),
         deleteProcessedLogs([batch.imageHash]),
       ]);
+
+      await appendImportAuditEntry({
+        type: 'delete_batch',
+        images: [
+          {
+            imageHash: batch.imageHash,
+            imageName: batch.imageName,
+          },
+        ],
+        summary: {
+          removedTransactions: batch.transactionIds.length,
+          removedImages: 1,
+        },
+      });
 
       if (lastUploadUndo && lastUploadUndo.imageHashes?.includes(batch.imageHash)) {
         setLastUploadUndo(null);
@@ -604,6 +784,9 @@ export default function AdminUploadPage() {
           </Link>
           <h1 className="text-4xl font-bold mb-2">Import Transactions</h1>
           <p className="text-slate-300">Upload screenshots of transactions to auto-import them</p>
+          <div className="mt-3 inline-flex items-center rounded-full bg-slate-800/80 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-slate-300 border border-slate-700">
+            synced import {ADMIN_UPLOAD_VERSION}
+          </div>
         </div>
 
         {error && (
@@ -825,6 +1008,52 @@ export default function AdminUploadPage() {
               </p>
             </div>
 
+            <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/50 p-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-sm text-slate-300">Recent import history</p>
+                <span className="text-xs text-slate-500">{importAuditHistory.length} events</span>
+              </div>
+              {importAuditHistory.length === 0 ? (
+                <p className="text-xs text-slate-500">No recent import, undo, or delete events were recorded yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-auto pr-1">
+                  {importAuditHistory.map((entry) => (
+                    <details
+                      key={entry.id}
+                      className="rounded-lg border border-slate-700 bg-slate-950/80 p-3"
+                    >
+                      <summary className="cursor-pointer list-none">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-white">{entry.actionLabel}</p>
+                            <p className="text-xs text-slate-400 mt-1">
+                              {entry.createdAt ? formatLocalDateTime(new Date(entry.createdAt)) : 'Unknown time'}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-slate-700 px-2 py-1 text-[11px] text-slate-200">
+                            {entry.summary?.toAdd || entry.summary?.removedTransactions || 0} item
+                            {(entry.summary?.toAdd || entry.summary?.removedTransactions || 0) === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                      </summary>
+                      <div className="mt-3 space-y-2 text-left">
+                        {entry.summary ? (
+                          <p className="text-xs text-slate-400">
+                            Imported: {entry.summary.toAdd || 0} | Skipped: {entry.summary.skipped || 0} | Flagged: {entry.summary.flagged || 0}
+                          </p>
+                        ) : null}
+                        {(entry.images || []).map((image) => (
+                          <p key={`${entry.id}-${image.imageHash || image.imageName}`} className="text-xs text-slate-300">
+                            {image.imageName || 'Unknown image'}
+                          </p>
+                        ))}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={handleUndoLastUpload}
               disabled={!lastUploadUndo || isLoading}
@@ -837,6 +1066,11 @@ export default function AdminUploadPage() {
             </p>
 
             <div className="space-y-2 mt-4">
+              <Link href="/admin/statement-import">
+                <a className="block w-full px-6 py-3 bg-cyan-600 hover:bg-cyan-700 rounded-lg text-white font-medium transition">
+                  PDF statement importer
+                </a>
+              </Link>
               <Link href="/">
                 <a className="block w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition">
                   Return to Main App
@@ -870,30 +1104,36 @@ export default function AdminUploadPage() {
           <>
             <div className="bg-slate-800 rounded-lg p-6 mb-6 border border-slate-700">
               <h2 className="text-xl font-bold mb-4">Transaction Summary</h2>
+              {(() => {
+                const reviewStats = getReviewSummaryStats(manualReview, duplicateDetection);
+
+                return (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-slate-900 rounded p-3 text-center">
-                  <p className="text-2xl font-bold text-blue-400">{duplicateDetection.summary.total}</p>
+                  <p className="text-2xl font-bold text-blue-400">{reviewStats.total}</p>
                   <p className="text-xs text-slate-400">Total Extracted</p>
                 </div>
                 <div className="bg-slate-900 rounded p-3 text-center">
                   <p className="text-2xl font-bold text-green-400">
-                    {duplicateDetection.summary.uniqueCount}
+                    {reviewStats.unique}
                   </p>
                   <p className="text-xs text-slate-400">Unique</p>
                 </div>
                 <div className="bg-slate-900 rounded p-3 text-center">
                   <p className="text-2xl font-bold text-red-400">
-                    {duplicateDetection.summary.duplicateGroups}
+                    {reviewStats.duplicates}
                   </p>
                   <p className="text-xs text-slate-400">Duplicates</p>
                 </div>
                 <div className="bg-slate-900 rounded p-3 text-center">
                   <p className="text-2xl font-bold text-yellow-400">
-                    0
+                    {reviewStats.flagged}
                   </p>
                   <p className="text-xs text-slate-400">Flagged</p>
                 </div>
               </div>
+                );
+              })()}
             </div>
 
             {manualReview ? (
@@ -992,7 +1232,7 @@ export default function AdminUploadPage() {
             <p className="text-slate-300 mb-6">
               {successMessage.added > 0
                 ? `${successMessage.added} new transaction${successMessage.added !== 1 ? 's' : ''} added successfully.`
-                : 'All transactions were duplicates or already processed.'}
+                : successMessage.message || 'All transactions were duplicates or already processed.'}
             </p>
 
             {(() => {
@@ -1002,7 +1242,7 @@ export default function AdminUploadPage() {
               );
 
               return (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 text-left">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-6 text-left">
                   <div className="bg-slate-900 rounded-lg border border-emerald-500/30 p-4">
                     <p className="text-xs uppercase tracking-wider text-emerald-300">New Added</p>
                     <p className="text-2xl font-bold text-white mt-1">{resultStats.added}</p>
@@ -1018,32 +1258,63 @@ export default function AdminUploadPage() {
                     <p className="text-2xl font-bold text-white mt-1">{resultStats.skippedCurrentUpload}</p>
                     <p className="text-xs text-slate-400 mt-1">Collapsed inside this OCR batch</p>
                   </div>
+                  <div className="bg-slate-900 rounded-lg border border-yellow-500/30 p-4">
+                    <p className="text-xs uppercase tracking-wider text-yellow-300">Flagged For Review</p>
+                    <p className="text-2xl font-bold text-white mt-1">{resultStats.flaggedForReview}</p>
+                    <p className="text-xs text-slate-400 mt-1">Held back for manual confirmation</p>
+                  </div>
                 </div>
               );
             })()}
 
             {successMessage.skipped > 0 && (
               <p className="text-slate-400 text-sm mb-6">
-                {successMessage.skipped} duplicate(s) skipped.
+                {successMessage.skipped} item{successMessage.skipped === 1 ? '' : 's'} skipped.
               </p>
             )}
 
-            {lastMergeReport?.skipped?.length > 0 && (
+            {lastMergeReport?.decisions?.length > 0 && (
               <details className="text-left bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-6">
                 <summary className="cursor-pointer text-sm font-medium text-slate-200">
-                  View skipped / removed items
+                  View batch outcome details
                 </summary>
                 <div className="mt-4 space-y-3 max-h-72 overflow-auto pr-2">
-                  {lastMergeReport.skipped.map((item, idx) => (
-                    <div key={`${item.reason}-${idx}`} className="bg-slate-800 rounded p-3 border border-slate-700">
+                  {lastMergeReport.decisions.map((item, idx) => (
+                    <div key={`${item.reasonCode}-${idx}`} className="bg-slate-800 rounded p-3 border border-slate-700">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-medium text-white">
                           {item.transaction.merchant} - ${Number(item.transaction.amount || 0).toFixed(2)}
                         </p>
                         <span className="text-xs uppercase tracking-wider text-amber-300">
-                          {item.reason.replace(/_/g, ' ')}
+                          {item.outcome.replace(/_/g, ' ')}
                         </span>
                       </div>
+                      <p className="text-xs text-slate-300 mt-2">{item.explanation}</p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Confidence: {item.confidence?.level || 'n/a'} ({item.confidence?.score ?? 'n/a'})
+                      </p>
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[11px] text-slate-400">Decision trace</summary>
+                        <div className="mt-2 rounded bg-slate-950/70 p-3 text-[11px] text-slate-300 space-y-1">
+                          <p>Raw OCR: {item.trace?.rawOcrLine || 'n/a'}</p>
+                          <p>
+                            Parsed: {item.trace?.parsed?.merchant || 'n/a'} | {item.trace?.parsed?.amountText || 'n/a'} | {item.trace?.parsed?.date || 'n/a'}
+                          </p>
+                          <p>
+                            Normalized: {item.trace?.normalized?.merchant || 'n/a'} | {item.trace?.normalized?.amount ?? 'n/a'} | {item.trace?.normalized?.date || 'n/a'}
+                          </p>
+                          {item.trace?.existingMatch ? (
+                            <p>
+                              Existing match: {item.trace.existingMatch.merchant || 'n/a'} on {item.trace.existingMatch.date || item.trace.existingMatch.uploadedDay || 'n/a'} ({item.trace.existingMatch.matchType || 'n/a'})
+                            </p>
+                          ) : null}
+                          {item.trace?.duplicateEvaluation ? (
+                            <p>
+                              Duplicate check: {item.trace.duplicateEvaluation.reason || 'n/a'} at {item.trace.duplicateEvaluation.merchantSimilarity ?? 'n/a'}% similarity
+                            </p>
+                          ) : null}
+                        </div>
+                      </details>
                       <p className="text-xs text-slate-400 mt-1">
                         Date: {item.transaction.date || 'n/a'} Â· Image: {item.transaction.imageHash || 'n/a'}
                       </p>

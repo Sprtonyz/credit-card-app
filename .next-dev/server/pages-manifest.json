@@ -2,6 +2,7 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/admin/upload": "pages/admin/upload.js",
-  "/": "pages/index.js"
+  "/api/parse-statement": "pages/api/parse-statement.js",
+  "/admin/statement-import": "pages/admin/statement-import.js",
+  "/api/push-google-sheet": "pages/api/push-google-sheet.js"
 }

@@ -1,18 +1,40 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 function formatReason(reason) {
-  if (!reason) return 'new_transaction';
-  return String(reason).replace(/_/g, ' ');
+  const labels = {
+    ready_to_import: 'ready',
+    duplicate_in_upload: 'duplicate in upload',
+    already_exists_overlap: 'matched existing',
+    already_exists_yesterday: 'matched yesterday pending',
+    already_processed: 'already imported screenshot',
+    flagged_for_review: 'needs review',
+  };
+
+  return labels[reason] || String(reason || 'new_transaction').replace(/_/g, ' ');
 }
 
 function getBadgeClass(reason, selected) {
   if (selected) return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
   if (reason === 'duplicate_in_upload') return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+  if (reason === 'flagged_for_review') return 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30';
   if (reason === 'already_exists_overlap' || reason === 'already_processed') {
     return 'bg-rose-500/15 text-rose-300 border-rose-500/30';
   }
 
   return 'bg-slate-700 text-slate-300 border-slate-600';
+}
+
+function getConfidenceClass(level) {
+  if (level === 'high') return 'bg-emerald-500/15 text-emerald-300';
+  if (level === 'medium') return 'bg-amber-500/15 text-amber-300';
+  return 'bg-rose-500/15 text-rose-300';
+}
+
+function getReviewPriority(item) {
+  if (item?.reason === 'flagged_for_review') return 0;
+  if (item?.reason === 'already_exists_overlap' || item?.reason === 'already_processed') return 1;
+  if (item?.reason === 'duplicate_in_upload') return 2;
+  return 3;
 }
 
 export default function TransactionSelectionReview({
@@ -31,6 +53,15 @@ export default function TransactionSelectionReview({
   }, [items]);
 
   const selectedCount = selectedIndices.size;
+  const orderedItems = useMemo(
+    () =>
+      [...items].sort((left, right) => {
+        const priorityDiff = getReviewPriority(left) - getReviewPriority(right);
+        if (priorityDiff !== 0) return priorityDiff;
+        return left.index - right.index;
+      }),
+    [items]
+  );
   const selectedItems = useMemo(
     () => items.filter((item) => selectedIndices.has(item.index)),
     [items, selectedIndices]
@@ -67,29 +98,8 @@ export default function TransactionSelectionReview({
         </div>
       </div>
 
-      {summary ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          <div className="bg-slate-900 rounded p-3 text-center">
-            <p className="text-2xl font-bold text-blue-400">{summary.total}</p>
-            <p className="text-xs text-slate-400">Total Extracted</p>
-          </div>
-          <div className="bg-slate-900 rounded p-3 text-center">
-            <p className="text-2xl font-bold text-emerald-400">{summary.defaultSelected}</p>
-            <p className="text-xs text-slate-400">Preselected</p>
-          </div>
-          <div className="bg-slate-900 rounded p-3 text-center">
-            <p className="text-2xl font-bold text-amber-400">{summary.duplicateInUpload}</p>
-            <p className="text-xs text-slate-400">In-Upload Dupes</p>
-          </div>
-          <div className="bg-slate-900 rounded p-3 text-center">
-            <p className="text-2xl font-bold text-rose-400">{summary.skippedExisting}</p>
-            <p className="text-xs text-slate-400">Skipped Existing</p>
-          </div>
-        </div>
-      ) : null}
-
       <div className="space-y-3 max-h-[60vh] overflow-auto pr-1">
-        {items.map((item) => {
+        {orderedItems.map((item) => {
           const selected = selectedIndices.has(item.index);
           return (
             <label
@@ -120,18 +130,56 @@ export default function TransactionSelectionReview({
                       ) : (
                         <p className="text-xs text-slate-500">Date: pending / not captured</p>
                       )}
+                      {item.explanation ? (
+                        <p className="text-xs text-slate-300 mt-2">{item.explanation}</p>
+                      ) : null}
                     </div>
-                    <span
+                    <div className="flex flex-col items-end gap-2">
+                      <span
                       className={`shrink-0 rounded-full border px-2 py-1 text-[11px] font-semibold uppercase tracking-wider ${getBadgeClass(
                         item.reason,
                         selected
                       )}`}
-                    >
-                      {selected ? 'selected' : formatReason(item.reason)}
-                    </span>
+                      >
+                        {selected ? 'selected' : formatReason(item.reason)}
+                      </span>
+                      {item.confidence ? (
+                        <span
+                          className={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wider ${getConfidenceClass(
+                            item.confidence.level
+                          )}`}
+                        >
+                          {item.confidence.level} confidence
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                   {item.transaction.rawLine ? (
                     <p className="text-xs text-slate-500 font-mono mt-2 break-all">{item.transaction.rawLine}</p>
+                  ) : null}
+                  {item.trace ? (
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-[11px] text-slate-400">Decision trace</summary>
+                      <div className="mt-2 rounded bg-slate-950/70 p-3 text-[11px] text-slate-300 space-y-1">
+                        <p>Raw OCR: {item.trace.rawOcrLine || 'n/a'}</p>
+                        <p>
+                          Parsed: {item.trace.parsed?.merchant || 'n/a'} | {item.trace.parsed?.amountText || 'n/a'} | {item.trace.parsed?.date || 'n/a'}
+                        </p>
+                        <p>
+                          Normalized: {item.trace.normalized?.merchant || 'n/a'} | {item.trace.normalized?.amount ?? 'n/a'} | {item.trace.normalized?.date || 'n/a'}
+                        </p>
+                        {item.trace.existingMatch ? (
+                          <p>
+                            Existing match: {item.trace.existingMatch.merchant || 'n/a'} on {item.trace.existingMatch.date || item.trace.existingMatch.uploadedDay || 'n/a'} ({item.trace.existingMatch.matchType || 'n/a'})
+                          </p>
+                        ) : null}
+                        {item.trace.duplicateEvaluation ? (
+                          <p>
+                            Duplicate check: {item.trace.duplicateEvaluation.reason || 'n/a'} at {item.trace.duplicateEvaluation.merchantSimilarity ?? 'n/a'}% similarity
+                          </p>
+                        ) : null}
+                      </div>
+                    </details>
                   ) : null}
                 </div>
               </div>

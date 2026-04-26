@@ -116,9 +116,16 @@ function getDuplicateMatch(tx1, tx2, merchantThreshold = 90) {
     }
   }
 
+  const sameSource = isSameSource(tx1, tx2);
+
   return {
     match: true,
     reason: date1 && date2 ? 'same_day_match' : 'date_missing_match',
+    merchantSimilarity,
+    sameSource,
+    amountDifference: Math.abs(parseFloat(tx1.amount) - parseFloat(tx2.amount)),
+    date1,
+    date2,
   };
 }
 
@@ -153,7 +160,7 @@ export function detectDuplicates(transactions) {
 
       const candidateKey = buildTransactionKey(transactions[j]);
       if (match.match && currentKey && candidateKey) {
-        group.push({ index: j, transaction: transactions[j] });
+        group.push({ index: j, transaction: transactions[j], duplicateMatch: match });
         processed.add(j);
       }
     }
@@ -161,6 +168,12 @@ export function detectDuplicates(transactions) {
     processed.add(i);
 
     if (group.length > 1) {
+      if (!group[0].duplicateMatch && group[1]?.duplicateMatch) {
+        group[0] = {
+          ...group[0],
+          duplicateMatch: group[1].duplicateMatch,
+        };
+      }
       duplicates.push(group);
     } else if (currentKey && !seenKeys.has(currentKey)) {
       unique.push({ index: i, transaction: current });

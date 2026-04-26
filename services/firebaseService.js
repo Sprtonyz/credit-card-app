@@ -155,7 +155,7 @@ export async function checkIfProcessed(imageHash) {
   }
 }
 
-export async function saveProcessedLog(imageHash, transactionIds, imageName) {
+export async function saveProcessedLog(imageHash, transactionIds, imageName, imageFingerprint = null) {
   try {
     const processedRef = ref(db, `processedTransactions/${imageHash}`);
     await set(processedRef, {
@@ -164,9 +164,53 @@ export async function saveProcessedLog(imageHash, transactionIds, imageName) {
       extractedCount: transactionIds.length,
       transactions: transactionIds,
       imageName: imageName,
+      imageFingerprint: imageFingerprint || null,
     });
   } catch (error) {
     console.error('Error saving processed log:', error);
+    throw error;
+  }
+}
+
+export async function appendImportAuditEntry(entry = {}) {
+  try {
+    const auditRef = ref(db, 'importAuditLog');
+    const auditEntryRef = push(auditRef);
+    await set(auditEntryRef, {
+      ...entry,
+      createdAt: entry.createdAt || getSimulatedISOString(),
+      createdDay: entry.createdDay || getTodayDate(),
+    });
+    return auditEntryRef.key;
+  } catch (error) {
+    console.error('Error saving import audit entry:', error);
+    throw error;
+  }
+}
+
+export async function getImportAuditEntries() {
+  try {
+    const snapshot = await get(ref(db, 'importAuditLog'));
+
+    if (!snapshot.exists()) {
+      return [];
+    }
+
+    const results = [];
+    snapshot.forEach((child) => {
+      results.push({
+        id: child.key,
+        ...child.val(),
+      });
+    });
+
+    return results.sort((left, right) => {
+      const leftTime = Date.parse(left.createdAt || '') || 0;
+      const rightTime = Date.parse(right.createdAt || '') || 0;
+      return rightTime - leftTime;
+    });
+  } catch (error) {
+    console.error('Error getting import audit entries:', error);
     throw error;
   }
 }

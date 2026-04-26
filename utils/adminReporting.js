@@ -109,6 +109,30 @@ export function buildProcessedBatches(processedLogs = {}) {
     });
 }
 
+export function buildImportAuditHistory(entries = []) {
+  return [...entries]
+    .map((entry) => ({
+      id: entry.id,
+      type: entry.type || 'unknown',
+      createdAt: entry.createdAt || null,
+      createdDay: entry.createdDay || null,
+      summary: entry.summary || null,
+      images: Array.isArray(entry.images) ? entry.images : [],
+      decisions: Array.isArray(entry.decisions) ? entry.decisions : [],
+      actionLabel:
+        entry.type === 'undo_batch'
+          ? 'Undo'
+          : entry.type === 'delete_batch'
+            ? 'Delete'
+            : 'Import',
+    }))
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.createdAt || '') || 0;
+      const rightTime = Date.parse(right.createdAt || '') || 0;
+      return rightTime - leftTime;
+    });
+}
+
 export function formatActivityTimestamp(ts) {
   const value = Number(ts);
   if (!Number.isFinite(value) || value <= 0) return 'No activity yet';

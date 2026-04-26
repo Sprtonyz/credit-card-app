@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ensureAnonymousAuth } from '../utils/firebaseAuth';
 import {
   buildAdminActivityLog,
+  buildImportAuditHistory,
   buildProcessedBatches,
   buildProfileEmailReports,
 } from '../utils/adminReporting';
@@ -9,6 +10,7 @@ import {
   getAllProcessedLogs,
   getAllSubmissions,
   getAllTransactions,
+  getImportAuditEntries,
   getPresenceEntries,
   getTodayDate,
 } from '../services/firebaseService';
@@ -24,6 +26,7 @@ export function useAdminDashboardData(step, successMessage, onAuthError) {
   const [confirmNugsEmail, setConfirmNugsEmail] = useState(false);
   const [uploadedBatches, setUploadedBatches] = useState([]);
   const [adminActivityLog, setAdminActivityLog] = useState([]);
+  const [importAuditHistory, setImportAuditHistory] = useState([]);
 
   useEffect(() => {
     try {
@@ -141,6 +144,28 @@ export function useAdminDashboardData(step, successMessage, onAuthError) {
 
     let cancelled = false;
 
+    const run = async () => {
+      try {
+        const auditEntries = await getImportAuditEntries();
+        if (cancelled) return;
+        setImportAuditHistory(buildImportAuditHistory(auditEntries || []).slice(0, 12));
+      } catch (error) {
+        console.error('Failed to load import audit history:', error);
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, step, successMessage, lastUploadUndo]);
+
+  useEffect(() => {
+    if (!authReady) return undefined;
+
+    let cancelled = false;
+
     const loadAdminActivity = async () => {
       try {
         const [presenceEntries, submissions] = await Promise.all([
@@ -169,6 +194,7 @@ export function useAdminDashboardData(step, successMessage, onAuthError) {
     confirmNugsEmail,
     confirmTonyEmail,
     emailStatus,
+    importAuditHistory,
     lastUploadUndo,
     loadNotificationReports,
     notificationReports,

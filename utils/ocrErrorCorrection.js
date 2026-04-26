@@ -176,7 +176,9 @@ export function fixCategory(category) {
 }
 
 export function correctTransaction(transaction) {
+  const normalizedMerchant = fixMerchantName(transaction.merchant);
   const amount = fixAmountFormatting(transaction.amount);
+  const normalizedDate = transaction.date ? fixDateFormatting(transaction.date) : null;
   const isRefund = inferRefund({
     ...transaction,
     amount,
@@ -184,12 +186,30 @@ export function correctTransaction(transaction) {
 
   return {
     ...transaction,
-    merchant: fixMerchantName(transaction.merchant),
+    merchant: normalizedMerchant,
     amount: isRefund ? -Math.abs(amount) : amount,
     category: transaction.category ? fixCategory(transaction.category) : null,
-    date: transaction.date ? fixDateFormatting(transaction.date) : null,
-    isPending: !transaction.date || !fixDateFormatting(transaction.date),
+    date: normalizedDate,
+    isPending: !transaction.date || !normalizedDate,
     isRefund,
+    rawParsed: {
+      merchant: transaction.merchant || null,
+      amountText: transaction.amount || null,
+      date: transaction.date || null,
+      category: transaction.category || null,
+    },
+    normalization: {
+      originalMerchant: transaction.merchant || null,
+      normalizedMerchant,
+      merchantChanged:
+        String(transaction.merchant || '').trim().toUpperCase() !== String(normalizedMerchant || '').trim(),
+      originalAmountText: transaction.amount || null,
+      normalizedAmount: isRefund ? -Math.abs(amount) : amount,
+      amountChanged: Number(fixAmountFormatting(transaction.amount)) !== Number(transaction.amount),
+      originalDate: transaction.date || null,
+      normalizedDate,
+      dateChanged: String(transaction.date || '') !== String(normalizedDate || ''),
+    },
   };
 }
 

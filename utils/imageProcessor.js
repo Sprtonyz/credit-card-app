@@ -1,4 +1,5 @@
 import Tesseract from 'tesseract.js';
+import { buildImageImportFingerprint } from './importFingerprint';
 import { correctTransaction } from './ocrErrorCorrection';
 import { getTodayDate } from '../services/firebaseService';
 
@@ -640,6 +641,7 @@ export async function processImage(imageFile, onProgress, options = {}) {
 
     const bestResult = pickBestParsedResult(candidateResults);
     const correctedTransactions = bestResult.rawTransactions.map(correctTransaction);
+    const imageFingerprint = buildImageImportFingerprint(correctedTransactions);
     const rawLineCount = bestResult.text
       .split('\n')
       .map((line) => line.trim())
@@ -652,6 +654,7 @@ export async function processImage(imageFile, onProgress, options = {}) {
       ocrLines: bestResult.lines,
       ocrWords: bestResult.words,
       transactions: correctedTransactions,
+      imageFingerprint,
       originalCount: bestResult.rawTransactions.length,
       rawLineCount,
       parserProfile: bestResult.parserProfile,

@@ -109,5 +109,23 @@ export function formatLocalTime(date = getSimulatedTodayDate()) {
 }
 
 export function getSimulatedISOString() {
-  return getSimulatedNow().toISOString();
+  const date = getSimulatedNow();
+  const parts = getDateParts(date);
+  const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+  const zonedTimeMs = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+    date.getMilliseconds()
+  );
+  const offsetMinutes = Math.round((zonedTimeMs - date.getTime()) / 60000);
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const absoluteOffsetMinutes = Math.abs(offsetMinutes);
+  const offsetHours = String(Math.floor(absoluteOffsetMinutes / 60)).padStart(2, '0');
+  const offsetMins = String(absoluteOffsetMinutes % 60).padStart(2, '0');
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${milliseconds}${sign}${offsetHours}:${offsetMins}`;
 }

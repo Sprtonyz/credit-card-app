@@ -172,15 +172,21 @@ function getSubmissionStatus(sub) {
   };
 }
 
+function getTransactionReferenceDateKey(tx, referenceDateKey) {
+  return tx?.uploadedDay || getLocalDateKey(tx?.uploadedDate || tx?.date) || referenceDateKey;
+}
+
 function isVisibleForUser(tx, submissions, user, referenceDateKey) {
   if (!user) return true;
 
   const sub = submissions[tx.id] || {};
   const { resolved } = getSurfacedSubmissionStatus(sub, referenceDateKey);
   const submittedDateKey = getSubmissionDateKey(sub, user);
-  const submittedToday = submittedDateKey !== null && submittedDateKey === referenceDateKey;
+  const transactionReferenceDateKey = getTransactionReferenceDateKey(tx, referenceDateKey);
+  const submittedForThisTransaction =
+    submittedDateKey !== null && transactionReferenceDateKey !== null && submittedDateKey >= transactionReferenceDateKey;
 
-  return !resolved && !submittedToday;
+  return !resolved && !submittedForThisTransaction;
 }
 
 function shouldCountForAssignee(sub, assignee, referenceDateKey) {
@@ -1659,8 +1665,7 @@ export default function CreditCardApp() {
 
       const isPending = tx.isPending || !tx.date;
       if (isPending) {
-        const pendingKey =
-          tx.uploadedDay || getLocalDateKey(tx.uploadedDate || tx.date) || referenceDateKey;
+        const pendingKey = getTransactionReferenceDateKey(tx, referenceDateKey);
         if (pendingKey === referenceDateKey) {
           pending.push(tx);
         } else {

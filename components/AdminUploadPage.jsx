@@ -155,6 +155,7 @@ function OcrDiagnostics({ processedImages }) {
 }
 
 const PROFILE_NAMES = ['Tony', 'Nugs'];
+const PRESENCE_TTL_MS = 12000;
 
 function getSubmissionValue(sub, user) {
   return sub?.[user]?.value ?? null;
@@ -197,6 +198,18 @@ function getSubmissionStatus(sub) {
   };
 }
 
+function getLocalDateKey(dateLike) {
+  if (!dateLike) return null;
+  if (typeof dateLike === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateLike)) return dateLike;
+  const parsed = new Date(dateLike);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return formatLocalDate(parsed);
+}
+
+function getTransactionReferenceDateKey(tx, referenceDateKey) {
+  return tx?.uploadedDay || getLocalDateKey(tx?.uploadedDate || tx?.date) || referenceDateKey;
+}
+
 function getSurfacedSubmissionValue(sub, user, referenceDateKey) {
   const submittedDateKey = getSubmissionDateKey(sub, user);
   if (!submittedDateKey || submittedDateKey >= referenceDateKey) return null;
@@ -222,9 +235,11 @@ function isVisibleForUser(tx, submissions, user, todayKey) {
   const sub = submissions[tx.id] || {};
   const { resolved } = getSurfacedSubmissionStatus(sub, todayKey);
   const submittedDateKey = getSubmissionDateKey(sub, user);
-  const submittedToday = submittedDateKey !== null && submittedDateKey === todayKey;
+  const transactionReferenceDateKey = getTransactionReferenceDateKey(tx, todayKey);
+  const submittedForThisTransaction =
+    submittedDateKey !== null && transactionReferenceDateKey !== null && submittedDateKey >= transactionReferenceDateKey;
 
-  return !resolved && !submittedToday;
+  return !resolved && !submittedForThisTransaction;
 }
 
 function shouldCountForAssignee(sub, assignee, referenceDateKey) {
@@ -272,13 +287,13 @@ function buildProfileEmailReports(transactions, submissions) {
 
     const pendingTransactions = visibleTransactions.filter((tx) => {
       if (!(tx.isPending || !tx.date)) return false;
-      const referenceDay = tx.uploadedDay || tx.date || todayKey;
+      const referenceDay = getTransactionReferenceDateKey(tx, todayKey);
       return referenceDay === todayKey;
     });
 
     const outstandingTransactions = visibleTransactions.filter((tx) => {
       if (!(tx.isPending || !tx.date)) return false;
-      const referenceDay = tx.uploadedDay || tx.date;
+      const referenceDay = getTransactionReferenceDateKey(tx, todayKey);
       if (!referenceDay) return false;
       const age = daysBetween(referenceDay, todayKey);
       return age !== null && age > 1;
@@ -393,19 +408,25 @@ function getLatestSubmissionEntryForUser(submissions = {}, user) {
 }
 
 function buildAdminActivityLog(presenceEntries = {}, submissions = {}) {
+  const now = Date.now();
+
   return PROFILE_NAMES.map((user) => {
-    const activePresenceEntries = Object.values(presenceEntries || {}).filter(
+    const userPresenceEntries = Object.values(presenceEntries || {}).filter(
       (entry) => entry && typeof entry === 'object' && entry.user === user
     );
-    const latestPresenceTs = activePresenceEntries.reduce((latest, entry) => {
+    const latestPresenceTs = userPresenceEntries.reduce((latest, entry) => {
       const ts = Number(entry?.ts);
       return Number.isFinite(ts) && ts > latest ? ts : latest;
     }, 0);
+    const hasActivePresence = userPresenceEntries.some((entry) => {
+      const ts = Number(entry?.ts);
+      return Number.isFinite(ts) && now - ts <= PRESENCE_TTL_MS;
+    });
     const latestSubmission = getLatestSubmissionEntryForUser(submissions, user);
 
     return {
       user,
-      isOnline: activePresenceEntries.length > 0,
+      isOnline: hasActivePresence,
       latestPresenceTs: latestPresenceTs || null,
       latestSubmission,
     };
@@ -1136,7 +1157,7 @@ export default function AdminUploadPage() {
                           </p>
                           <p className="text-xs text-slate-400 mt-1">
                             {batch.extractedCount} transaction{batch.extractedCount === 1 ? '' : 's'}
-                            {batch.uploadDate ? ` | ${batch.uploadDate}` : ''}
+                            {batch.uploadDate ? ` | ${formatLocalDateTime(new Date(batch.uploadDate))}` : ''}
                           </p>
                         </div>
                         <button

@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { parseWestpacStatementPdf } from '../../utils/westpacStatementParser';
 import {
   ensureBackupSheet,
   updateWorkbookColumnsABC,
@@ -15,17 +14,19 @@ export default async function handler(req, res) {
 
   try {
     const assignmentCodes = Array.isArray(req.body?.assignmentCodes) ? req.body.assignmentCodes : [];
-    const localPdfPath = path.join(process.cwd(), 'local', 'estatement.pdf');
-    const localWorkbookPath = path.join(process.cwd(), 'sheet.xlsx');
-    const [pdfBuffer, workbookBuffer] = await Promise.all([
-      fs.readFile(localPdfPath),
-      fs.readFile(localWorkbookPath),
-    ]);
+    const transactions = Array.isArray(req.body?.transactions) ? req.body.transactions : null;
+    const closingAmount = Number(req.body?.closingBalance);
 
-    const parsed = await parseWestpacStatementPdf(pdfBuffer);
-    const workbook = updateWorkbookColumnsABC(workbookBuffer, parsed.transactions, {
+    if (!transactions) {
+      res.status(400).json({ error: 'Missing parsed transactions.' });
+      return;
+    }
+
+    const localWorkbookPath = path.join(process.cwd(), 'sheet.xlsx');
+    const workbookBuffer = await fs.readFile(localWorkbookPath);
+    const workbook = updateWorkbookColumnsABC(workbookBuffer, transactions, {
       assignmentCodes,
-      closingAmount: parsed.statement?.closingBalance,
+      closingAmount: Number.isFinite(closingAmount) ? closingAmount : null,
     });
     ensureBackupSheet(workbook, 'Sheet1', 'back up');
     const outputBuffer = workbookToBuffer(workbook);

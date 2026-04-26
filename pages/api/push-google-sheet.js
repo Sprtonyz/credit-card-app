@@ -1,6 +1,3 @@
-import fs from 'fs/promises';
-import path from 'path';
-import { parseWestpacStatementPdf } from '../../utils/westpacStatementParser';
 import { pushRowsToGoogleSheet } from '../../services/googleSheetsService';
 
 export default async function handler(req, res) {
@@ -13,13 +10,18 @@ export default async function handler(req, res) {
     const assignmentCodes = Array.isArray(req.body?.assignmentCodes)
       ? req.body.assignmentCodes
       : [];
-    const localPdfPath = path.join(process.cwd(), 'local', 'estatement.pdf');
-    const pdfBuffer = await fs.readFile(localPdfPath);
-    const parsed = await parseWestpacStatementPdf(pdfBuffer);
+    const transactions = Array.isArray(req.body?.transactions) ? req.body.transactions : null;
+    const closingBalance = Number(req.body?.closingBalance);
+
+    if (!transactions) {
+      res.status(400).json({ error: 'Missing parsed transactions.' });
+      return;
+    }
+
     const result = await pushRowsToGoogleSheet(
-      parsed.transactions,
+      transactions,
       assignmentCodes,
-      parsed.statement?.closingBalance
+      Number.isFinite(closingBalance) ? closingBalance : null
     );
 
     res.status(200).json({

@@ -804,6 +804,14 @@ export default function AdminUploadPage() {
               Using classic OCR screenshots.
             </p>
 
+            <div className="mt-4">
+              <Link href="/admin/statement-import">
+                <a className="inline-flex w-full items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/20">
+                  Open PDF statement importer
+                </a>
+              </Link>
+            </div>
+
             <button
               onClick={handleProcessImages}
               disabled={uploadedFiles.length === 0 || isLoading || !authReady}

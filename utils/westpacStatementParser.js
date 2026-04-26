@@ -1,6 +1,7 @@
 import path from 'path';
 import { pathToFileURL } from 'url';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
+import 'pdfjs-dist/legacy/build/pdf.worker.entry.js';
 
 const DATE_RE = /^\d{1,2}\s+[A-Za-z]{3}\s+\d{2}$/;
 const DATE_TOKEN_RE = /(^|\s)\d{1,2}\s+[A-Za-z]{3}\s+\d{2}(\s|$)/;

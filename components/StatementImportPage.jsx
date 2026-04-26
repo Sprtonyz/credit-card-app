@@ -146,30 +146,6 @@ export default function StatementImportPage() {
     }
   };
 
-  const handleParseLocal = async () => {
-    setIsLoading(true);
-    setError(null);
-    setSheetMessage(null);
-    setGoogleSheetMessage(null);
-    setAssignmentMatches([]);
-
-    try {
-      const response = await fetch('/api/parse-statement');
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Failed to parse the local PDF.');
-      }
-
-      setParsed(payload);
-      setFile(null);
-    } catch (err) {
-      setParsed(null);
-      setError(err?.message || 'Failed to parse the local PDF.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleDownloadCsv = () => {
     const csv = Papa.unparse(csvRows, {
       header: true,
@@ -226,6 +202,8 @@ export default function StatementImportPage() {
         },
         body: JSON.stringify({
           assignmentCodes,
+          transactions: parsed.transactions,
+          closingBalance: parsed.statement?.closingBalance ?? null,
         }),
       });
 
@@ -242,7 +220,7 @@ export default function StatementImportPage() {
       anchor.click();
       URL.revokeObjectURL(url);
 
-      setSheetMessage('Updated workbook created from local/estatement.pdf and saved to local/sheet-updated-from-pdf.xlsx.');
+      setSheetMessage('Updated workbook created and saved to local/sheet-updated-from-pdf.xlsx.');
     } catch (err) {
       setError(err?.message || 'Failed to build the updated workbook.');
     } finally {
@@ -313,6 +291,8 @@ export default function StatementImportPage() {
         },
         body: JSON.stringify({
           assignmentCodes,
+          transactions: parsed.transactions,
+          closingBalance: parsed.statement?.closingBalance ?? null,
         }),
       });
 
@@ -404,13 +384,6 @@ export default function StatementImportPage() {
                   className="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isLoading ? 'Parsing PDF...' : 'Extract uploaded PDF'}
-                </button>
-                <button
-                  onClick={handleParseLocal}
-                  disabled={isLoading}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-slate-500 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Use local `local/estatement.pdf`
                 </button>
               </div>
 

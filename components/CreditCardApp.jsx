@@ -20,6 +20,21 @@ import {
 } from '../utils/simulationDate';
 import { ensureAnonymousAuth } from '../utils/firebaseAuth';
 import {
+  buildAssigneeTotal,
+  buildTransactionSections,
+  buildUserTallies,
+  countVisibleTransactions,
+  formatShortDate,
+  normalizeFirebaseTransaction,
+} from '../utils/creditCardAppData';
+import {
+  getOtherUser,
+  getSurfacedSubmissionStatus,
+  getSurfacedSubmissionValue,
+  getTallyBreakdownEntries,
+} from '../utils/reconciliation';
+import { useTransactionAssignments } from '../hooks/useTransactionAssignments';
+import {
   applyPetActionProgress,
   getFeedBenefits,
   getMoodLabel,
@@ -86,61 +101,6 @@ const DONE = [
   { emoji: '\u{1F680}', title: 'Done and dusted!', sub: 'Go enjoy the rest of your day.' },
 ];
 
-function getOtherUser(user) {
-  return USERS.find((x) => x !== user);
-}
-
-function getSubValue(sub, user) {
-  return sub?.[user]?.value ?? null;
-}
-
-function getSubTs(sub, user) {
-  return sub?.[user]?.ts ?? null;
-}
-
-function getSubmissionDay(sub, user) {
-  const dayValue = sub?.[user]?.day;
-  if (dayValue === undefined || dayValue === null || dayValue === '') return null;
-  const parsed = Number(dayValue);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function getSubmissionDateKeyEntry(entry) {
-  const explicitDateKey = entry?.dateKey;
-  if (explicitDateKey) return explicitDateKey;
-
-  const ts = Number(entry?.ts);
-  if (!Number.isFinite(ts)) return null;
-  return formatLocalDate(new Date(ts));
-}
-
-function getSubmissionDateKey(sub, user) {
-  return getSubmissionDateKeyEntry(sub?.[user]);
-}
-
-function hasSubmissionOnDate(sub, user, referenceDateKey) {
-  return getSubmissionDateKey(sub, user) === referenceDateKey;
-}
-
-function getSurfacedSubmissionValue(sub, user, referenceDateKey) {
-  const submittedDateKey = getSubmissionDateKey(sub, user);
-  if (!submittedDateKey || submittedDateKey >= referenceDateKey) return null;
-  return getSubValue(sub, user);
-}
-
-function getSurfacedSubmissionStatus(sub, referenceDateKey) {
-  const values = USERS.map((u) => getSurfacedSubmissionValue(sub, u, referenceDateKey)).filter(Boolean);
-  const hasUnsure = values.includes('Unsure');
-  const allPicked = values.length === USERS.length;
-
-  return {
-    resolved: allPicked && !hasUnsure && new Set(values).size === 1,
-    conflict: allPicked && !hasUnsure && new Set(values).size > 1,
-    unsure: hasUnsure,
-    anyPicked: values.length > 0,
-  };
-}
-
 function getOptionClassName(value) {
   if (value === 'Macquarie') return 'mac-btn';
   if (value === 'Unsure') return 'unsure-btn';
@@ -151,170 +111,6 @@ function getOptionClassName(value) {
 
 function formatAssignmentLabel(value) {
   return value === 'Macquarie' ? 'MAC' : value;
-}
-
-function hasConflict(sub) {
-  const picks = USERS.map((u) => getSubValue(sub, u)).filter((value) => value && value !== 'Unsure');
-  return picks.length === USERS.length && new Set(picks).size > 1;
-}
-
-function getSubmissionStatus(sub) {
-  const values = USERS.map((u) => getSubValue(sub, u)).filter(Boolean);
-  const hasUnsure = values.includes('Unsure');
-  const allPicked = values.length === USERS.length;
-  const resolved = allPicked && !hasUnsure && new Set(values).size === 1;
-
-  return {
-    resolved,
-    conflict: allPicked && !hasUnsure && new Set(values).size > 1,
-    unsure: hasUnsure,
-    anyPicked: values.length > 0,
-  };
-}
-
-function getTransactionReferenceDateKey(tx, referenceDateKey) {
-  return tx?.uploadedDay || getLocalDateKey(tx?.uploadedDate || tx?.date) || referenceDateKey;
-}
-
-function isVisibleForUser(tx, submissions, user, referenceDateKey) {
-  if (!user) return true;
-
-  const sub = submissions[tx.id] || {};
-  const { resolved } = getSurfacedSubmissionStatus(sub, referenceDateKey);
-  const submittedDateKey = getSubmissionDateKey(sub, user);
-  const transactionReferenceDateKey = getTransactionReferenceDateKey(tx, referenceDateKey);
-  const submittedForThisTransaction =
-    submittedDateKey !== null && transactionReferenceDateKey !== null && submittedDateKey >= transactionReferenceDateKey;
-
-  return !resolved && !submittedForThisTransaction;
-}
-
-function shouldCountForAssignee(sub, assignee, referenceDateKey) {
-  const hasCurrentDaySubmission = USERS.some((user) => hasSubmissionOnDate(sub, user, referenceDateKey));
-  if (hasCurrentDaySubmission) {
-    const liveValues = USERS.map((u) => getSubValue(sub, u)).filter((value) => value && value !== 'Unsure');
-    return liveValues.includes(assignee);
-  }
-
-  const status = getSurfacedSubmissionStatus(sub, referenceDateKey);
-  if (!status.resolved) return false;
-
-  const values = USERS.map((u) => getSurfacedSubmissionValue(sub, u, referenceDateKey)).filter(Boolean);
-  return values[0] === assignee;
-}
-
-function getTallyBreakdownEntries(submissions, transactionsById, assignee, referenceDateKey) {
-  return Object.entries(submissions)
-    .map(([txId, sub]) => {
-      const tx = transactionsById[txId];
-      if (!tx || !shouldCountForAssignee(sub, assignee, referenceDateKey)) return null;
-
-      const hasCurrentDaySubmission = USERS.some((user) => hasSubmissionOnDate(sub, user, referenceDateKey));
-      return {
-        ...tx,
-        assignmentState: hasCurrentDaySubmission ? 'Today' : 'Locked',
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      if (b.amount !== a.amount) return b.amount - a.amount;
-      return String(a.desc).localeCompare(String(b.desc));
-    });
-}
-
-function normalizeFirebaseTransaction(id, tx) {
-  const amount = Number(tx.amount) || 0;
-  return {
-    id,
-    desc: tx.merchant || tx.desc || 'Untitled transaction',
-    amount,
-    date: tx.date || null,
-    isPending: Boolean(tx.isPending) || !tx.date,
-    isRefund: Boolean(tx.isRefund) || amount < 0,
-    uploadedDate: tx.uploadedDate || null,
-    uploadedDay: tx.uploadedDay || null,
-    category: tx.category || null,
-    source: tx.source || 'image',
-    raw: tx,
-  };
-}
-
-function groupTransactionsByDate(transactions) {
-  return transactions.reduce((groups, tx) => {
-    const key = tx.date || 'undated';
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(tx);
-    return groups;
-  }, {});
-}
-
-function sortDateKeys(keys) {
-  return [...keys].sort((a, b) => {
-    if (a === 'undated') return 1;
-    if (b === 'undated') return -1;
-
-    const ta = new Date(a).getTime();
-    const tb = new Date(b).getTime();
-    if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) {
-      return tb - ta;
-    }
-
-    return String(b).localeCompare(String(a));
-  });
-}
-
-function formatDayLabel(dayKey, fallbackIndex) {
-  if (!dayKey) return fallbackIndex === 0 ? 'today' : `+${fallbackIndex}d`;
-  if (dayKey === 'undated') return 'undated';
-
-  const parsed = new Date(`${dayKey}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return dayKey;
-
-  return parsed.toLocaleDateString('en-AU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
-function parseLocalDate(dateStr) {
-  const parsed = new Date(`${dateStr}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function getLocalDateKey(dateLike) {
-  if (!dateLike) return null;
-  if (typeof dateLike === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateLike)) return dateLike;
-  const parsed = new Date(dateLike);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return formatLocalDate(parsed);
-}
-
-function formatRelativeDayLabel(dateStr, referenceDate) {
-  const parsedKey = getLocalDateKey(dateStr);
-  if (!parsedKey) return dateStr || 'Unknown';
-
-  const referenceKey = formatLocalDate(referenceDate);
-  const refMs = Date.parse(`${referenceKey}T00:00:00Z`);
-  const parsedMs = Date.parse(`${parsedKey}T00:00:00Z`);
-  const diffDays = Math.round((refMs - parsedMs) / 86400000);
-
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays > 1) return `${diffDays}D Ago`;
-  if (diffDays === -1) return 'Tomorrow';
-  return `${Math.abs(diffDays)}D Ahead`;
-}
-
-function formatShortDate(dateStr) {
-  const parsed = parseLocalDate(dateStr);
-  if (!parsed) return dateStr || '';
-
-  return parsed.toLocaleDateString('en-AU', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
 }
 
 function Landing({ onSelect }) {
@@ -1167,10 +963,8 @@ export default function CreditCardApp() {
   const [clockTick, setClockTick] = useState(() => Date.now());
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState(null);
-  const [undoStack, setUndoStack] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState({});
   const [firebaseTransactions, setFirebaseTransactions] = useState(null);
-  const [previewOnly, setPreviewOnly] = useState(false);
   const [breakdownUser, setBreakdownUser] = useState(null);
   const [questDebugLog, setQuestDebugLog] = useState([]);
   const [submissionsHydrated, setSubmissionsHydrated] = useState(false);
@@ -1473,6 +1267,18 @@ export default function CreditCardApp() {
     }, 850);
   };
 
+  const { handleAssign, undo, undoStack, setUndoStack } = useTransactionAssignments({
+    currentUser,
+    day,
+    referenceDateKey,
+    submissions,
+    setSubmissions,
+    petProfiles,
+    setPetProfiles,
+    updateActivePet,
+    addCoinPop,
+  });
+
   const buyFood = () => {
     updateActivePet((pet) => {
       if (pet.coins < 1) return pet;
@@ -1652,70 +1458,19 @@ export default function CreditCardApp() {
     [simulatedNow]
   );
 
-  const firebaseSections = useMemo(() => {
-    if (!usingFirebaseTransactions) return [];
-
-    const pending = [];
-    const agedPendingGroups = {};
-    const datedTransactions = [];
-
-    firebaseTransactions.forEach((tx) => {
-      const visible = isVisibleForUser(tx, submissions, currentUser, referenceDateKey);
-      if (!visible) return;
-
-      const isPending = tx.isPending || !tx.date;
-      if (isPending) {
-        const pendingKey = getTransactionReferenceDateKey(tx, referenceDateKey);
-        if (pendingKey === referenceDateKey) {
-          pending.push(tx);
-        } else {
-          if (!agedPendingGroups[pendingKey]) agedPendingGroups[pendingKey] = [];
-          agedPendingGroups[pendingKey].push(tx);
-        }
-        return;
-      }
-
-      datedTransactions.push(tx);
-    });
-
-    const datedGroups = groupTransactionsByDate(datedTransactions);
-    const datedKeys = sortDateKeys(Object.keys(datedGroups));
-    const agedPendingKeys = sortDateKeys(Object.keys(agedPendingGroups));
-
-    const sections = [];
-    if (pending.length > 0) {
-      sections.push({
-        key: 'pending',
-        title: 'Pending',
-        date: '',
-        txs: pending,
-      });
-    }
-
-    agedPendingKeys.forEach((dateKey) => {
-      const txs = agedPendingGroups[dateKey] || [];
-      if (txs.length === 0) return;
-      sections.push({
-        key: `pending-${dateKey}`,
-        title: formatRelativeDayLabel(dateKey, simulatedNow),
-        txs,
-      });
-    });
-
-    datedKeys.forEach((dateKey) => {
-      const txs = (datedGroups[dateKey] || []).filter((tx) =>
-        isVisibleForUser(tx, submissions, currentUser, referenceDateKey)
-      );
-      if (txs.length === 0) return;
-      sections.push({
-        key: dateKey,
-        title: formatRelativeDayLabel(dateKey, simulatedNow),
-        txs,
-      });
-    });
-
-    return sections;
-  }, [usingFirebaseTransactions, firebaseTransactions, submissions, currentUser, day, simulatedNow]);
+  const firebaseSections = useMemo(
+    () =>
+      usingFirebaseTransactions
+        ? buildTransactionSections({
+            transactions: firebaseTransactions,
+            submissions,
+            currentUser,
+            referenceDateKey,
+            simulatedNow,
+          })
+        : [],
+    [usingFirebaseTransactions, firebaseTransactions, submissions, currentUser, referenceDateKey, simulatedNow]
+  );
 
   const authLoading = currentUser && !authReady && !authError;
 
@@ -1736,27 +1491,18 @@ export default function CreditCardApp() {
   }, [anyVisible, currentUser]);
 
   const myRemaining = useMemo(
-    () =>
-      sourceTransactions.filter((tx) => isVisibleForUser(tx, submissions, currentUser, referenceDateKey)).length,
+    () => countVisibleTransactions(sourceTransactions, submissions, currentUser, referenceDateKey),
     [sourceTransactions, submissions, currentUser, referenceDateKey]
   );
   const otherRemaining = useMemo(
-    () =>
-      sourceTransactions.filter((tx) => isVisibleForUser(tx, submissions, otherUser, referenceDateKey)).length,
+    () => countVisibleTransactions(sourceTransactions, submissions, otherUser, referenceDateKey),
     [sourceTransactions, submissions, otherUser, referenceDateKey]
   );
 
-  const userTallies = useMemo(() => {
-    const out = {};
-    USERS.forEach((u) => {
-        out[u] = Object.entries(submissions).reduce((acc, [txId, sub]) => {
-          const tx = transactionsById[txId];
-          if (!tx || !shouldCountForAssignee(sub, u, referenceDateKey)) return acc;
-          return acc + Number(tx.amount || 0);
-        }, 0);
-      });
-      return out;
-  }, [submissions, transactionsById, referenceDateKey]);
+  const userTallies = useMemo(
+    () => buildUserTallies(USERS, submissions, transactionsById, referenceDateKey),
+    [submissions, transactionsById, referenceDateKey]
+  );
 
   const tallyBreakdowns = useMemo(
     () =>
@@ -1767,111 +1513,9 @@ export default function CreditCardApp() {
   );
 
   const macTally = useMemo(
-      () =>
-        Object.entries(submissions).reduce((acc, [txId, sub]) => {
-          const tx = transactionsById[txId];
-          if (!tx || !shouldCountForAssignee(sub, 'Macquarie', referenceDateKey)) return acc;
-          return acc + Number(tx.amount || 0);
-        }, 0),
+    () => buildAssigneeTotal(submissions, transactionsById, 'Macquarie', referenceDateKey),
     [submissions, transactionsById, referenceDateKey]
   );
-
-  const handleAssign = async (txId, value, event) => {
-    if (!currentUser) return;
-    const txSubmissions = submissions[txId] || {};
-    const currentSubmission = txSubmissions[currentUser] || null;
-    const previousValue = currentSubmission?.value ?? null;
-    const previousStatus = getSubmissionStatus(txSubmissions);
-    const ts = Date.now();
-    const nextSubmission = {
-      ...(currentSubmission || {}),
-      day,
-      dateKey: referenceDateKey,
-      ts,
-      value,
-    };
-    const nextStatus = getSubmissionStatus({
-      ...txSubmissions,
-      [currentUser]: nextSubmission,
-    });
-    const earnedCloseReward = !previousStatus.resolved && nextStatus.resolved;
-    const shouldReward = previousValue !== value || earnedCloseReward;
-    const previousPetState = shouldReward ? normalizePetState(petProfiles[currentUser], referenceDateKey) : null;
-    setUndoStack((prev) => [
-      ...prev,
-      {
-        txId,
-        user: currentUser,
-        prev: submissions[txId]?.[currentUser] || null,
-        petUser: currentUser,
-        petPrev: previousPetState,
-      },
-    ]);
-
-    setSubmissions((prev) => ({
-      ...prev,
-      [txId]: {
-        ...prev[txId],
-        [currentUser]: nextSubmission,
-      },
-    }));
-
-      try {
-        await set(ref(db, `submissions/${txId}/${currentUser}`), {
-          day,
-          dateKey: referenceDateKey,
-          ts,
-          value,
-        });
-
-      if (shouldReward) {
-        updateActivePet((pet) =>
-          applyPetActionProgress(pet, {
-            dateKey: referenceDateKey,
-            kind: 'assign',
-            coinReward: 1,
-          }).pet
-        );
-        addCoinPop(event);
-      }
-    } catch (err) {
-      console.error('Failed to persist submission to Firebase:', err);
-    }
-  };
-
-  const undo = async () => {
-    const last = undoStack[undoStack.length - 1];
-    if (!last) return;
-    setUndoStack((prev) => prev.slice(0, -1));
-    setSubmissions((prev) => {
-      const next = { ...prev };
-      if (!next[last.txId]) return next;
-      if (last.prev) next[last.txId][last.user] = last.prev;
-      else delete next[last.txId][last.user];
-      return next;
-    });
-    if (last.petPrev && last.petUser) {
-      setPetProfiles((prev) => ({
-        ...prev,
-        [last.petUser]: normalizePetState(last.petPrev, referenceDateKey),
-      }));
-    }
-
-      try {
-        if (last.prev) {
-          await set(ref(db, `submissions/${last.txId}/${last.user}`), {
-            day,
-            dateKey: getSubmissionDateKeyEntry(last.prev),
-            ts: last.prev.ts || Date.now(),
-            value: last.prev.value,
-          });
-      } else {
-        await set(ref(db, `submissions/${last.txId}/${last.user}`), null);
-      }
-    } catch (err) {
-      console.error('Failed to undo submission in Firebase:', err);
-    }
-  };
 
   const stepDay = () =>
     {

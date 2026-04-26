@@ -6,12 +6,14 @@ import TransactionSelectionReview from './TransactionSelectionReview';
 import { processImages } from '../utils/imageProcessor';
 import { detectDuplicatesAcrossImages } from '../utils/duplicateDetection';
 import { mergeTransactions, prepareForFirebase } from '../utils/transactionMerger';
-import { ensureAnonymousAuth } from '../utils/firebaseAuth';
+import {
+  formatActivityTimestamp,
+} from '../utils/adminReporting';
+import { useAdminDashboardData } from '../hooks/useAdminDashboardData';
 import {
   addTransactions,
   getAllTransactions,
   getAllSubmissions,
-  getPresenceEntries,
   saveProcessedLog,
   getAllProcessedLogs,
   deleteTransactionsByIds,
@@ -19,7 +21,7 @@ import {
   clearUploadedData,
   getTodayDate,
 } from '../services/firebaseService';
-import { formatLocalDate, formatLocalDateTime } from '../utils/simulationDate';
+import { formatLocalDateTime } from '../utils/simulationDate';
 
 
 function buildAllTransactions(processedImages) {
@@ -154,193 +156,6 @@ function OcrDiagnostics({ processedImages }) {
   );
 }
 
-const PROFILE_NAMES = ['Tony', 'Nugs'];
-const PRESENCE_TTL_MS = 12000;
-
-function getSubmissionValue(sub, user) {
-  return sub?.[user]?.value ?? null;
-}
-
-function getSubmissionDay(sub, user) {
-  const dayValue = sub?.[user]?.day;
-  if (dayValue === undefined || dayValue === null || dayValue === '') return null;
-  const parsed = Number(dayValue);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function getSubmissionDateKeyEntry(entry) {
-  const explicitDateKey = entry?.dateKey;
-  if (explicitDateKey) return explicitDateKey;
-
-  const ts = Number(entry?.ts);
-  if (!Number.isFinite(ts)) return null;
-  return formatLocalDate(new Date(ts));
-}
-
-function getSubmissionDateKey(sub, user) {
-  return getSubmissionDateKeyEntry(sub?.[user]);
-}
-
-function hasSubmissionOnDate(sub, user, referenceDateKey) {
-  return getSubmissionDateKey(sub, user) === referenceDateKey;
-}
-
-function getSubmissionStatus(sub) {
-  const values = PROFILE_NAMES.map((u) => getSubmissionValue(sub, u)).filter(Boolean);
-  const hasUnsure = values.includes('Unsure');
-  const allPicked = values.length === PROFILE_NAMES.length;
-
-  return {
-    resolved: allPicked && !hasUnsure && new Set(values).size === 1,
-    conflict: allPicked && !hasUnsure && new Set(values).size > 1,
-    unsure: hasUnsure,
-    anyPicked: values.length > 0,
-  };
-}
-
-function getLocalDateKey(dateLike) {
-  if (!dateLike) return null;
-  if (typeof dateLike === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateLike)) return dateLike;
-  const parsed = new Date(dateLike);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return formatLocalDate(parsed);
-}
-
-function getTransactionReferenceDateKey(tx, referenceDateKey) {
-  return tx?.uploadedDay || getLocalDateKey(tx?.uploadedDate || tx?.date) || referenceDateKey;
-}
-
-function getSurfacedSubmissionValue(sub, user, referenceDateKey) {
-  const submittedDateKey = getSubmissionDateKey(sub, user);
-  if (!submittedDateKey || submittedDateKey >= referenceDateKey) return null;
-  return getSubmissionValue(sub, user);
-}
-
-function getSurfacedSubmissionStatus(sub, referenceDateKey) {
-  const values = PROFILE_NAMES.map((u) => getSurfacedSubmissionValue(sub, u, referenceDateKey)).filter(Boolean);
-  const hasUnsure = values.includes('Unsure');
-  const allPicked = values.length === PROFILE_NAMES.length;
-
-  return {
-    resolved: allPicked && !hasUnsure && new Set(values).size === 1,
-    conflict: allPicked && !hasUnsure && new Set(values).size > 1,
-    unsure: hasUnsure,
-    anyPicked: values.length > 0,
-  };
-}
-
-function isVisibleForUser(tx, submissions, user, todayKey) {
-  if (!user) return true;
-
-  const sub = submissions[tx.id] || {};
-  const { resolved } = getSurfacedSubmissionStatus(sub, todayKey);
-  const submittedDateKey = getSubmissionDateKey(sub, user);
-  const transactionReferenceDateKey = getTransactionReferenceDateKey(tx, todayKey);
-  const submittedForThisTransaction =
-    submittedDateKey !== null && transactionReferenceDateKey !== null && submittedDateKey >= transactionReferenceDateKey;
-
-  return !resolved && !submittedForThisTransaction;
-}
-
-function shouldCountForAssignee(sub, assignee, referenceDateKey) {
-  const hasCurrentDaySubmission = PROFILE_NAMES.some((user) => hasSubmissionOnDate(sub, user, referenceDateKey));
-  if (hasCurrentDaySubmission) {
-    const liveValues = PROFILE_NAMES.map((u) => getSubmissionValue(sub, u)).filter(
-      (value) => value && value !== 'Unsure'
-    );
-    return liveValues.includes(assignee);
-  }
-
-  const status = getSurfacedSubmissionStatus(sub, referenceDateKey);
-  if (!status.resolved) return false;
-
-  const values = PROFILE_NAMES.map((u) => getSurfacedSubmissionValue(sub, u, referenceDateKey)).filter(Boolean);
-  return values[0] === assignee;
-}
-
-function dateToMs(dateKey) {
-  if (!dateKey) return null;
-  const ms = Date.parse(`${dateKey}T00:00:00Z`);
-  return Number.isNaN(ms) ? null : ms;
-}
-
-function daysBetween(olderKey, newerKey) {
-  const olderMs = dateToMs(olderKey);
-  const newerMs = dateToMs(newerKey);
-  if (olderMs === null || newerMs === null) return null;
-  return Math.floor((newerMs - olderMs) / 86400000);
-}
-
-function buildProfileEmailReports(transactions, submissions) {
-  const todayKey = getTodayDate();
-
-  return PROFILE_NAMES.map((profileName) => {
-    const visibleTransactions = transactions.filter((tx) =>
-      isVisibleForUser(tx, submissions, profileName, todayKey)
-    );
-
-    const totalSpend = Object.entries(submissions).reduce((acc, [txId, sub]) => {
-      const tx = transactions.find((item) => item.id === txId);
-      if (!tx || !shouldCountForAssignee(sub, profileName, todayKey)) return acc;
-      return acc + Number(tx.amount || 0);
-    }, 0);
-
-    const pendingTransactions = visibleTransactions.filter((tx) => {
-      if (!(tx.isPending || !tx.date)) return false;
-      const referenceDay = getTransactionReferenceDateKey(tx, todayKey);
-      return referenceDay === todayKey;
-    });
-
-    const outstandingTransactions = visibleTransactions.filter((tx) => {
-      if (!(tx.isPending || !tx.date)) return false;
-      const referenceDay = getTransactionReferenceDateKey(tx, todayKey);
-      if (!referenceDay) return false;
-      const age = daysBetween(referenceDay, todayKey);
-      return age !== null && age > 1;
-    });
-
-    const conflictsCount = visibleTransactions.filter((tx) => {
-      const status = getSurfacedSubmissionStatus(submissions[tx.id] || {}, todayKey);
-      return status.conflict;
-    }).length;
-
-    const unsuresCount = visibleTransactions.filter((tx) => {
-      const status = getSurfacedSubmissionStatus(submissions[tx.id] || {}, todayKey);
-      return status.unsure;
-    }).length;
-
-    return {
-      profileName,
-      subject: `${profileName} profile summary - ${todayKey}`,
-      appUrl: 'https://ccapp-nine.vercel.app',
-      stats: {
-        totalSpend,
-        pendingCount: pendingTransactions.length,
-        outstandingCount: outstandingTransactions.length,
-        conflictsCount,
-        unsuresCount,
-      },
-    };
-  });
-}
-
-function buildProcessedBatches(processedLogs = {}) {
-  return Object.entries(processedLogs)
-    .map(([imageHash, log]) => ({
-      imageHash,
-      imageName: log?.imageName || 'Unknown image',
-      uploadDate: log?.uploadDate || null,
-      uploadDay: log?.uploadDay || null,
-      extractedCount: Number(log?.extractedCount || 0),
-      transactionIds: Array.isArray(log?.transactions) ? log.transactions.filter(Boolean) : [],
-    }))
-    .sort((a, b) => {
-      const aTime = Date.parse(a.uploadDate || '') || 0;
-      const bTime = Date.parse(b.uploadDate || '') || 0;
-      return bTime - aTime;
-    });
-}
-
 function buildUndoPayload(addedRecords, processedImages) {
   const imageToTransactionIds = new Map();
 
@@ -382,59 +197,6 @@ function getUploadResultStats(summary = {}, addedCount = 0) {
   };
 }
 
-function formatActivityTimestamp(ts) {
-  const value = Number(ts);
-  if (!Number.isFinite(value) || value <= 0) return 'No activity yet';
-  return formatLocalDateTime(new Date(value));
-}
-
-function getLatestSubmissionEntryForUser(submissions = {}, user) {
-  return Object.entries(submissions).reduce((latest, [txId, submission]) => {
-    const entry = submission?.[user];
-    const ts = Number(entry?.ts);
-
-    if (!Number.isFinite(ts)) return latest;
-    if (!latest || ts > latest.ts) {
-      return {
-        txId,
-        ts,
-        value: entry?.value || null,
-        dateKey: entry?.dateKey || null,
-      };
-    }
-
-    return latest;
-  }, null);
-}
-
-function buildAdminActivityLog(presenceEntries = {}, submissions = {}) {
-  const now = Date.now();
-
-  return PROFILE_NAMES.map((user) => {
-    const userPresenceEntries = Object.values(presenceEntries || {}).filter(
-      (entry) => entry && typeof entry === 'object' && entry.user === user
-    );
-    const latestPresenceTs = userPresenceEntries.reduce((latest, entry) => {
-      const ts = Number(entry?.ts);
-      return Number.isFinite(ts) && ts > latest ? ts : latest;
-    }, 0);
-    const hasActivePresence = userPresenceEntries.some((entry) => {
-      const ts = Number(entry?.ts);
-      return Number.isFinite(ts) && now - ts <= PRESENCE_TTL_MS;
-    });
-    const latestSubmission = getLatestSubmissionEntryForUser(submissions, user);
-
-    return {
-      user,
-      isOnline: hasActivePresence,
-      latestPresenceTs: latestPresenceTs || null,
-      latestSubmission,
-    };
-  });
-}
-
-const LAST_UPLOAD_UNDO_KEY = 'cc_last_upload_undo';
-
 export default function AdminUploadPage() {
   const [step, setStep] = useState('upload');
   const [uploadedFiles, setUploadedFiles] = useState([]);
@@ -447,137 +209,24 @@ export default function AdminUploadPage() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [authReady, setAuthReady] = useState(false);
   const [isEmailSending, setIsEmailSending] = useState(false);
-  const [emailStatus, setEmailStatus] = useState(null);
-  const [notificationReports, setNotificationReports] = useState([]);
-  const [lastUploadUndo, setLastUploadUndo] = useState(null);
-  const [confirmTonyEmail, setConfirmTonyEmail] = useState(false);
-  const [confirmNugsEmail, setConfirmNugsEmail] = useState(false);
-  const [uploadedBatches, setUploadedBatches] = useState([]);
-  const [adminActivityLog, setAdminActivityLog] = useState([]);
-
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(LAST_UPLOAD_UNDO_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.transactionIds)) {
-        setLastUploadUndo(parsed);
-      }
-    } catch (err) {
-      console.warn('Failed to restore last upload undo state:', err);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    try {
-      if (lastUploadUndo) {
-        window.localStorage.setItem(LAST_UPLOAD_UNDO_KEY, JSON.stringify(lastUploadUndo));
-      } else {
-        window.localStorage.removeItem(LAST_UPLOAD_UNDO_KEY);
-      }
-    } catch (err) {
-      console.warn('Failed to persist last upload undo state:', err);
-    }
-  }, [lastUploadUndo]);
-
-  React.useEffect(
-    () =>
-      ensureAnonymousAuth({
-        onReady: () => setAuthReady(true),
-        onError: (authError) => {
-          console.error('Anonymous Firebase sign-in failed:', authError);
-          setError('Unable to sign in to Firebase automatically.');
-        },
-      }),
-    []
-  );
-
-  React.useEffect(() => {
-    if (step !== 'success') return;
-
-    setEmailStatus(null);
-    setConfirmTonyEmail(false);
-    setConfirmNugsEmail(false);
-  }, [step, successMessage]);
-
-  React.useEffect(() => {
-    if (step !== 'success') return undefined;
-
-    let cancelled = false;
-
-    const loadNotificationReports = async () => {
-      try {
-        const [allTransactions, allSubmissions] = await Promise.all([
-          getAllTransactions(),
-          getAllSubmissions(),
-        ]);
-        if (cancelled) return;
-
-        setNotificationReports(
-          buildProfileEmailReports(allTransactions, allSubmissions || {})
-        );
-      } catch (err) {
-        console.error('Failed to load notification reports:', err);
-      }
-    };
-
-    loadNotificationReports();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [step, successMessage]);
-
-  React.useEffect(() => {
-    if (!authReady) return undefined;
-
-    let cancelled = false;
-
-    const loadUploadedBatches = async () => {
-      try {
-        const processedLogs = await getAllProcessedLogs();
-        if (cancelled) return;
-        setUploadedBatches(buildProcessedBatches(processedLogs || {}));
-      } catch (err) {
-        console.error('Failed to load uploaded batches:', err);
-      }
-    };
-
-    loadUploadedBatches();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authReady, step, successMessage, lastUploadUndo]);
-
-  React.useEffect(() => {
-    if (!authReady) return undefined;
-
-    let cancelled = false;
-
-    const loadAdminActivity = async () => {
-      try {
-        const [presenceEntries, submissions] = await Promise.all([
-          getPresenceEntries(),
-          getAllSubmissions(),
-        ]);
-        if (cancelled) return;
-        setAdminActivityLog(buildAdminActivityLog(presenceEntries || {}, submissions || {}));
-      } catch (err) {
-        console.error('Failed to load admin activity log:', err);
-      }
-    };
-
-    loadAdminActivity();
-    const interval = window.setInterval(loadAdminActivity, 10000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [authReady, step, successMessage]);
+  const {
+    adminActivityLog,
+    authReady,
+    confirmNugsEmail,
+    confirmTonyEmail,
+    emailStatus,
+    lastUploadUndo,
+    loadNotificationReports,
+    notificationReports,
+    refreshUploadedBatches,
+    setConfirmNugsEmail,
+    setConfirmTonyEmail,
+    setEmailStatus,
+    setLastUploadUndo,
+    setNotificationReports,
+    uploadedBatches,
+  } = useAdminDashboardData(step, successMessage, setError);
 
   const runOcrPipeline = async () => {
     const results = await processImages(
@@ -822,8 +471,7 @@ export default function AdminUploadPage() {
         setLastUploadUndo(null);
       }
 
-      const processedLogs = await getAllProcessedLogs();
-      setUploadedBatches(buildProcessedBatches(processedLogs || {}));
+      await refreshUploadedBatches();
       setEmailStatus({
         type: 'success',
         message: `Deleted ${batch.transactionIds.length} transaction${batch.transactionIds.length === 1 ? '' : 's'} from ${batch.imageName}.`,
@@ -864,7 +512,7 @@ export default function AdminUploadPage() {
       const reports =
         notificationReports.length > 0
           ? notificationReports
-          : buildProfileEmailReports(await getAllTransactions(), await getAllSubmissions());
+          : await loadNotificationReports();
 
       for (const profileName of selectedProfiles) {
         const report = reports.find((item) => item.profileName === profileName);

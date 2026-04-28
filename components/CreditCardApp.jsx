@@ -1115,6 +1115,39 @@ export default function CreditCardApp() {
     localStorage.setItem(PET_STORAGE_KEY, JSON.stringify(petProfiles));
   }, [petProfiles, petProfilesHydrated]);
 
+  const usingFirebaseTransactions = Array.isArray(firebaseTransactions);
+  const sourceTransactions = useMemo(
+    () => (usingFirebaseTransactions ? firebaseTransactions : []),
+    [usingFirebaseTransactions, firebaseTransactions]
+  );
+  const transactionsById = useMemo(
+    () => Object.fromEntries((sourceTransactions || []).map((tx) => [tx.id, tx])),
+    [sourceTransactions]
+  );
+  const simulatedNow = useMemo(() => getSimulatedNow(new Date(clockTick), day), [clockTick, day]);
+  const referenceDateKey = useMemo(() => formatLocalDate(simulatedNow), [simulatedNow]);
+  const liveDateTimeLabel = useMemo(() => formatLocalDateTime(simulatedNow), [simulatedNow]);
+  const otherUser = currentUser ? getOtherUser(currentUser) : USERS[0];
+  const dayLabel = day === 0 ? 'live' : `+${day} day${day === 1 ? '' : 's'}`;
+  const visibleNowLabel = useMemo(
+    () =>
+      simulatedNow.toLocaleTimeString('en-AU', {
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
+    [simulatedNow]
+  );
+  const visibleDateLabel = useMemo(
+    () =>
+      simulatedNow.toLocaleDateString('en-AU', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+    [simulatedNow]
+  );
+
   const syncPetProfilesForDate = (dateKey, reason = 'sync_pet_profiles') => {
     if (!currentUser) return;
     setPetProfiles((prev) => {
@@ -1267,7 +1300,7 @@ export default function CreditCardApp() {
     }, 850);
   };
 
-  const { handleAssign, undo, undoStack, setUndoStack } = useTransactionAssignments({
+  const { assignmentError, handleAssign, undo, undoStack, setUndoStack } = useTransactionAssignments({
     currentUser,
     day,
     referenceDateKey,
@@ -1424,39 +1457,6 @@ export default function CreditCardApp() {
       });
     };
   }, [authReady, currentUser]);
-
-  const usingFirebaseTransactions = Array.isArray(firebaseTransactions);
-  const sourceTransactions = useMemo(
-    () => (usingFirebaseTransactions ? firebaseTransactions : []),
-    [usingFirebaseTransactions, firebaseTransactions]
-  );
-  const transactionsById = useMemo(
-    () => Object.fromEntries((sourceTransactions || []).map((tx) => [tx.id, tx])),
-    [sourceTransactions]
-  );
-  const simulatedNow = useMemo(() => getSimulatedNow(new Date(clockTick), day), [clockTick, day]);
-  const referenceDateKey = useMemo(() => formatLocalDate(simulatedNow), [simulatedNow]);
-  const liveDateTimeLabel = useMemo(() => formatLocalDateTime(simulatedNow), [simulatedNow]);
-  const otherUser = currentUser ? getOtherUser(currentUser) : USERS[0];
-  const dayLabel = day === 0 ? 'live' : `+${day} day${day === 1 ? '' : 's'}`;
-  const visibleNowLabel = useMemo(
-    () =>
-      simulatedNow.toLocaleTimeString('en-AU', {
-        hour: 'numeric',
-        minute: '2-digit',
-      }),
-    [simulatedNow]
-  );
-  const visibleDateLabel = useMemo(
-    () =>
-      simulatedNow.toLocaleDateString('en-AU', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }),
-    [simulatedNow]
-  );
 
   const firebaseSections = useMemo(
     () =>
@@ -1663,6 +1663,15 @@ export default function CreditCardApp() {
           )}
         </div>
       </div>
+
+      {assignmentError && (
+        <div className="sync-bar" style={{ justifyContent: 'center' }}>
+          <div className="sync-status disconnected">
+            <div className="sync-dot disconnected" />
+            {assignmentError}
+          </div>
+        </div>
+      )}
 
       <div className="top-meta-bar">
         <div className="top-meta-main">

@@ -129,4 +129,3 @@ export function getTallyBreakdownEntries(submissions, transactionsById, assignee
       return String(left.desc).localeCompare(String(right.desc));
     });
 }
-

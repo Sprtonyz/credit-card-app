@@ -1,4 +1,6 @@
 .next/
+.next-dev/
+.next-build/
 node_modules/
 *.log
 build.err

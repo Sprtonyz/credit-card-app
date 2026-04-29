@@ -344,6 +344,10 @@ body {
   color: #a78bfa;
 }
 
+.tally-amount.macqbill {
+  color: #fbbf24;
+}
+
 .tally-note {
   font-size: 0.42rem;
   color: #374151;
@@ -756,8 +760,83 @@ body {
   padding-left: 0.4rem;
 }
 
-.assign-row {
+.assign-swipe {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  touch-action: pan-y;
+}
+
+.assign-swipe-content {
+  position: relative;
+  z-index: 1;
+  border-radius: inherit;
+  background: rgba(10,13,18,0.92);
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+
+.assign-swipe.dragging .assign-swipe-content {
+  transition: none;
+  cursor: grabbing;
+}
+
+.swipe-action {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 58%;
   display: flex;
+  align-items: center;
+  padding: 0 0.78rem;
+  pointer-events: none;
+  opacity: 0.72;
+  transition: opacity 0.14s ease, background 0.14s ease;
+}
+
+.swipe-action span {
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.swipe-action-split {
+  right: 0;
+  justify-content: flex-end;
+  color: #5eead4;
+  background: linear-gradient(270deg, rgba(20,184,166,0.32), rgba(20,184,166,0.04));
+}
+
+.swipe-action-macqbill {
+  left: 0;
+  justify-content: flex-start;
+  color: #fbbf24;
+  background: linear-gradient(90deg, rgba(245,158,11,0.32), rgba(245,158,11,0.04));
+}
+
+.assign-swipe.ready-right .swipe-action-macqbill,
+.assign-swipe.ready-left .swipe-action-split {
+  opacity: 1;
+}
+
+.tx-card-swipe {
+  border-radius: 9px;
+  margin-bottom: 0.38rem;
+}
+
+.tx-card-swipe .assign-swipe-content {
+  border-radius: 9px;
+  background: #0a0d12;
+}
+
+.tx-card-swipe .tx-card {
+  margin-bottom: 0;
+}
+
+.assign-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 0.28rem;
   align-items: center;
 }
@@ -769,6 +848,13 @@ body {
   text-transform: uppercase;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.assign-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.28rem;
+  min-width: 0;
 }
 
 .tap-btn {
@@ -787,6 +873,9 @@ body {
   user-select: none;
   touch-action: manipulation;
   outline: none;
+  min-width: 0;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .tap-btn.mac-btn {
@@ -811,6 +900,19 @@ body {
   color: #f9a8d4;
   border-color: rgba(249,168,212,0.15);
   background: rgba(249,168,212,0.05);
+}
+
+.tap-btn.split-btn {
+  color: #5eead4;
+  border-color: rgba(20,184,166,0.18);
+  background: rgba(20,184,166,0.05);
+}
+
+.tap-btn.macqbill-btn {
+  color: #fbbf24;
+  border-color: rgba(245,158,11,0.18);
+  background: rgba(245,158,11,0.05);
+  font-size: 0.54rem;
 }
 
 .tap-btn.flash,
@@ -840,6 +942,7 @@ body {
   user-select: none;
   touch-action: manipulation;
   outline: none;
+  white-space: nowrap;
 }
 
 .conflict-tap-btn.mac-btn {
@@ -864,6 +967,19 @@ body {
   border-color: rgba(245,158,11,0.15);
   background: rgba(245,158,11,0.05);
   color: #fbbf24;
+}
+
+.conflict-tap-btn.split-btn {
+  border-color: rgba(20,184,166,0.2);
+  background: rgba(20,184,166,0.06);
+  color: #5eead4;
+}
+
+.conflict-tap-btn.macqbill-btn {
+  border-color: rgba(245,158,11,0.2);
+  background: rgba(245,158,11,0.06);
+  color: #fbbf24;
+  font-size: 0.54rem;
 }
 
 .my-pick-note {

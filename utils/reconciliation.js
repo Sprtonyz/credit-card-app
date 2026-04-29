@@ -73,6 +73,16 @@ export function getSurfacedSubmissionStatus(submission, referenceDateKey, users 
   };
 }
 
+function getAssignmentContributionRatio(value, assignee) {
+  if (value === 'Split') {
+    if (assignee === 'Tony') return 2 / 3;
+    if (assignee === 'Nugs') return 1 / 3;
+    return 0;
+  }
+
+  return value === assignee ? 1 : 0;
+}
+
 export function isVisibleForUser(transaction, submissions, user, referenceDateKey, users = PROFILE_NAMES) {
   if (!user) return true;
 
@@ -88,29 +98,41 @@ export function isVisibleForUser(transaction, submissions, user, referenceDateKe
   return !resolved && !submittedForThisTransaction;
 }
 
-export function shouldCountForAssignee(submission, assignee, referenceDateKey, users = PROFILE_NAMES) {
+export function getAssigneeContributionRatio(submission, assignee, referenceDateKey, users = PROFILE_NAMES) {
   const hasCurrentDaySubmission = users.some((user) => hasSubmissionOnDate(submission, user, referenceDateKey));
   if (hasCurrentDaySubmission) {
-    const liveValues = users
-      .map((user) => getSubmissionValue(submission, user))
-      .filter((value) => value && value !== 'Unsure');
-    return liveValues.includes(assignee);
+    const liveValues = [
+      ...new Set(
+        users
+          .map((user) => getSubmissionValue(submission, user))
+          .filter((value) => value && value !== 'Unsure')
+      ),
+    ];
+    return liveValues.reduce(
+      (maxRatio, value) => Math.max(maxRatio, getAssignmentContributionRatio(value, assignee)),
+      0
+    );
   }
 
   const status = getSurfacedSubmissionStatus(submission, referenceDateKey, users);
-  if (!status.resolved) return false;
+  if (!status.resolved) return 0;
 
   const values = users
     .map((user) => getSurfacedSubmissionValue(submission, user, referenceDateKey))
     .filter(Boolean);
-  return values[0] === assignee;
+  return getAssignmentContributionRatio(values[0], assignee);
+}
+
+export function shouldCountForAssignee(submission, assignee, referenceDateKey, users = PROFILE_NAMES) {
+  return getAssigneeContributionRatio(submission, assignee, referenceDateKey, users) > 0;
 }
 
 export function getTallyBreakdownEntries(submissions, transactionsById, assignee, referenceDateKey, users = PROFILE_NAMES) {
   return Object.entries(submissions)
     .map(([transactionId, submission]) => {
       const transaction = transactionsById[transactionId];
-      if (!transaction || !shouldCountForAssignee(submission, assignee, referenceDateKey, users)) {
+      const contributionRatio = getAssigneeContributionRatio(submission, assignee, referenceDateKey, users);
+      if (!transaction || contributionRatio <= 0) {
         return null;
       }
 
@@ -120,6 +142,8 @@ export function getTallyBreakdownEntries(submissions, transactionsById, assignee
 
       return {
         ...transaction,
+        countedAmount: Number(transaction.amount || 0) * contributionRatio,
+        contributionRatio,
         assignmentState: hasCurrentDaySubmission ? 'Today' : 'Locked',
       };
     })

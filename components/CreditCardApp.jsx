@@ -47,6 +47,13 @@ import {
 
 const USERS = ['Tony', 'Nugs'];
 const ASSIGN_OPTS = ['Unsure', 'Macquarie', 'Tony', 'Nugs'];
+const SWIPE_ASSIGNMENTS = {
+  left: { value: 'Split', label: 'Split' },
+  right: { value: 'Macqbill', label: 'Macqbill' },
+};
+const SWIPE_TRIGGER_PX = 86;
+const SWIPE_MAX_PX = 124;
+const SWIPE_INTENT_PX = 8;
 const STORAGE_KEY = 'cc_v5_subs';
 const USER_KEY = 'cc_v5_user';
 const PET_STORAGE_KEY = 'cc_v5_pet_state';
@@ -109,11 +116,17 @@ function getOptionClassName(value) {
   if (value === 'Unsure') return 'unsure-btn';
   if (value === 'Tony') return 'tony-btn';
   if (value === 'Nugs') return 'nugs-btn';
+  if (value === 'Split') return 'split-btn';
+  if (value === 'Macqbill') return 'macqbill-btn';
   return '';
 }
 
 function formatAssignmentLabel(value) {
   return value === 'Macquarie' ? 'MAC' : value;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function normalizePetProfilesMap(rawProfiles, dateKey) {
@@ -295,6 +308,133 @@ const ConfettiCanvas = forwardRef(function ConfettiCanvas(_, ref) {
   return <canvas ref={canvasRef} id="confetti-canvas" style={{ display: 'none' }} />;
 });
 
+function AssignmentSwipeActions({ txId, onAssign, children, className = '', contentClassName = '' }) {
+  const surfaceRef = useRef(null);
+  const startRef = useRef({ x: 0, y: 0 });
+  const activeRef = useRef(false);
+  const horizontalRef = useRef(false);
+  const suppressClickRef = useRef(false);
+  const [offset, setOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+
+  const resetSwipe = () => {
+    activeRef.current = false;
+    horizontalRef.current = false;
+    setOffset(0);
+    setDragging(false);
+  };
+
+  const releasePointerCapture = (event) => {
+    const surface = surfaceRef.current;
+    if (surface?.hasPointerCapture?.(event.pointerId)) {
+      surface.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const handlePointerDown = (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    activeRef.current = true;
+    horizontalRef.current = false;
+    suppressClickRef.current = false;
+    startRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    setDragging(true);
+  };
+
+  const handlePointerMove = (event) => {
+    if (!activeRef.current) return;
+
+    const dx = event.clientX - startRef.current.x;
+    const dy = event.clientY - startRef.current.y;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (!horizontalRef.current) {
+      if (absX < SWIPE_INTENT_PX && absY < SWIPE_INTENT_PX) return;
+
+      if (absY > absX) {
+        releasePointerCapture(event);
+        resetSwipe();
+        return;
+      }
+
+      horizontalRef.current = true;
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
+
+    suppressClickRef.current = true;
+    setOffset(clamp(dx, -SWIPE_MAX_PX, SWIPE_MAX_PX));
+  };
+
+  const handlePointerUp = (event) => {
+    if (!activeRef.current) return;
+
+    const dx = event.clientX - startRef.current.x;
+    const action =
+      horizontalRef.current && dx <= -SWIPE_TRIGGER_PX
+        ? SWIPE_ASSIGNMENTS.left
+        : horizontalRef.current && dx >= SWIPE_TRIGGER_PX
+          ? SWIPE_ASSIGNMENTS.right
+          : null;
+
+    releasePointerCapture(event);
+    resetSwipe();
+
+    if (action) {
+      suppressClickRef.current = true;
+      onAssign(txId, action.value, { currentTarget: surfaceRef.current });
+    }
+  };
+
+  const handlePointerCancel = (event) => {
+    releasePointerCapture(event);
+    resetSwipe();
+  };
+
+  const handleClickCapture = (event) => {
+    if (!suppressClickRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  };
+
+  const commitDirection =
+    offset <= -SWIPE_TRIGGER_PX ? 'left' : offset >= SWIPE_TRIGGER_PX ? 'right' : null;
+
+  return (
+    <div
+      ref={surfaceRef}
+      className={`assign-swipe ${className} ${dragging ? 'dragging' : ''} ${
+        commitDirection ? `ready-${commitDirection}` : ''
+      }`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onClickCapture={handleClickCapture}
+    >
+      <div className="swipe-action swipe-action-macqbill">
+        <span>{SWIPE_ASSIGNMENTS.right.label}</span>
+      </div>
+      <div className="swipe-action swipe-action-split">
+        <span>{SWIPE_ASSIGNMENTS.left.label}</span>
+      </div>
+      <div
+        className={`assign-swipe-content ${contentClassName}`}
+        style={{
+          transform: `translateX(${offset}px)`,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
   const otherUser = getOtherUser(currentUser);
   const mySub = getSurfacedSubmissionValue(sub, currentUser, referenceDateKey);
@@ -305,64 +445,68 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
   const cardClass = isRefund ? 'refund' : '';
 
   return (
-    <div className={`tx-card ${cardClass} ${conflict ? 'conflict' : unsure ? 'unsure' : ''}`}>
-      <div className="tx-top">
-        <div>
-          <div className="tx-meta">
-            {isRefund && !conflict && !unsure && (
-              <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
-                refund
-              </span>
+    <AssignmentSwipeActions txId={tx.id} onAssign={onAssign} className="tx-card-swipe">
+      <div className={`tx-card ${cardClass} ${conflict ? 'conflict' : unsure ? 'unsure' : ''}`}>
+        <div className="tx-top">
+          <div>
+            <div className="tx-meta">
+              {isRefund && !conflict && !unsure && (
+                <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                  refund
+                </span>
+              )}
+              {conflict && <span className="badge badge-conflict">! conflict</span>}
+              {unsure && !conflict && <span className="badge badge-unsure">? unsure</span>}
+            </div>
+            <p className="tx-desc">{tx.desc}</p>
+            {isRefund && (
+              <p className="mt-1 text-xs font-medium uppercase tracking-wider text-emerald-300/80">
+                Credit applied
+              </p>
             )}
-            {conflict && <span className="badge badge-conflict">! conflict</span>}
-            {unsure && !conflict && <span className="badge badge-unsure">? unsure</span>}
           </div>
-          <p className="tx-desc">{tx.desc}</p>
-          {isRefund && (
-            <p className="mt-1 text-xs font-medium uppercase tracking-wider text-emerald-300/80">
-              Credit applied
-            </p>
-          )}
+          <span className={`tx-amount ${amountClass}`}>
+            {isRefund ? 'CR ' : ''}
+            ${Math.abs(tx.amount).toFixed(2)}
+          </span>
         </div>
-        <span className={`tx-amount ${amountClass}`}>
-          {isRefund ? 'CR ' : ''}
-          ${Math.abs(tx.amount).toFixed(2)}
-        </span>
-      </div>
 
-      {conflict || unsure ? (
-        <>
-          <p className="my-pick-note">
-            {otherUser} picked <span className="my-pick-chip">{formatAssignmentLabel(otherSub) || '--'}</span>
-            {mySub ? ` | your pick: ${formatAssignmentLabel(mySub)}` : ' | tap to assign'}
-          </p>
-          <div className="conflict-row">
-            {ASSIGN_OPTS.map((opt) => (
-              <button
-                key={opt}
-                className={`conflict-tap-btn ${getOptionClassName(opt)}`}
-                onClick={(event) => onAssign(tx.id, opt, event)}
-              >
-                {formatAssignmentLabel(opt)}
-              </button>
-            ))}
+        {conflict || unsure ? (
+          <>
+            <p className="my-pick-note">
+              {otherUser} picked <span className="my-pick-chip">{formatAssignmentLabel(otherSub) || '--'}</span>
+              {mySub ? ` | your pick: ${formatAssignmentLabel(mySub)}` : ' | tap to assign'}
+            </p>
+            <div className="conflict-row">
+              {ASSIGN_OPTS.map((opt) => (
+                <button
+                  key={opt}
+                  className={`conflict-tap-btn ${getOptionClassName(opt)}`}
+                  onClick={(event) => onAssign(tx.id, opt, event)}
+                >
+                  {formatAssignmentLabel(opt)}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="assign-row">
+            <span className="assign-label">assign</span>
+            <div className="assign-options">
+              {ASSIGN_OPTS.map((opt) => (
+                <button
+                  key={opt}
+                  className={`tap-btn ${getOptionClassName(opt)}`}
+                  onClick={(event) => onAssign(tx.id, opt, event)}
+                >
+                  {formatAssignmentLabel(opt)}
+                </button>
+              ))}
+            </div>
           </div>
-        </>
-      ) : (
-        <div className="assign-row">
-          <span className="assign-label">assign</span>
-          {ASSIGN_OPTS.map((opt) => (
-            <button
-              key={opt}
-              className={`tap-btn ${getOptionClassName(opt)}`}
-              onClick={(event) => onAssign(tx.id, opt, event)}
-            >
-              {formatAssignmentLabel(opt)}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </AssignmentSwipeActions>
   );
 }
 
@@ -925,9 +1069,9 @@ function TallyBreakdownModal({ assignee, total, items, onClose }) {
                     <span>{formatShortDate(item.date || item.uploadedDay || '') || 'Pending'}</span>
                   </div>
                 </div>
-                <div className={`breakdown-amount ${item.amount < 0 ? 'refund' : ''}`}>
-                  {item.amount < 0 ? '-$' : '$'}
-                  {Math.abs(item.amount).toFixed(2)}
+                <div className={`breakdown-amount ${(item.countedAmount ?? item.amount) < 0 ? 'refund' : ''}`}>
+                  {(item.countedAmount ?? item.amount) < 0 ? '-$' : '$'}
+                  {Math.abs(item.countedAmount ?? item.amount).toFixed(2)}
                 </div>
               </div>
             ))}
@@ -1646,6 +1790,10 @@ export default function CreditCardApp() {
     () => buildAssigneeTotal(submissions, transactionsById, 'Macquarie', referenceDateKey),
     [submissions, transactionsById, referenceDateKey]
   );
+  const macqbillTally = useMemo(
+    () => buildAssigneeTotal(submissions, transactionsById, 'Macqbill', referenceDateKey),
+    [submissions, transactionsById, referenceDateKey]
+  );
 
   const stepDay = () =>
     {
@@ -1959,11 +2107,18 @@ export default function CreditCardApp() {
           ))}
         </div>
         {showMac && (
-          <div className="mac-panel">
-            <div className="tally-name">Macquarie</div>
-            <div className="tally-amount mac">${macTally.toFixed(2)}</div>
-            <div className="tally-note">shared</div>
-          </div>
+          <>
+            <div className="mac-panel">
+              <div className="tally-name">Macquarie</div>
+              <div className="tally-amount mac">${macTally.toFixed(2)}</div>
+              <div className="tally-note">shared</div>
+            </div>
+            <div className="mac-panel">
+              <div className="tally-name">Macqbill</div>
+              <div className="tally-amount macqbill">${macqbillTally.toFixed(2)}</div>
+              <div className="tally-note">shared</div>
+            </div>
+          </>
         )}
         <button className="mac-toggle" onClick={() => setShowMac((v) => !v)} title="Toggle Macquarie">
           {showMac ? '\u203A' : '\u2039'}

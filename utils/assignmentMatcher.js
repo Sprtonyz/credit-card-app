@@ -71,6 +71,8 @@ function mapAssignmentToSheetCode(value) {
   if (value === 'Tony') return 't';
   if (value === 'Nugs') return 'n';
   if (value === 'Macquarie') return 'macq';
+  if (value === 'Split') return 'split';
+  if (value === 'Macqbill') return 'macqbill';
   return '';
 }
 

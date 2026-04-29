@@ -1,4 +1,4 @@
-import { getTransactionReferenceDateKey, isVisibleForUser, shouldCountForAssignee } from './reconciliation';
+import { getAssigneeContributionRatio, getTransactionReferenceDateKey, isVisibleForUser } from './reconciliation';
 import { formatLocalDate } from './simulationDate';
 
 export function normalizeFirebaseTransaction(id, tx) {
@@ -153,8 +153,9 @@ export function countVisibleTransactions(transactions, submissions, user, refere
 function sumAssignedTransactions(submissions, transactionsById, assignee, referenceDateKey) {
   return Object.entries(submissions).reduce((acc, [transactionId, submission]) => {
     const transaction = transactionsById[transactionId];
-    if (!transaction || !shouldCountForAssignee(submission, assignee, referenceDateKey)) return acc;
-    return acc + Number(transaction.amount || 0);
+    const contributionRatio = getAssigneeContributionRatio(submission, assignee, referenceDateKey);
+    if (!transaction || contributionRatio <= 0) return acc;
+    return acc + Number(transaction.amount || 0) * contributionRatio;
   }, 0);
 }
 

@@ -1,9 +1,9 @@
 import {
   PROFILE_NAMES,
+  getAssigneeContributionRatio,
   getSurfacedSubmissionStatus,
   getTransactionReferenceDateKey,
   isVisibleForUser,
-  shouldCountForAssignee,
 } from './reconciliation';
 import { formatLocalDateTime } from './simulationDate';
 
@@ -49,8 +49,9 @@ export function buildProfileEmailReports(transactions, submissions, todayKey) {
 
     const totalSpend = Object.entries(submissions).reduce((acc, [transactionId, submission]) => {
       const transaction = transactions.find((item) => item.id === transactionId);
-      if (!transaction || !shouldCountForAssignee(submission, profileName, todayKey)) return acc;
-      return acc + Number(transaction.amount || 0);
+      const contributionRatio = getAssigneeContributionRatio(submission, profileName, todayKey);
+      if (!transaction || contributionRatio <= 0) return acc;
+      return acc + Number(transaction.amount || 0) * contributionRatio;
     }, 0);
 
     const pendingTransactions = visibleTransactions.filter((transaction) => {

@@ -5,6 +5,7 @@ import { applyPetActionProgress, normalizePetState } from '../utils/petProgressi
 import { getSubmissionDateKeyEntry, getSubmissionStatus } from '../utils/reconciliation';
 
 const ASSIGNMENT_COMMENT_MAX_LENGTH = 180;
+const ASSIGNMENT_COMMENTS_ROOT = 'cc_v5_app_state/assignmentComments';
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -61,6 +62,18 @@ function buildSubmissionPayload({ day, dateKey, ts, value, comment }) {
   }
 
   return payload;
+}
+
+function buildCommentPayload(submission) {
+  const comment = normalizeAssignmentComment(submission?.comment);
+  if (!comment) return null;
+
+  return {
+    comment,
+    value: submission.value,
+    ts: submission.ts || Date.now(),
+    dateKey: getSubmissionDateKeyEntry(submission),
+  };
 }
 
 export function useTransactionAssignments({
@@ -159,6 +172,15 @@ export function useTransactionAssignments({
       return;
     }
 
+    try {
+      await persistSubmissionWithRetry(
+        ref(db, `${ASSIGNMENT_COMMENTS_ROOT}/${txId}/${currentUser}`),
+        buildCommentPayload(nextSubmission)
+      );
+    } catch (error) {
+      console.error('Assignment saved, but shared note sync failed:', error);
+    }
+
     if (shouldReward) {
       try {
         updateActivePet((pet) =>
@@ -196,15 +218,18 @@ export function useTransactionAssignments({
 
     try {
       if (last.prev) {
-        await set(ref(db, `submissions/${last.txId}/${last.user}`), buildSubmissionPayload({
+        const previousSubmissionPayload = buildSubmissionPayload({
           day,
           dateKey: getSubmissionDateKeyEntry(last.prev),
           ts: last.prev.ts || Date.now(),
           value: last.prev.value,
           comment: last.prev.comment,
-        }));
+        });
+        await set(ref(db, `submissions/${last.txId}/${last.user}`), previousSubmissionPayload);
+        await set(ref(db, `${ASSIGNMENT_COMMENTS_ROOT}/${last.txId}/${last.user}`), buildCommentPayload(previousSubmissionPayload));
       } else {
         await set(ref(db, `submissions/${last.txId}/${last.user}`), null);
+        await set(ref(db, `${ASSIGNMENT_COMMENTS_ROOT}/${last.txId}/${last.user}`), null);
       }
     } catch (error) {
       console.error('Failed to undo submission in Firebase:', error);

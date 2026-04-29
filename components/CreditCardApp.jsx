@@ -64,6 +64,7 @@ const PRESENCE_TTL_MS = 12000;
 const APP_STATE_ROOT = 'cc_v5_app_state';
 const PET_PROFILES_ROOT = `${APP_STATE_ROOT}/petProfiles`;
 const SHARED_DAY_OFFSET_KEY = `${APP_STATE_ROOT}/simulatedDayOffset`;
+const ASSIGNMENT_COMMENTS_ROOT = `${APP_STATE_ROOT}/assignmentComments`;
 const LEGACY_PET_ROOT = 'pet';
 const LEGACY_FOOD_ROOT = 'food';
 const APP_VERSION = '5.7';
@@ -195,6 +196,22 @@ function getAssignmentCommentEntry(submission, user) {
     comment,
     dateKey: getSubmissionDateKeyEntry(entry),
   };
+}
+
+function getSharedAssignmentCommentEntry(comments, fallbackSubmission, user) {
+  const sharedEntry = comments?.[user];
+  const sharedComment = normalizeAssignmentComment(sharedEntry?.comment);
+
+  if (sharedComment) {
+    return {
+      user,
+      value: sharedEntry.value || fallbackSubmission?.[user]?.value,
+      comment: sharedComment,
+      dateKey: getSubmissionDateKeyEntry(sharedEntry),
+    };
+  }
+
+  return getAssignmentCommentEntry(fallbackSubmission, user);
 }
 
 function clamp(value, min, max) {
@@ -596,7 +613,7 @@ function AssignmentNotePopover({
   );
 }
 
-function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
+function TransactionCard({ tx, sub, comments, currentUser, referenceDateKey, onAssign }) {
   const otherUser = getOtherUser(currentUser);
   const mySub = getSurfacedSubmissionValue(sub, currentUser, referenceDateKey);
   const otherSub = getSurfacedSubmissionValue(sub, otherUser, referenceDateKey);
@@ -612,8 +629,8 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
   const noteDraftBaselineRef = useRef('');
   const noteDraftTouchedRef = useRef(false);
   const noteDraftHydratingRef = useRef(false);
-  const myCommentEntry = getAssignmentCommentEntry(sub, currentUser);
-  const otherCommentEntry = getAssignmentCommentEntry(sub, otherUser);
+  const myCommentEntry = getSharedAssignmentCommentEntry(comments, sub, currentUser);
+  const otherCommentEntry = getSharedAssignmentCommentEntry(comments, sub, otherUser);
   const normalizedDraft = normalizeAssignmentComment(commentDraft);
   const normalizedSavedComment = normalizeAssignmentComment(myCommentEntry?.comment);
   const viewCommentEntry = myCommentEntry || otherCommentEntry;
@@ -1322,7 +1339,7 @@ function PetCanvas({ petType = 'classic', scalePercent = 25, spriteMetrics }) {
   return <canvas ref={ref} />;
 }
 
-function TxGroup({ title, date, dayKey, txs, submissions, currentUser, referenceDateKey, onAssign }) {
+function TxGroup({ title, date, dayKey, txs, submissions, assignmentComments, currentUser, referenceDateKey, onAssign }) {
   const isPending = title === 'Pending';
 
   return (
@@ -1338,6 +1355,7 @@ function TxGroup({ title, date, dayKey, txs, submissions, currentUser, reference
           key={tx.id}
           tx={tx}
           sub={submissions[tx.id] || {}}
+          comments={assignmentComments[tx.id] || {}}
           currentUser={currentUser}
           referenceDateKey={referenceDateKey}
           onAssign={onAssign}
@@ -1474,6 +1492,7 @@ export default function CreditCardApp() {
     return localStorage.getItem(USER_KEY);
   });
   const [submissions, setSubmissions] = useState({});
+  const [assignmentComments, setAssignmentComments] = useState({});
   const [showSwitch, setShowSwitch] = useState(false);
   const [showMac, setShowMac] = useState(false);
   const [showPetDebug, setShowPetDebug] = useState(false);
@@ -1979,6 +1998,22 @@ export default function CreditCardApp() {
   }, [authReady]);
 
   useEffect(() => {
+    if (!authReady) return;
+    const commentsRef = ref(db, ASSIGNMENT_COMMENTS_ROOT);
+    const unsubscribe = onValue(
+      commentsRef,
+      (snapshot) => {
+        setAssignmentComments(snapshot.val() || {});
+      },
+      () => {
+        // Existing submission-embedded comments remain available as a fallback.
+      }
+    );
+
+    return () => unsubscribe();
+  }, [authReady]);
+
+  useEffect(() => {
     if (!authReady) return undefined;
 
     const presenceRootRef = ref(db, PRESENCE_ROOT);
@@ -2199,6 +2234,7 @@ export default function CreditCardApp() {
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(PET_STORAGE_KEY);
     setSubmissions({});
+    setAssignmentComments({});
     setUndoStack([]);
     setShowMac(false);
     setShowPetDebug(false);
@@ -2214,6 +2250,7 @@ export default function CreditCardApp() {
 
     try {
       await set(ref(db, 'submissions'), null);
+      await set(ref(db, ASSIGNMENT_COMMENTS_ROOT), null);
       await set(ref(db, PET_PROFILES_ROOT), null);
     } catch (err) {
       console.error('Failed to clear Firebase app state:', err);
@@ -2488,6 +2525,7 @@ export default function CreditCardApp() {
             dayKey={section.key}
             txs={section.txs}
             submissions={submissions}
+            assignmentComments={assignmentComments}
             currentUser={currentUser}
             referenceDateKey={referenceDateKey}
             onAssign={handleAssign}

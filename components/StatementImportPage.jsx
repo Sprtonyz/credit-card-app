@@ -12,7 +12,9 @@ import {
 const MOCK_ASSIGNMENT_POOL = [
   {
     id: 'mock-aldi',
-    date: null,
+    date: '2026-04-03',
+    uploadedDay: '2026-04-03',
+    isPending: false,
     amount: 25.58,
     description: 'ALDI STORES WEST FOOTSCRA AUS',
     assignment: 'Tony',
@@ -20,7 +22,9 @@ const MOCK_ASSIGNMENT_POOL = [
   },
   {
     id: 'mock-kc-cha',
-    date: null,
+    date: '2026-04-01',
+    uploadedDay: '2026-04-01',
+    isPending: true,
     amount: 9.9,
     description: 'KC CHA PTY LTD. CARLTON',
     assignment: 'Nugs',
@@ -28,26 +32,118 @@ const MOCK_ASSIGNMENT_POOL = [
   },
   {
     id: 'mock-krispy',
-    date: null,
+    date: '2026-04-01',
+    uploadedDay: '2026-04-01',
+    isPending: true,
     amount: 7.9,
     description: 'Krispy Kreme Highpoint Maribyrnong',
     assignment: 'Macquarie',
     sheetCode: 'macq',
   },
   {
-    id: 'mock-pho',
-    date: null,
-    amount: 19.81,
-    description: 'SQ *OLD MAN PHO EMPORI Melbournesome',
+    id: 'mock-coles-macq',
+    date: '2026-04-01',
+    uploadedDay: '2026-04-01',
+    isPending: true,
+    amount: 42.8,
+    description: 'COLES Footscray',
+    assignment: 'Macquarie',
+    sheetCode: 'macq',
+  },
+  {
+    id: 'mock-coles-tony',
+    date: '2026-04-02',
+    uploadedDay: '2026-04-02',
+    isPending: true,
+    amount: 42.8,
+    description: 'COLES Footscray',
     assignment: 'Tony',
     sheetCode: 't',
   },
+  {
+    id: 'mock-old-coles',
+    date: '2026-04-01',
+    uploadedDay: '2026-04-01',
+    isPending: true,
+    amount: 89.5,
+    description: 'COLES Footscray',
+    assignment: 'Macquarie',
+    sheetCode: 'macq',
+  },
 ];
+
+const MOCK_STATEMENT_TRANSACTIONS = [
+  {
+    order: 0,
+    date: '2026-04-03',
+    amount: 25.58,
+    description: 'ALDI STORES WEST FOOTSCRA AUS',
+    rawDescription: 'ALDI STORES WEST FOOTSCRA AUS',
+    sourcePage: 1,
+  },
+  {
+    order: 1,
+    date: '2026-04-04',
+    amount: 9.9,
+    description: 'KC CHA PTY LTD. CARLTON',
+    rawDescription: 'KC CHA PTY LTD. CARLTON',
+    sourcePage: 1,
+  },
+  {
+    order: 2,
+    date: '2026-04-05',
+    amount: 7.9,
+    description: 'Krispy Kreme Highpoint Maribyrnong',
+    rawDescription: 'Krispy Kreme Highpoint Maribyrnong',
+    sourcePage: 1,
+  },
+  {
+    order: 3,
+    date: '2026-04-03',
+    amount: 42.8,
+    description: 'COLES Footscray',
+    rawDescription: 'COLES Footscray',
+    sourcePage: 1,
+  },
+  {
+    order: 4,
+    date: '2026-04-08',
+    amount: 89.5,
+    description: 'COLES Footscray',
+    rawDescription: 'COLES Footscray',
+    sourcePage: 1,
+  },
+];
+
+const MOCK_STATEMENT_PAYLOAD = {
+  fileName: 'matcher-self-test.pdf',
+  statement: {
+    openingBalance: null,
+    closingBalance: null,
+    closingBalanceDelta: null,
+    newPurchases: null,
+    feesAndCharges: null,
+    paymentsAndCredits: null,
+    parsedTransactionTotal: 168.68,
+    reconciliationDifference: null,
+  },
+  transactions: MOCK_STATEMENT_TRANSACTIONS,
+  pageCount: 1,
+};
 
 function formatAmount(amount) {
   const numeric = Number(amount || 0);
   const prefix = numeric < 0 ? '-' : '';
   return `${prefix}$${Math.abs(numeric).toFixed(2)}`;
+}
+
+function getAssignmentMatchLabel(match) {
+  if (!match || match.matchType === 'no_candidate') return null;
+  if (match.matchType === 'ambiguous') return 'review: ambiguous match';
+  if (match.matchType === 'low_confidence') {
+    return match.dateMatch?.label ? `low confidence: ${match.dateMatch.label}` : 'low confidence';
+  }
+  return match.dateMatch?.label || match.matchType;
 }
 
 function buildCsvRows(transactions) {
@@ -80,6 +176,7 @@ export default function StatementImportPage() {
   const [authReady, setAuthReady] = useState(false);
   const [assignmentMatches, setAssignmentMatches] = useState([]);
   const [googleSheetMessage, setGoogleSheetMessage] = useState(null);
+  const [showMockPreview, setShowMockPreview] = useState(false);
 
   React.useEffect(
     () =>
@@ -93,7 +190,8 @@ export default function StatementImportPage() {
     []
   );
 
-  const transactions = parsed?.transactions || [];
+  const activeParsed = showMockPreview ? MOCK_STATEMENT_PAYLOAD : parsed;
+  const transactions = activeParsed?.transactions || [];
   const csvRows = useMemo(() => buildCsvRows(transactions), [transactions]);
 
   const totals = useMemo(() => {
@@ -117,6 +215,7 @@ export default function StatementImportPage() {
     setSheetMessage(null);
     setGoogleSheetMessage(null);
     setAssignmentMatches([]);
+    setShowMockPreview(false);
 
     try {
       const base64 = await readFileAsBase64(file);
@@ -189,8 +288,13 @@ export default function StatementImportPage() {
     setError(null);
     setSheetMessage(null);
     setGoogleSheetMessage(null);
+    setShowMockPreview(false);
 
     try {
+      if (!parsed) {
+        throw new Error('Please parse a statement PDF before building the updated sheet.');
+      }
+
       const matches = await resolveLiveAssignmentMatches();
       const assignmentCodes = matches.map((match) => match.code || '');
       setAssignmentMatches(matches);
@@ -236,11 +340,12 @@ export default function StatementImportPage() {
 
     try {
       const matches = matchAssignmentsToParsedTransactions(
-        parsed?.transactions || [],
+        MOCK_STATEMENT_TRANSACTIONS,
         MOCK_ASSIGNMENT_POOL
       );
       const assignmentCodes = matches.map((match) => match.code || '');
       setAssignmentMatches(matches);
+      setShowMockPreview(true);
 
       const response = await fetch('/api/update-sheet', {
         method: 'POST',
@@ -249,6 +354,8 @@ export default function StatementImportPage() {
         },
         body: JSON.stringify({
           assignmentCodes,
+          transactions: MOCK_STATEMENT_TRANSACTIONS,
+          closingBalance: null,
         }),
       });
 
@@ -265,7 +372,9 @@ export default function StatementImportPage() {
       anchor.click();
       URL.revokeObjectURL(url);
 
-      setSheetMessage('Mock assignment workbook created so you can test column D output.');
+      setSheetMessage(
+        'Matcher self-test workbook created: exact date rows are filled, pending +3/+4 day rows are filled, ambiguous/out-of-window rows are blank.'
+      );
     } catch (err) {
       setError(err?.message || 'Failed to build the mock workbook.');
     } finally {
@@ -278,8 +387,13 @@ export default function StatementImportPage() {
     setError(null);
     setSheetMessage(null);
     setGoogleSheetMessage(null);
+    setShowMockPreview(false);
 
     try {
+      if (!parsed) {
+        throw new Error('Please parse a statement PDF before pushing rows to Google Sheets.');
+      }
+
       const matches = await resolveLiveAssignmentMatches();
       const assignmentCodes = matches.map((match) => match.code || '');
       setAssignmentMatches(matches);
@@ -367,6 +481,7 @@ export default function StatementImportPage() {
                     setFile(nextFile);
                     setError(null);
                     setParsed(null);
+                    setShowMockPreview(false);
                   }}
                 />
                 <p className="text-lg font-medium text-white">
@@ -385,6 +500,13 @@ export default function StatementImportPage() {
                 >
                   {isLoading ? 'Parsing PDF...' : 'Extract uploaded PDF'}
                 </button>
+                <button
+                  onClick={handleBuildMockUpdatedSheet}
+                  disabled={isLoading}
+                  className="w-full rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-3 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Run matcher self-test
+                </button>
               </div>
 
               {error ? (
@@ -394,43 +516,43 @@ export default function StatementImportPage() {
               ) : null}
             </div>
 
-            {parsed ? (
+            {activeParsed ? (
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
                 <h2 className="text-lg font-semibold text-white">Reconciliation</h2>
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <div className="rounded-xl bg-slate-950/80 p-3">
                     <p className="text-[11px] uppercase tracking-wider text-slate-400">Opening</p>
                     <p className="mt-1 text-lg font-semibold text-white">
-                      {parsed.statement.openingBalance !== null
-                        ? formatAmount(parsed.statement.openingBalance)
+                      {activeParsed.statement.openingBalance !== null
+                        ? formatAmount(activeParsed.statement.openingBalance)
                         : 'n/a'}
                     </p>
                   </div>
                   <div className="rounded-xl bg-slate-950/80 p-3">
                     <p className="text-[11px] uppercase tracking-wider text-slate-400">Closing</p>
                     <p className="mt-1 text-lg font-semibold text-white">
-                      {parsed.statement.closingBalance !== null
-                        ? formatAmount(parsed.statement.closingBalance)
+                      {activeParsed.statement.closingBalance !== null
+                        ? formatAmount(activeParsed.statement.closingBalance)
                         : 'n/a'}
                     </p>
                   </div>
                   <div className="rounded-xl bg-slate-950/80 p-3">
                     <p className="text-[11px] uppercase tracking-wider text-slate-400">Parsed total</p>
                     <p className="mt-1 text-lg font-semibold text-white">
-                      {formatAmount(parsed.statement.parsedTransactionTotal)}
+                      {formatAmount(activeParsed.statement.parsedTransactionTotal)}
                     </p>
                   </div>
                   <div className="rounded-xl bg-slate-950/80 p-3">
                     <p className="text-[11px] uppercase tracking-wider text-slate-400">Difference</p>
                     <p
                       className={`mt-1 text-lg font-semibold ${
-                        Math.abs(Number(parsed.statement.reconciliationDifference || 0)) <= 0.01
+                        Math.abs(Number(activeParsed.statement.reconciliationDifference || 0)) <= 0.01
                           ? 'text-emerald-300'
                           : 'text-amber-300'
                       }`}
                     >
-                      {parsed.statement.reconciliationDifference !== null
-                        ? formatAmount(parsed.statement.reconciliationDifference)
+                      {activeParsed.statement.reconciliationDifference !== null
+                        ? formatAmount(activeParsed.statement.reconciliationDifference)
                         : 'n/a'}
                     </p>
                   </div>
@@ -440,12 +562,12 @@ export default function StatementImportPage() {
                   <p>Total rows: {totals.count}</p>
                   <p>Refund rows: {totals.refunds}</p>
                   <p>Foreign fee rows: {totals.foreignFees}</p>
-                  {parsed.pageCount ? <p>Pages scanned: {parsed.pageCount}</p> : null}
+                  {activeParsed.pageCount ? <p>Pages scanned: {activeParsed.pageCount}</p> : null}
                 </div>
               </div>
             ) : null}
 
-            {parsed ? (
+            {activeParsed ? (
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
                 <div className="flex flex-wrap gap-3">
                   <button
@@ -462,21 +584,21 @@ export default function StatementImportPage() {
                   </button>
                   <button
                     onClick={handleBuildUpdatedSheet}
-                    disabled={isLoading}
+                    disabled={isLoading || !parsed || showMockPreview}
                     className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Build updated sheet.xlsx
                   </button>
                   <button
                     onClick={handleBuildMockUpdatedSheet}
-                    disabled={isLoading || !parsed}
+                    disabled={isLoading}
                     className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-2 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Build mock-assigned sheet
+                    Run matcher self-test
                   </button>
                   <button
                     onClick={handlePushToGoogleSheet}
-                    disabled={isLoading || !parsed}
+                    disabled={isLoading || !parsed || showMockPreview}
                     className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Create new Google Sheet tab
@@ -490,12 +612,12 @@ export default function StatementImportPage() {
                 {assignmentMatches.length > 0 ? (
                   <p className="mt-2 text-xs text-slate-400">
                     Matched assignments for {assignmentMatches.filter((match) => match.code).length} of{' '}
-                    {assignmentMatches.length} rows from the main app.
+                    {assignmentMatches.length} rows {showMockPreview ? 'in the self-test.' : 'from the main app.'}
                   </p>
                 ) : null}
                 <p className="mt-2 text-xs text-slate-500">
-                  Mock test rows: `ALDI STORES WEST FOOTSCRA AUS`, `KC CHA PTY LTD. CARLTON`,
-                  `Krispy Kreme Highpoint Maribyrnong`, `SQ *OLD MAN PHO EMPORI Melbournesome`
+                  Matcher self-test rows include exact-date, pending +3/+4 day, ambiguous Coles,
+                  and outside-window Coles cases.
                 </p>
                 {sheetMessage ? (
                   <p className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
@@ -519,14 +641,14 @@ export default function StatementImportPage() {
                   Review the import before you paste it into the sheet.
                 </p>
               </div>
-              {parsed ? (
+              {activeParsed ? (
                 <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200">
-                  Ready to export
+                  {showMockPreview ? 'Self-test preview' : 'Ready to export'}
                 </span>
               ) : null}
             </div>
 
-            {!parsed ? (
+            {!activeParsed ? (
               <div className="mt-8 rounded-2xl border border-dashed border-slate-700 bg-slate-950/40 p-10 text-center text-slate-400">
                 Upload a statement PDF and I&apos;ll show the rows here.
               </div>
@@ -571,8 +693,26 @@ export default function StatementImportPage() {
                             {assignmentMatches[index]?.code ? (
                               <div className="font-semibold text-amber-200">{assignmentMatches[index].code}</div>
                             ) : (
-                              <div className="text-slate-500">unmatched</div>
+                              <div
+                                className={
+                                  assignmentMatches[index]?.matchType === 'ambiguous'
+                                    ? 'font-semibold text-amber-300'
+                                    : 'text-slate-500'
+                                }
+                              >
+                                {assignmentMatches[index]?.matchType === 'ambiguous' ? 'review' : 'unmatched'}
+                              </div>
                             )}
+                            {getAssignmentMatchLabel(assignmentMatches[index]) ? (
+                              <div className="mt-1 text-[11px] text-slate-400">
+                                {getAssignmentMatchLabel(assignmentMatches[index])}
+                              </div>
+                            ) : null}
+                            {assignmentMatches[index]?.confidence ? (
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                score {assignmentMatches[index].confidence}
+                              </div>
+                            ) : null}
                             {assignmentMatches[index]?.matched?.description ? (
                               <div className="mt-1 text-[11px] text-slate-500">
                                 {assignmentMatches[index].matched.description}

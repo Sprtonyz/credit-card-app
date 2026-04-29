@@ -1,8 +1,14 @@
 {
-  "index.js -> ../components/CreditCardApp": {
-    "id": "index.js -> ../components/CreditCardApp",
+  "admin\\statement-import.js -> ../../components/StatementImportPage": {
+    "id": "admin\\statement-import.js -> ../../components/StatementImportPage",
     "files": [
-      "static/chunks/components_CreditCardApp_jsx.js"
+      "static/chunks/components_StatementImportPage_jsx.js"
+    ]
+  },
+  "admin\\upload.js -> ../../components/AdminUploadPage": {
+    "id": "admin\\upload.js -> ../../components/AdminUploadPage",
+    "files": [
+      "static/chunks/components_AdminUploadPage_jsx.js"
     ]
   }
 }

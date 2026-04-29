@@ -6,6 +6,12 @@ function normalizeText(value) {
     .trim();
 }
 
+const PENDING_STATEMENT_DAYS_BEFORE_UPLOAD = 1;
+const PENDING_STATEMENT_DAYS_AFTER_UPLOAD = 4;
+const EXACT_DATE_SCORE_BONUS = 0.35;
+const PENDING_WINDOW_SCORE_BONUS = 0.28;
+const AMBIGUOUS_SCORE_GAP = 0.08;
+
 function tokenize(value) {
   return normalizeText(value)
     .split(' ')
@@ -90,6 +96,8 @@ export function buildResolvedAssignmentPool(transactions = [], submissions = {})
       return {
         id: transaction.id,
         date: transaction.date || null,
+        uploadedDay: transaction.uploadedDay || transaction.raw?.uploadedDay || null,
+        isPending: Boolean(transaction.isPending),
         amount: Math.abs(Number(transaction.amount || 0)),
         description: transaction.merchant || transaction.desc || '',
         assignment: resolvedValue,
@@ -97,6 +105,88 @@ export function buildResolvedAssignmentPool(transactions = [], submissions = {})
       };
     })
     .filter((item) => item && item.sheetCode);
+}
+
+function isDateKey(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
+
+function dateKeyToMs(value) {
+  if (!isDateKey(value)) return null;
+  const ms = Date.parse(`${value}T00:00:00Z`);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function getSignedDayOffset(referenceDate, statementDate) {
+  const referenceMs = dateKeyToMs(referenceDate);
+  const statementMs = dateKeyToMs(statementDate);
+  if (referenceMs === null || statementMs === null) return null;
+  return Math.round((statementMs - referenceMs) / 86400000);
+}
+
+function getCandidateReferenceDate(candidate) {
+  return candidate.uploadedDay || candidate.date || null;
+}
+
+function formatDayOffsetLabel(dayOffset) {
+  if (dayOffset === 0) return 'same day';
+  if (dayOffset > 0) return `+${dayOffset}d`;
+  return `${dayOffset}d`;
+}
+
+function getDateMatch(parsedTransaction, candidate) {
+  const statementDate = parsedTransaction.date || null;
+  const candidateDate = candidate.date || null;
+  const referenceDate = getCandidateReferenceDate(candidate);
+
+  if (!statementDate || !referenceDate) {
+    return {
+      type: 'date_unavailable',
+      bonus: 0,
+      dayOffset: null,
+      referenceDate,
+      label: 'date unavailable',
+    };
+  }
+
+  if (candidateDate && statementDate === candidateDate) {
+    return {
+      type: 'exact_date',
+      bonus: EXACT_DATE_SCORE_BONUS,
+      dayOffset: 0,
+      referenceDate,
+      label: 'same date',
+    };
+  }
+
+  const dayOffset = getSignedDayOffset(referenceDate, statementDate);
+  const inPendingWindow =
+    candidate.isPending &&
+    dayOffset !== null &&
+    dayOffset >= -PENDING_STATEMENT_DAYS_BEFORE_UPLOAD &&
+    dayOffset <= PENDING_STATEMENT_DAYS_AFTER_UPLOAD;
+
+  if (inPendingWindow) {
+    const penalty = Math.min(0.12, Math.max(0, Math.abs(dayOffset) - 1) * 0.03);
+    return {
+      type: 'pending_settlement_window',
+      bonus: Number((PENDING_WINDOW_SCORE_BONUS - penalty).toFixed(3)),
+      dayOffset,
+      referenceDate,
+      label: `pending ${formatDayOffsetLabel(dayOffset)}`,
+    };
+  }
+
+  return {
+    type: candidate.isPending ? 'outside_pending_window' : 'different_date',
+    bonus: 0,
+    dayOffset,
+    referenceDate,
+    label:
+      dayOffset === null
+        ? 'date mismatch'
+        : `${candidate.isPending ? 'outside pending window' : 'different date'} ${formatDayOffsetLabel(dayOffset)}`,
+  };
 }
 
 function scoreCandidate(parsedTransaction, candidate) {
@@ -110,15 +200,45 @@ function scoreCandidate(parsedTransaction, candidate) {
     parsedTransaction.description,
     candidate.description
   );
-  const sameDate = Boolean(parsedTransaction.date && candidate.date && parsedTransaction.date === candidate.date);
-  const score = descriptionScore + (sameDate ? 0.35 : 0);
+  const dateMatch = getDateMatch(parsedTransaction, candidate);
+  const sameDate = dateMatch.type === 'exact_date';
+  const score = descriptionScore + dateMatch.bonus;
 
   return {
     candidate,
     score,
     sameDate,
+    dateMatch,
     descriptionScore,
   };
+}
+
+function isConfidentCandidate(candidateScore) {
+  if (!candidateScore) return false;
+
+  if (
+    candidateScore.dateMatch.type === 'outside_pending_window' ||
+    candidateScore.dateMatch.type === 'different_date'
+  ) {
+    return false;
+  }
+
+  if (candidateScore.dateMatch.type === 'exact_date') {
+    return candidateScore.descriptionScore >= 0.45;
+  }
+
+  if (candidateScore.dateMatch.type === 'pending_settlement_window') {
+    return candidateScore.descriptionScore >= 0.6;
+  }
+
+  return candidateScore.descriptionScore >= 0.82;
+}
+
+function isAmbiguousCandidate(best, nextBest) {
+  if (!best || !nextBest) return false;
+  if (!isConfidentCandidate(nextBest)) return false;
+  if (best.score - nextBest.score > AMBIGUOUS_SCORE_GAP) return false;
+  return best.candidate.sheetCode !== nextBest.candidate.sheetCode;
 }
 
 export function matchAssignmentsToParsedTransactions(parsedTransactions = [], assignmentPool = []) {
@@ -132,23 +252,38 @@ export function matchAssignmentsToParsedTransactions(parsedTransactions = [], as
       .sort((left, right) => right.score - left.score);
 
     const best = candidates[0];
+    const nextBest = candidates[1];
     if (!best) {
       return {
         code: '',
         confidence: 0,
         matched: null,
+        matchType: 'no_candidate',
       };
     }
 
-    const confidentMatch =
-      (best.sameDate && best.descriptionScore >= 0.45) ||
-      best.descriptionScore >= 0.82;
-
-    if (!confidentMatch) {
+    if (!isConfidentCandidate(best)) {
       return {
         code: '',
         confidence: Number(best.score.toFixed(3)),
         matched: null,
+        matchType: 'low_confidence',
+        dateMatch: best.dateMatch,
+        bestCandidate: best.candidate,
+        descriptionScore: Number(best.descriptionScore.toFixed(3)),
+      };
+    }
+
+    if (isAmbiguousCandidate(best, nextBest)) {
+      return {
+        code: '',
+        confidence: Number(best.score.toFixed(3)),
+        matched: null,
+        matchType: 'ambiguous',
+        dateMatch: best.dateMatch,
+        bestCandidate: best.candidate,
+        alternateCandidate: nextBest.candidate,
+        descriptionScore: Number(best.descriptionScore.toFixed(3)),
       };
     }
 
@@ -157,6 +292,9 @@ export function matchAssignmentsToParsedTransactions(parsedTransactions = [], as
       code: best.candidate.sheetCode,
       confidence: Number(best.score.toFixed(3)),
       matched: best.candidate,
+      matchType: best.dateMatch.type,
+      dateMatch: best.dateMatch,
+      descriptionScore: Number(best.descriptionScore.toFixed(3)),
     };
   });
 }

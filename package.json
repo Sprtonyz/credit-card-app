@@ -7,7 +7,9 @@
     "dev": "node ./scripts/next-runner.js dev",
     "build": "node ./scripts/next-runner.js build",
     "start": "node ./scripts/next-runner.js start",
-    "export": "node ./scripts/next-runner.js build && node ./scripts/next-runner.js export"
+    "export": "node ./scripts/next-runner.js build && node ./scripts/next-runner.js export",
+    "test": "npm run test:assignment-matcher",
+    "test:assignment-matcher": "node ./scripts/verify-assignment-matcher.mjs"
   },
   "dependencies": {
     "firebase": "^9.23.0",

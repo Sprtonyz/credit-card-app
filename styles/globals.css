@@ -1162,6 +1162,19 @@ body {
   text-transform: uppercase;
 }
 
+.assignment-note-view-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding-bottom: 0.42rem;
+  border-bottom: 1px solid rgba(148,163,184,0.12);
+}
+
+.assignment-note-view-entry:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 .assignment-note-view-body {
   color: #f8fafc;
 }

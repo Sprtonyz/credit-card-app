@@ -9,7 +9,7 @@
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { db } from '../config/firebase';
-import { get, onDisconnect, onValue, ref, remove, set } from 'firebase/database';
+import { get, onDisconnect, onValue, ref, remove, set, update } from 'firebase/database';
 import {
   clearSavedSimulatedDay,
   formatLocalDate,
@@ -195,6 +195,7 @@ function getAssignmentCommentEntry(submission, user) {
     value: entry.value,
     comment,
     dateKey: getSubmissionDateKeyEntry(entry),
+    ts: Number(entry?.ts) || 0,
   };
 }
 
@@ -208,10 +209,37 @@ function getSharedAssignmentCommentEntry(comments, fallbackSubmission, user) {
       value: sharedEntry.value || fallbackSubmission?.[user]?.value,
       comment: sharedComment,
       dateKey: getSubmissionDateKeyEntry(sharedEntry),
+      ts: Number(sharedEntry?.ts) || 0,
     };
   }
 
   return getAssignmentCommentEntry(fallbackSubmission, user);
+}
+
+function buildSharedAssignmentCommentPayload({ comment, submission, value, dateKey }) {
+  const normalizedComment = normalizeAssignmentComment(comment);
+  if (!normalizedComment) return null;
+
+  const payload = {
+    comment: normalizedComment,
+    ts: Date.now(),
+  };
+  const assignmentValue = value || submission?.value;
+  const assignmentDateKey = dateKey || getSubmissionDateKeyEntry(submission);
+
+  if (assignmentValue) payload.value = assignmentValue;
+  if (assignmentDateKey) payload.dateKey = assignmentDateKey;
+
+  return payload;
+}
+
+function sortAssignmentCommentEntries(entries) {
+  return [...entries].sort((left, right) => {
+    const leftTs = Number(left?.ts) || 0;
+    const rightTs = Number(right?.ts) || 0;
+    if (leftTs !== rightTs) return leftTs - rightTs;
+    return USERS.indexOf(left?.user) - USERS.indexOf(right?.user);
+  });
 }
 
 function clamp(value, min, max) {
@@ -530,11 +558,12 @@ function AssignmentNotePopover({
   commentDraft,
   setCommentDraft,
   normalizedDraft,
-  viewEntry,
+  viewEntries,
   viewComment,
   isEditing,
   onEdit,
   onClear,
+  onDone,
   onClose,
 }) {
   const textareaRef = useRef(null);
@@ -573,20 +602,24 @@ function AssignmentNotePopover({
 
               if (event.key !== 'Enter' || event.shiftKey) return;
               event.preventDefault();
-              onClose();
+              onDone();
             }}
             placeholder="Because this was for..."
             rows={4}
           />
         ) : (
           <button type="button" className="assignment-note-view" onClick={onEdit}>
-            {viewEntry ? (
-              <>
-                <span className="assignment-note-view-eyebrow">{viewEntry.user} left a note</span>
-                <span className="assignment-note-view-body">{viewComment}</span>
-              </>
+            {viewEntries.length > 0 ? (
+              viewEntries.map((entry) => (
+                <span key={`${entry.user}-${entry.ts || entry.comment}`} className="assignment-note-view-entry">
+                  <span className="assignment-note-view-eyebrow">
+                    {entry.user} {entry.isDraft ? 'drafted' : 'left'} a note
+                  </span>
+                  <span className="assignment-note-view-body">{entry.comment}</span>
+                </span>
+              ))
             ) : (
-              <span className="assignment-note-view-body">{viewComment || 'No note yet'}</span>
+              <span className="assignment-note-view-body">No note yet</span>
             )}
           </button>
         )}
@@ -602,7 +635,7 @@ function AssignmentNotePopover({
                 edit
               </button>
             )}
-            <button type="button" className="assignment-note-done" onClick={onClose}>
+            <button type="button" className="assignment-note-done" onClick={onDone}>
               done
             </button>
           </div>
@@ -613,7 +646,7 @@ function AssignmentNotePopover({
   );
 }
 
-function TransactionCard({ tx, sub, comments, currentUser, referenceDateKey, onAssign }) {
+function TransactionCard({ tx, sub, comments, currentUser, referenceDateKey, onAssign, onSaveComment }) {
   const otherUser = getOtherUser(currentUser);
   const mySub = getSurfacedSubmissionValue(sub, currentUser, referenceDateKey);
   const otherSub = getSurfacedSubmissionValue(sub, otherUser, referenceDateKey);
@@ -633,10 +666,26 @@ function TransactionCard({ tx, sub, comments, currentUser, referenceDateKey, onA
   const otherCommentEntry = getSharedAssignmentCommentEntry(comments, sub, otherUser);
   const normalizedDraft = normalizeAssignmentComment(commentDraft);
   const normalizedSavedComment = normalizeAssignmentComment(myCommentEntry?.comment);
-  const viewCommentEntry = myCommentEntry || otherCommentEntry;
-  const viewComment = normalizedDraft || normalizeAssignmentComment(viewCommentEntry?.comment);
-  const savedCommentCount = [myCommentEntry, otherCommentEntry].filter(Boolean).length;
-  const hasVisibleComment = Boolean(viewComment);
+  const savedCommentEntries = sortAssignmentCommentEntries([myCommentEntry, otherCommentEntry].filter(Boolean));
+  const draftCommentEntry = normalizedDraft
+    ? {
+        user: currentUser,
+        value: mySub || myCommentEntry?.value,
+        comment: normalizedDraft,
+        dateKey: referenceDateKey,
+        ts: Number.MAX_SAFE_INTEGER,
+        isDraft: true,
+      }
+    : null;
+  const viewCommentEntries = draftCommentEntry
+    ? sortAssignmentCommentEntries([
+        ...savedCommentEntries.filter((entry) => entry.user !== currentUser),
+        draftCommentEntry,
+      ])
+    : savedCommentEntries;
+  const viewComment = viewCommentEntries.map((entry) => entry.comment).join('\n');
+  const savedCommentCount = savedCommentEntries.length;
+  const hasVisibleComment = viewCommentEntries.length > 0;
   const updateCommentDraft = (value) => {
     noteDraftTouchedRef.current = true;
     setCommentDraft(value);
@@ -736,6 +785,18 @@ function TransactionCard({ tx, sub, comments, currentUser, referenceDateKey, onA
     setNoteOpen(false);
     setNotePosition(null);
     setNoteEditing(false);
+  };
+
+  const doneNoteEditor = async () => {
+    if (noteEditing || normalizedDraft !== normalizedSavedComment) {
+      await onSaveComment(tx.id, currentUser, normalizedDraft, sub[currentUser] || null);
+      setAssignmentNoteDraft(tx.id, currentUser, '');
+      setCommentDraft('');
+      noteDraftBaselineRef.current = '';
+      noteDraftTouchedRef.current = false;
+    }
+
+    closeNoteEditor();
   };
 
   const noteEditor = (
@@ -840,7 +901,7 @@ function TransactionCard({ tx, sub, comments, currentUser, referenceDateKey, onA
         commentDraft={commentDraft}
         setCommentDraft={updateCommentDraft}
         normalizedDraft={normalizedDraft}
-        viewEntry={normalizedDraft ? { user: currentUser, value: mySub || myCommentEntry?.value } : viewCommentEntry}
+        viewEntries={viewCommentEntries}
         viewComment={viewComment}
         isEditing={noteEditing}
         onEdit={() => setNoteEditing(true)}
@@ -849,6 +910,7 @@ function TransactionCard({ tx, sub, comments, currentUser, referenceDateKey, onA
           setAssignmentNoteDraft(tx.id, currentUser, '');
           setNoteEditing(true);
         }}
+        onDone={doneNoteEditor}
         onClose={closeNoteEditor}
       />
     </AssignmentSwipeActions>
@@ -1339,7 +1401,18 @@ function PetCanvas({ petType = 'classic', scalePercent = 25, spriteMetrics }) {
   return <canvas ref={ref} />;
 }
 
-function TxGroup({ title, date, dayKey, txs, submissions, assignmentComments, currentUser, referenceDateKey, onAssign }) {
+function TxGroup({
+  title,
+  date,
+  dayKey,
+  txs,
+  submissions,
+  assignmentComments,
+  currentUser,
+  referenceDateKey,
+  onAssign,
+  onSaveComment,
+}) {
   const isPending = title === 'Pending';
 
   return (
@@ -1359,6 +1432,7 @@ function TxGroup({ title, date, dayKey, txs, submissions, assignmentComments, cu
           currentUser={currentUser}
           referenceDateKey={referenceDateKey}
           onAssign={onAssign}
+          onSaveComment={onSaveComment}
         />
       ))}
     </div>
@@ -1932,6 +2006,65 @@ export default function CreditCardApp() {
     updateActivePet,
     addCoinPop,
   });
+
+  const saveAssignmentComment = async (txId, user, comment, currentSubmission = null) => {
+    if (!txId || !user) return;
+
+    const payload = buildSharedAssignmentCommentPayload({
+      comment,
+      submission: currentSubmission,
+      dateKey: referenceDateKey,
+    });
+
+    setAssignmentComments((prev) => {
+      const next = { ...prev };
+      const txComments = { ...(next[txId] || {}) };
+
+      if (payload) {
+        txComments[user] = payload;
+      } else {
+        delete txComments[user];
+      }
+
+      if (Object.keys(txComments).length > 0) {
+        next[txId] = txComments;
+      } else {
+        delete next[txId];
+      }
+
+      return next;
+    });
+
+    if (currentSubmission) {
+      setSubmissions((prev) => {
+        const next = { ...prev };
+        const txSubmissions = { ...(next[txId] || {}) };
+        const userSubmission = { ...(txSubmissions[user] || {}) };
+
+        if (payload?.comment) {
+          userSubmission.comment = payload.comment;
+        } else {
+          delete userSubmission.comment;
+        }
+
+        txSubmissions[user] = userSubmission;
+        next[txId] = txSubmissions;
+        return next;
+      });
+    }
+
+    try {
+      await set(ref(db, `${ASSIGNMENT_COMMENTS_ROOT}/${txId}/${user}`), payload);
+
+      if (currentSubmission) {
+        await update(ref(db, `submissions/${txId}/${user}`), {
+          comment: payload?.comment || null,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to sync assignment note:', error);
+    }
+  };
 
   const buyFood = () => {
     updateActivePet((pet) => {
@@ -2529,6 +2662,7 @@ export default function CreditCardApp() {
             currentUser={currentUser}
             referenceDateKey={referenceDateKey}
             onAssign={handleAssign}
+            onSaveComment={saveAssignmentComment}
           />
         ))}
 

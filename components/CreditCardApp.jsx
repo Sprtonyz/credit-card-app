@@ -8,7 +8,7 @@
 } from 'react';
 import Link from 'next/link';
 import { db } from '../config/firebase';
-import { onDisconnect, onValue, ref, remove, set } from 'firebase/database';
+import { get, onDisconnect, onValue, ref, remove, set } from 'firebase/database';
 import {
   clearSavedSimulatedDay,
   formatLocalDate,
@@ -53,7 +53,10 @@ const PET_STORAGE_KEY = 'cc_v5_pet_state';
 const PRESENCE_ROOT = 'cc_v5_presence';
 const PRESENCE_TTL_MS = 12000;
 const APP_STATE_ROOT = 'cc_v5_app_state';
+const PET_PROFILES_ROOT = `${APP_STATE_ROOT}/petProfiles`;
 const SHARED_DAY_OFFSET_KEY = `${APP_STATE_ROOT}/simulatedDayOffset`;
+const LEGACY_PET_ROOT = 'pet';
+const LEGACY_FOOD_ROOT = 'food';
 const APP_VERSION = '5.7';
 const VERSION_KEY = 'cc_version';
 const SPRITE_PET = {
@@ -111,6 +114,56 @@ function getOptionClassName(value) {
 
 function formatAssignmentLabel(value) {
   return value === 'Macquarie' ? 'MAC' : value;
+}
+
+function normalizePetProfilesMap(rawProfiles, dateKey) {
+  if (!rawProfiles || typeof rawProfiles !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(rawProfiles)
+      .filter(([user]) => USERS.includes(user))
+      .map(([user, state]) => [user, normalizePetState(state, dateKey)])
+  );
+}
+
+function getMissionProgressTotal(profile) {
+  return (profile?.missions || []).reduce(
+    (total, mission) => total + Math.max(0, Number(mission?.progress || 0)),
+    0
+  );
+}
+
+function comparePetProfiles(leftRaw, rightRaw, dateKey) {
+  const left = normalizePetState(leftRaw, dateKey);
+  const right = normalizePetState(rightRaw, dateKey);
+  const checks = [
+    [left.xp, right.xp],
+    [left.coins, right.coins],
+    [left.food, right.food],
+    [left.streak, right.streak],
+    [getMissionProgressTotal(left), getMissionProgressTotal(right)],
+    [left.hp, right.hp],
+  ];
+
+  for (const [leftValue, rightValue] of checks) {
+    if (leftValue > rightValue) return 1;
+    if (leftValue < rightValue) return -1;
+  }
+
+  return 0;
+}
+
+function mergePetProfileMaps(baseProfiles, candidateProfiles, dateKey) {
+  const next = { ...normalizePetProfilesMap(baseProfiles, dateKey) };
+  const incoming = normalizePetProfilesMap(candidateProfiles, dateKey);
+
+  Object.entries(incoming).forEach(([user, profile]) => {
+    const current = next[user];
+    if (!current || comparePetProfiles(profile, current, dateKey) > 0) {
+      next[user] = profile;
+    }
+  });
+
+  return next;
 }
 
 function Landing({ onSelect }) {
@@ -975,6 +1028,8 @@ export default function CreditCardApp() {
   const prevPetLevelRef = useRef(1);
   const petLevelReadyRef = useRef(false);
   const lastQuestSnapshotRef = useRef('');
+  const localPetProfilesRef = useRef({});
+  const petBootstrapCompleteRef = useRef(false);
 
   const appendQuestDebugLog = (label, details = {}) => {
     const timestamp = new Date().toISOString();
@@ -989,7 +1044,6 @@ export default function CreditCardApp() {
     if (localStorage.getItem(VERSION_KEY) !== APP_VERSION) {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(USER_KEY);
-      localStorage.removeItem(PET_STORAGE_KEY);
       localStorage.setItem(VERSION_KEY, APP_VERSION);
     }
 
@@ -1098,9 +1152,8 @@ export default function CreditCardApp() {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
         const todayKey = formatLocalDate(getSimulatedNow());
-        const normalized = Object.fromEntries(
-          Object.entries(parsed).map(([user, state]) => [user, normalizePetState(state, todayKey)])
-        );
+        const normalized = normalizePetProfilesMap(parsed, todayKey);
+        localPetProfilesRef.current = normalized;
         setPetProfiles(normalized);
       }
     } catch (error) {
@@ -1112,8 +1165,85 @@ export default function CreditCardApp() {
 
   useEffect(() => {
     if (!petProfilesHydrated) return;
+    localPetProfilesRef.current = petProfiles;
     localStorage.setItem(PET_STORAGE_KEY, JSON.stringify(petProfiles));
   }, [petProfiles, petProfilesHydrated]);
+
+  useEffect(() => {
+    if (!authReady) return undefined;
+
+    const petProfilesRef = ref(db, PET_PROFILES_ROOT);
+    const legacyPetRef = ref(db, LEGACY_PET_ROOT);
+    const legacyFoodRef = ref(db, LEGACY_FOOD_ROOT);
+
+    const hydrateLegacyPetProfiles = async (baseProfiles, dateKey) => {
+      try {
+        const [legacyPetSnapshot, legacyFoodSnapshot] = await Promise.all([get(legacyPetRef), get(legacyFoodRef)]);
+        const legacyPetProfiles = legacyPetSnapshot.val() || {};
+        const legacyFoodProfiles = legacyFoodSnapshot.val() || {};
+        const next = { ...baseProfiles };
+
+        USERS.forEach((user) => {
+          const legacyPet = legacyPetProfiles?.[user];
+          const legacyFood = legacyFoodProfiles?.[user];
+          if (!legacyPet && (legacyFood === null || legacyFood === undefined)) return;
+
+          const candidate = normalizePetState(
+            {
+              ...(next[user] || {}),
+              hp: legacyPet?.hp ?? next[user]?.hp,
+              xp: legacyPet?.xp ?? next[user]?.xp,
+              food: legacyFood ?? next[user]?.food,
+              petType: legacyPet?.type ?? legacyPet?.petType ?? next[user]?.petType,
+            },
+            dateKey
+          );
+
+          if (!next[user] || comparePetProfiles(candidate, next[user], dateKey) > 0) {
+            next[user] = candidate;
+          }
+        });
+
+        return next;
+      } catch (error) {
+        console.warn('Failed to read legacy pet data from Firebase:', error);
+        return baseProfiles;
+      }
+    };
+
+    const unsubscribe = onValue(
+      petProfilesRef,
+      (snapshot) => {
+        const remoteProfiles = normalizePetProfilesMap(snapshot.val(), referenceDateKey);
+
+        void (async () => {
+          let mergedProfiles = mergePetProfileMaps(remoteProfiles, localPetProfilesRef.current, referenceDateKey);
+
+          if (!petBootstrapCompleteRef.current) {
+            mergedProfiles = await hydrateLegacyPetProfiles(mergedProfiles, referenceDateKey);
+            petBootstrapCompleteRef.current = true;
+          }
+
+          setPetProfiles((prev) => {
+            const prevJson = JSON.stringify(prev);
+            const nextJson = JSON.stringify(mergedProfiles);
+            return prevJson === nextJson ? prev : mergedProfiles;
+          });
+
+          if (JSON.stringify(remoteProfiles) !== JSON.stringify(mergedProfiles)) {
+            set(petProfilesRef, mergedProfiles).catch((error) => {
+              console.error('Failed to sync pet profiles to Firebase:', error);
+            });
+          }
+        })();
+      },
+      (error) => {
+        console.error('Failed to subscribe to pet profiles:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [authReady, referenceDateKey]);
 
   const usingFirebaseTransactions = Array.isArray(firebaseTransactions);
   const sourceTransactions = useMemo(
@@ -1608,8 +1738,9 @@ export default function CreditCardApp() {
 
     try {
       await set(ref(db, 'submissions'), null);
+      await set(ref(db, PET_PROFILES_ROOT), null);
     } catch (err) {
-      console.error('Failed to clear Firebase submissions:', err);
+      console.error('Failed to clear Firebase app state:', err);
     }
   };
 

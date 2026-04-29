@@ -4,6 +4,8 @@ import { db } from '../config/firebase';
 import { applyPetActionProgress, normalizePetState } from '../utils/petProgression';
 import { getSubmissionDateKeyEntry, getSubmissionStatus } from '../utils/reconciliation';
 
+const ASSIGNMENT_COMMENT_MAX_LENGTH = 180;
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -27,7 +29,14 @@ async function persistSubmissionWithRetry(submissionRef, payload, attempts = 3) 
   throw lastError;
 }
 
-function buildSubmissionPayload({ day, dateKey, ts, value }) {
+function normalizeAssignmentComment(comment) {
+  return String(comment || '')
+    .replace(/\r\n?/g, '\n')
+    .trim()
+    .slice(0, ASSIGNMENT_COMMENT_MAX_LENGTH);
+}
+
+function buildSubmissionPayload({ day, dateKey, ts, value, comment }) {
   if (value === undefined) {
     throw new Error('Cannot persist an assignment without a value.');
   }
@@ -36,6 +45,7 @@ function buildSubmissionPayload({ day, dateKey, ts, value }) {
     ts,
     value,
   };
+  const normalizedComment = normalizeAssignmentComment(comment);
   const numericDay = Number(day);
 
   if (Number.isFinite(numericDay)) {
@@ -44,6 +54,10 @@ function buildSubmissionPayload({ day, dateKey, ts, value }) {
 
   if (dateKey) {
     payload.dateKey = dateKey;
+  }
+
+  if (normalizedComment) {
+    payload.comment = normalizedComment;
   }
 
   return payload;
@@ -63,7 +77,7 @@ export function useTransactionAssignments({
   const [undoStack, setUndoStack] = useState([]);
   const [assignmentError, setAssignmentError] = useState(null);
 
-  const handleAssign = async (txId, value, event) => {
+  const handleAssign = async (txId, value, event, comment) => {
     if (!currentUser) return;
     setAssignmentError(null);
     const txSubmissions = submissions[txId] || {};
@@ -76,11 +90,21 @@ export function useTransactionAssignments({
       dateKey: referenceDateKey,
       ts,
       value,
+      comment: comment === undefined ? currentSubmission?.comment : comment,
     });
     const nextSubmission = {
       ...(currentSubmission || {}),
       ...submissionPayload,
     };
+
+    if (comment === null) {
+      delete nextSubmission.comment;
+    }
+
+    if (!nextSubmission.comment) {
+      delete nextSubmission.comment;
+    }
+
     const nextStatus = getSubmissionStatus({
       ...txSubmissions,
       [currentUser]: nextSubmission,
@@ -177,6 +201,7 @@ export function useTransactionAssignments({
           dateKey: getSubmissionDateKeyEntry(last.prev),
           ts: last.prev.ts || Date.now(),
           value: last.prev.value,
+          comment: last.prev.comment,
         }));
       } else {
         await set(ref(db, `submissions/${last.txId}/${last.user}`), null);

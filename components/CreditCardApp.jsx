@@ -6,6 +6,7 @@
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { db } from '../config/firebase';
 import { get, onDisconnect, onValue, ref, remove, set } from 'firebase/database';
@@ -28,6 +29,7 @@ import {
   normalizeFirebaseTransaction,
 } from '../utils/creditCardAppData';
 import {
+  getSubmissionDateKeyEntry,
   getOtherUser,
   getSurfacedSubmissionStatus,
   getSurfacedSubmissionValue,
@@ -66,6 +68,8 @@ const LEGACY_PET_ROOT = 'pet';
 const LEGACY_FOOD_ROOT = 'food';
 const APP_VERSION = '5.7';
 const VERSION_KEY = 'cc_version';
+const ASSIGNMENT_COMMENT_MAX_LENGTH = 180;
+const ASSIGNMENT_NOTE_DRAFTS_KEY = 'cc_v5_assignment_note_drafts';
 const SPRITE_PET = {
   width: 208,
   height: 229,
@@ -123,6 +127,74 @@ function getOptionClassName(value) {
 
 function formatAssignmentLabel(value) {
   return value === 'Macquarie' ? 'MAC' : value;
+}
+
+function normalizeAssignmentComment(comment) {
+  return String(comment || '')
+    .replace(/\r\n?/g, '\n')
+    .trim()
+    .slice(0, ASSIGNMENT_COMMENT_MAX_LENGTH);
+}
+
+function readAssignmentNoteDrafts() {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = localStorage.getItem(ASSIGNMENT_NOTE_DRAFTS_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getAssignmentNoteDraft(txId, user) {
+  if (!txId || !user || typeof window === 'undefined') return '';
+
+  const drafts = readAssignmentNoteDrafts();
+  return normalizeAssignmentComment(drafts?.[txId]?.[user] || '');
+}
+
+function setAssignmentNoteDraft(txId, user, draft) {
+  if (!txId || !user || typeof window === 'undefined') return;
+
+  try {
+    const normalizedDraft = normalizeAssignmentComment(draft);
+    const drafts = readAssignmentNoteDrafts();
+    const nextDrafts = { ...drafts };
+    const txDrafts = { ...(nextDrafts[txId] || {}) };
+
+    if (normalizedDraft) {
+      txDrafts[user] = normalizedDraft;
+    } else {
+      delete txDrafts[user];
+    }
+
+    if (Object.keys(txDrafts).length > 0) {
+      nextDrafts[txId] = txDrafts;
+    } else {
+      delete nextDrafts[txId];
+    }
+
+    localStorage.setItem(ASSIGNMENT_NOTE_DRAFTS_KEY, JSON.stringify(nextDrafts));
+  } catch {
+    // Ignore note draft persistence failures; the Firebase assignment save still works.
+  }
+}
+
+function getAssignmentCommentEntry(submission, user) {
+  const entry = submission?.[user];
+  const comment = normalizeAssignmentComment(entry?.comment);
+  if (!entry?.value || !comment) return null;
+
+  return {
+    user,
+    value: entry.value,
+    comment,
+    dateKey: getSubmissionDateKeyEntry(entry),
+  };
 }
 
 function clamp(value, min, max) {
@@ -435,6 +507,118 @@ function AssignmentSwipeActions({ txId, onAssign, children, className = '', cont
   );
 }
 
+function AssignmentCommentModal({ entry, onClose }) {
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  if (!entry || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div className="comment-overlay" onClick={onClose}>
+      <div className="comment-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="comment-header">
+          <div>
+            <p className="comment-eyebrow">{entry.user} left a note</p>
+            <h3 className="comment-title">{formatAssignmentLabel(entry.value)}</h3>
+            {entry.dateKey ? <p className="comment-date">{formatShortDate(entry.dateKey)}</p> : null}
+          </div>
+          <button className="comment-close" onClick={onClose} aria-label="Close assignment note">
+            ×
+          </button>
+        </div>
+        <p className="comment-body">{entry.comment}</p>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function AssignmentNotePopover({
+  isOpen,
+  position,
+  commentDraft,
+  setCommentDraft,
+  normalizedDraft,
+  isEditing,
+  onEdit,
+  onClear,
+  onClose,
+}) {
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen || !isEditing) return;
+    textareaRef.current?.focus();
+  }, [isOpen, isEditing]);
+
+  if (!isOpen || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div className="assignment-note-float-layer" onClick={onClose}>
+      <div
+        className={`assignment-note-popover ${position?.side === 'left' ? 'side-left' : 'side-right'}`}
+        style={{
+          left: `${position?.left || 12}px`,
+          top: `${position?.top || 80}px`,
+          width: `${position?.width || 320}px`,
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="assignment-note-popover-arrow" />
+        {isEditing ? (
+          <textarea
+            ref={textareaRef}
+            value={commentDraft}
+            maxLength={ASSIGNMENT_COMMENT_MAX_LENGTH}
+            onChange={(event) => setCommentDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                onClose();
+                return;
+              }
+
+              if (event.key !== 'Enter' || event.shiftKey) return;
+              event.preventDefault();
+              onClose();
+            }}
+            placeholder="Because this was for..."
+            rows={4}
+          />
+        ) : (
+          <button type="button" className="assignment-note-view" onClick={onEdit}>
+            {normalizedDraft || 'Tap to add a note'}
+          </button>
+        )}
+        <div className="assignment-note-footer">
+          <span>{normalizedDraft.length}/{ASSIGNMENT_COMMENT_MAX_LENGTH}</span>
+          <div className="assignment-note-actions">
+            {isEditing ? (
+              <button type="button" onClick={onClear}>
+                clear
+              </button>
+            ) : (
+              <button type="button" onClick={onEdit}>
+                edit
+              </button>
+            )}
+            <button type="button" className="assignment-note-done" onClick={onClose}>
+              done
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
   const otherUser = getOtherUser(currentUser);
   const mySub = getSurfacedSubmissionValue(sub, currentUser, referenceDateKey);
@@ -443,9 +627,151 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
   const isRefund = Boolean(tx.isRefund || Number(tx.amount) < 0);
   const amountClass = isRefund ? 'text-emerald-300' : 'text-white';
   const cardClass = isRefund ? 'refund' : '';
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [notePosition, setNotePosition] = useState(null);
+  const [noteEditing, setNoteEditing] = useState(false);
+  const [commentDraft, setCommentDraft] = useState(() => getAssignmentNoteDraft(tx.id, currentUser));
+  const [activeComment, setActiveComment] = useState(null);
+  const noteButtonRef = useRef(null);
+  const noteDraftBaselineRef = useRef('');
+  const noteDraftTouchedRef = useRef(false);
+  const noteDraftHydratingRef = useRef(false);
+  const myCommentEntry = getAssignmentCommentEntry(sub, currentUser);
+  const otherCommentEntry = getAssignmentCommentEntry(sub, otherUser);
+  const normalizedDraft = normalizeAssignmentComment(commentDraft);
+  const normalizedSavedComment = normalizeAssignmentComment(myCommentEntry?.comment);
+  const hasSavedComment = Boolean(myCommentEntry?.comment);
+  const hasDraftComment = normalizedDraft.length > 0;
+  const hasVisibleComment = hasSavedComment || hasDraftComment;
+  const updateCommentDraft = (value) => {
+    noteDraftTouchedRef.current = true;
+    setCommentDraft(value);
+  };
+
+  useEffect(() => {
+    noteDraftHydratingRef.current = true;
+    setCommentDraft(getAssignmentNoteDraft(tx.id, currentUser));
+    noteDraftBaselineRef.current = '';
+    noteDraftTouchedRef.current = false;
+    setNoteOpen(false);
+    setNotePosition(null);
+    setNoteEditing(false);
+    setActiveComment(null);
+  }, [tx.id, currentUser]);
+
+  useEffect(() => {
+    if (noteDraftHydratingRef.current) {
+      noteDraftHydratingRef.current = false;
+      return;
+    }
+
+    setAssignmentNoteDraft(
+      tx.id,
+      currentUser,
+      normalizedDraft && normalizedDraft !== normalizedSavedComment ? normalizedDraft : ''
+    );
+  }, [tx.id, currentUser, normalizedDraft, normalizedSavedComment]);
+
+  const assignWithComment = (value, event, txId = tx.id) => {
+    const baseline = noteDraftBaselineRef.current;
+    const hasDraftSession = noteDraftTouchedRef.current || noteOpen || normalizedDraft.length > 0;
+    let nextComment;
+
+    if (hasDraftSession) {
+      if (baseline && normalizedDraft === baseline) {
+        nextComment = undefined;
+      } else if (normalizedDraft.length > 0) {
+        nextComment = normalizedDraft;
+      } else if (baseline) {
+        nextComment = null;
+      } else {
+        nextComment = undefined;
+      }
+    }
+
+    onAssign(txId, value, event, nextComment);
+    setCommentDraft('');
+    setAssignmentNoteDraft(txId, currentUser, '');
+    setNoteOpen(false);
+    setNotePosition(null);
+    setNoteEditing(false);
+    noteDraftBaselineRef.current = '';
+    noteDraftTouchedRef.current = false;
+  };
+
+  const toggleNoteEditor = () => {
+    if (noteOpen) {
+      setNoteOpen(false);
+      setNotePosition(null);
+      setNoteEditing(false);
+      return;
+    }
+
+    const persistedDraft = getAssignmentNoteDraft(tx.id, currentUser);
+    const initialDraft = normalizeAssignmentComment(commentDraft || persistedDraft || myCommentEntry?.comment || '');
+
+    if (!commentDraft && initialDraft) {
+      setCommentDraft(initialDraft);
+    }
+
+    noteDraftBaselineRef.current = normalizeAssignmentComment(myCommentEntry?.comment || '');
+    noteDraftTouchedRef.current = false;
+
+    const rect = noteButtonRef.current?.getBoundingClientRect();
+    const popoverWidth = Math.min(320, window.innerWidth - 24);
+    const gap = 10;
+    const roomRight = rect ? window.innerWidth - rect.right - 12 : 0;
+    const roomLeft = rect ? rect.left - 12 : 0;
+    const opensRight = roomRight >= popoverWidth || roomRight >= roomLeft;
+    const preferredLeft = rect
+      ? opensRight
+        ? rect.right + gap
+        : rect.left - popoverWidth - gap
+      : 12;
+    const left = Math.min(Math.max(12, preferredLeft), Math.max(12, window.innerWidth - popoverWidth - 12));
+    const top = Math.min(
+      Math.max(12, rect ? rect.top - 10 : 80),
+      Math.max(12, window.innerHeight - 210)
+    );
+
+    setNotePosition({ left, top, width: popoverWidth, side: opensRight ? 'right' : 'left' });
+    setNoteEditing(false);
+    setNoteOpen(true);
+  };
+
+  const closeNoteEditor = () => {
+    setNoteOpen(false);
+    setNotePosition(null);
+    setNoteEditing(false);
+  };
+
+  const noteEditor = (
+    <div className={`assignment-note-panel ${noteOpen ? 'open' : ''}`}>
+      <button
+        ref={noteButtonRef}
+        type="button"
+        className={`assignment-note-toggle ${noteOpen || hasVisibleComment ? 'active' : ''}`}
+        onClick={toggleNoteEditor}
+        aria-expanded={noteOpen}
+        aria-label={hasVisibleComment ? 'Edit assignment note' : 'Add assignment note'}
+      >
+        {hasVisibleComment ? (
+          <>
+            note added <span className="assignment-note-badge">1</span>
+          </>
+        ) : (
+          'note'
+        )}
+      </button>
+    </div>
+  );
 
   return (
-    <AssignmentSwipeActions txId={tx.id} onAssign={onAssign} className="tx-card-swipe">
+    <AssignmentSwipeActions
+      txId={tx.id}
+      onAssign={(txId, value, event) => assignWithComment(value, event, txId)}
+      className="tx-card-swipe"
+    >
       <div className={`tx-card ${cardClass} ${conflict ? 'conflict' : unsure ? 'unsure' : ''}`}>
         <div className="tx-top">
           <div>
@@ -457,6 +783,17 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
               )}
               {conflict && <span className="badge badge-conflict">! conflict</span>}
               {unsure && !conflict && <span className="badge badge-unsure">? unsure</span>}
+              {otherCommentEntry ? (
+                <button
+                  type="button"
+                  className="assignment-comment-badge"
+                  onClick={() => setActiveComment(otherCommentEntry)}
+                  title={`${otherUser} left a note`}
+                  aria-label={`${otherUser} left an assignment note`}
+                >
+                  1
+                </button>
+              ) : null}
             </div>
             <p className="tx-desc">{tx.desc}</p>
             {isRefund && (
@@ -465,10 +802,13 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
               </p>
             )}
           </div>
-          <span className={`tx-amount ${amountClass}`}>
-            {isRefund ? 'CR ' : ''}
-            ${Math.abs(tx.amount).toFixed(2)}
-          </span>
+          <div className="tx-amount-stack">
+            <span className={`tx-amount ${amountClass}`}>
+              {isRefund ? 'CR ' : ''}
+              ${Math.abs(tx.amount).toFixed(2)}
+            </span>
+            {noteEditor}
+          </div>
         </div>
 
         {conflict || unsure ? (
@@ -477,35 +817,59 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
               {otherUser} picked <span className="my-pick-chip">{formatAssignmentLabel(otherSub) || '--'}</span>
               {mySub ? ` | your pick: ${formatAssignmentLabel(mySub)}` : ' | tap to assign'}
             </p>
-            <div className="conflict-row">
-              {ASSIGN_OPTS.map((opt) => (
-                <button
-                  key={opt}
-                  className={`conflict-tap-btn ${getOptionClassName(opt)}`}
-                  onClick={(event) => onAssign(tx.id, opt, event)}
-                >
-                  {formatAssignmentLabel(opt)}
-                </button>
-              ))}
+            <div className="assignment-action-row conflict-action-row">
+              <div className="conflict-row">
+                {ASSIGN_OPTS.map((opt) => (
+                  <button
+                    key={opt}
+                    className={`conflict-tap-btn ${getOptionClassName(opt)}`}
+                    onClick={(event) => assignWithComment(opt, event)}
+                  >
+                    {formatAssignmentLabel(opt)}
+                  </button>
+                ))}
+              </div>
             </div>
           </>
         ) : (
-          <div className="assign-row">
-            <span className="assign-label">assign</span>
-            <div className="assign-options">
-              {ASSIGN_OPTS.map((opt) => (
-                <button
-                  key={opt}
-                  className={`tap-btn ${getOptionClassName(opt)}`}
-                  onClick={(event) => onAssign(tx.id, opt, event)}
-                >
-                  {formatAssignmentLabel(opt)}
-                </button>
-              ))}
+          <>
+            <div className="assignment-action-row">
+              <div className="assign-row">
+                <span className="assign-label">assign</span>
+                <div className="assign-options">
+                  {ASSIGN_OPTS.map((opt) => (
+                    <button
+                      key={opt}
+                      className={`tap-btn ${getOptionClassName(opt)}`}
+                      onClick={(event) => assignWithComment(opt, event)}
+                    >
+                      {formatAssignmentLabel(opt)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
+      <AssignmentNotePopover
+        isOpen={noteOpen}
+        position={notePosition}
+        commentDraft={commentDraft}
+        setCommentDraft={updateCommentDraft}
+        normalizedDraft={normalizedDraft}
+        isEditing={noteEditing}
+        onEdit={() => setNoteEditing(true)}
+        onClear={() => {
+          updateCommentDraft('');
+          setAssignmentNoteDraft(tx.id, currentUser, '');
+          setNoteEditing(true);
+        }}
+        onClose={closeNoteEditor}
+      />
+      {activeComment ? (
+        <AssignmentCommentModal entry={activeComment} onClose={() => setActiveComment(null)} />
+      ) : null}
     </AssignmentSwipeActions>
   );
 }

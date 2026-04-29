@@ -507,44 +507,14 @@ function AssignmentSwipeActions({ txId, onAssign, children, className = '', cont
   );
 }
 
-function AssignmentCommentModal({ entry, onClose }) {
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') onClose();
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
-
-  if (!entry || typeof document === 'undefined') return null;
-
-  return createPortal(
-    <div className="comment-overlay" onClick={onClose}>
-      <div className="comment-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="comment-header">
-          <div>
-            <p className="comment-eyebrow">{entry.user} left a note</p>
-            <h3 className="comment-title">{formatAssignmentLabel(entry.value)}</h3>
-            {entry.dateKey ? <p className="comment-date">{formatShortDate(entry.dateKey)}</p> : null}
-          </div>
-          <button className="comment-close" onClick={onClose} aria-label="Close assignment note">
-            ×
-          </button>
-        </div>
-        <p className="comment-body">{entry.comment}</p>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 function AssignmentNotePopover({
   isOpen,
   position,
   commentDraft,
   setCommentDraft,
   normalizedDraft,
+  viewEntry,
+  viewComment,
   isEditing,
   onEdit,
   onClear,
@@ -593,11 +563,18 @@ function AssignmentNotePopover({
           />
         ) : (
           <button type="button" className="assignment-note-view" onClick={onEdit}>
-            {normalizedDraft || 'Tap to add a note'}
+            {viewEntry ? (
+              <>
+                <span className="assignment-note-view-eyebrow">{viewEntry.user} left a note</span>
+                <span className="assignment-note-view-body">{viewComment}</span>
+              </>
+            ) : (
+              <span className="assignment-note-view-body">{viewComment || 'No note yet'}</span>
+            )}
           </button>
         )}
         <div className="assignment-note-footer">
-          <span>{normalizedDraft.length}/{ASSIGNMENT_COMMENT_MAX_LENGTH}</span>
+          <span>{(isEditing ? normalizedDraft : viewComment).length}/{ASSIGNMENT_COMMENT_MAX_LENGTH}</span>
           <div className="assignment-note-actions">
             {isEditing ? (
               <button type="button" onClick={onClear}>
@@ -631,7 +608,6 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
   const [notePosition, setNotePosition] = useState(null);
   const [noteEditing, setNoteEditing] = useState(false);
   const [commentDraft, setCommentDraft] = useState(() => getAssignmentNoteDraft(tx.id, currentUser));
-  const [activeComment, setActiveComment] = useState(null);
   const noteButtonRef = useRef(null);
   const noteDraftBaselineRef = useRef('');
   const noteDraftTouchedRef = useRef(false);
@@ -640,9 +616,10 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
   const otherCommentEntry = getAssignmentCommentEntry(sub, otherUser);
   const normalizedDraft = normalizeAssignmentComment(commentDraft);
   const normalizedSavedComment = normalizeAssignmentComment(myCommentEntry?.comment);
-  const hasSavedComment = Boolean(myCommentEntry?.comment);
-  const hasDraftComment = normalizedDraft.length > 0;
-  const hasVisibleComment = hasSavedComment || hasDraftComment;
+  const viewCommentEntry = myCommentEntry || otherCommentEntry;
+  const viewComment = normalizedDraft || normalizeAssignmentComment(viewCommentEntry?.comment);
+  const savedCommentCount = [myCommentEntry, otherCommentEntry].filter(Boolean).length;
+  const hasVisibleComment = Boolean(viewComment);
   const updateCommentDraft = (value) => {
     noteDraftTouchedRef.current = true;
     setCommentDraft(value);
@@ -656,7 +633,6 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
     setNoteOpen(false);
     setNotePosition(null);
     setNoteEditing(false);
-    setActiveComment(null);
   }, [tx.id, currentUser]);
 
   useEffect(() => {
@@ -753,11 +729,11 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
         className={`assignment-note-toggle ${noteOpen || hasVisibleComment ? 'active' : ''}`}
         onClick={toggleNoteEditor}
         aria-expanded={noteOpen}
-        aria-label={hasVisibleComment ? 'Edit assignment note' : 'Add assignment note'}
+        aria-label={hasVisibleComment ? 'View assignment note' : 'Add assignment note'}
       >
         {hasVisibleComment ? (
           <>
-            note added <span className="assignment-note-badge">1</span>
+            note added <span className="assignment-note-badge">{Math.max(1, savedCommentCount)}</span>
           </>
         ) : (
           'note'
@@ -783,17 +759,6 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
               )}
               {conflict && <span className="badge badge-conflict">! conflict</span>}
               {unsure && !conflict && <span className="badge badge-unsure">? unsure</span>}
-              {otherCommentEntry ? (
-                <button
-                  type="button"
-                  className="assignment-comment-badge"
-                  onClick={() => setActiveComment(otherCommentEntry)}
-                  title={`${otherUser} left a note`}
-                  aria-label={`${otherUser} left an assignment note`}
-                >
-                  1
-                </button>
-              ) : null}
             </div>
             <p className="tx-desc">{tx.desc}</p>
             {isRefund && (
@@ -858,6 +823,8 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
         commentDraft={commentDraft}
         setCommentDraft={updateCommentDraft}
         normalizedDraft={normalizedDraft}
+        viewEntry={normalizedDraft ? { user: currentUser, value: mySub || myCommentEntry?.value } : viewCommentEntry}
+        viewComment={viewComment}
         isEditing={noteEditing}
         onEdit={() => setNoteEditing(true)}
         onClear={() => {
@@ -867,9 +834,6 @@ function TransactionCard({ tx, sub, currentUser, referenceDateKey, onAssign }) {
         }}
         onClose={closeNoteEditor}
       />
-      {activeComment ? (
-        <AssignmentCommentModal entry={activeComment} onClose={() => setActiveComment(null)} />
-      ) : null}
     </AssignmentSwipeActions>
   );
 }

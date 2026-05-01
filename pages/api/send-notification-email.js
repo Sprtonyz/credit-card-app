@@ -124,6 +124,53 @@ function buildEmailContent(report) {
   return { text, html };
 }
 
+function buildCustomUpdateContent({ message, appUrl }) {
+  const safeMessage = String(message || '').trim();
+  const landingUrl = getLandingUrl(appUrl || 'https://ccapp-nine.vercel.app');
+  const updatedAt = new Date().toLocaleString('en-AU', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const htmlMessage = escapeHtml(safeMessage).replace(/\n/g, '<br />');
+
+  const text = [
+    'Westpac CC Tracker update',
+    '',
+    safeMessage,
+    '',
+    `Open the app: ${landingUrl}`,
+    `Sent: ${updatedAt}`,
+  ].join('\n');
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;background:#eef2f7;padding:32px;color:#0f172a">
+      <div style="max-width:640px;margin:0 auto">
+        <div style="background:#10223a;color:#ffffff;border-radius:18px 18px 0 0;padding:22px 28px">
+          <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8">Westpac CC Tracker</div>
+          <div style="margin-top:8px;font-size:24px;font-weight:700">Quick update</div>
+        </div>
+        <div style="background:#ffffff;border:1px solid #dbe3ee;border-top:none;border-radius:0 0 18px 18px;padding:28px">
+          <div style="font-size:16px;line-height:1.55;white-space:normal">${htmlMessage}</div>
+          <div style="margin-top:24px;color:#64748b;font-size:13px">Sent ${escapeHtml(updatedAt)}</div>
+          <div style="margin-top:22px">
+            <a
+              href="${escapeHtml(landingUrl)}"
+              style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700"
+            >
+              Open Westpac CC Tracker
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return { text, html };
+}
+
 function createTransport() {
   const gmailUser = process.env.GMAIL_USER || DEFAULT_GMAIL_USER;
   const appPassword = process.env.GMAIL_APP_PASSWORD;
@@ -193,6 +240,45 @@ export default async function handler(req, res) {
 
   if (recipients.length > 50) {
     return res.status(400).json({ error: 'Too many recipients for one email.' });
+  }
+
+  if (payload.kind === 'custom_update') {
+    const message = String(payload.message || '').trim();
+    const subject = String(payload.subject || 'Westpac CC Tracker quick update').trim();
+
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required.' });
+    }
+
+    if (message.length > 1200) {
+      return res.status(400).json({ error: 'Message is too long.' });
+    }
+
+    const { text, html } = buildCustomUpdateContent({
+      message,
+      appUrl: payload.appUrl || 'https://ccapp-nine.vercel.app',
+    });
+    const info = await sendEmail({
+      transporter,
+      from,
+      replyTo,
+      to: recipients,
+      subject,
+      text,
+      html,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      sent: [
+        {
+          messageId: info.messageId,
+          subject,
+          recipients,
+        },
+      ],
+      sender: from,
+    });
   }
 
   const sent = [];

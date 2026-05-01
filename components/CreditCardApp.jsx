@@ -2535,6 +2535,9 @@ export default function CreditCardApp() {
                 <button className="day-btn" onClick={() => updateActivePet((pet) => ({ ...pet, hp: 100 }))}>
                   +hp
                 </button>
+                <button className="reset-btn" onClick={() => updateActivePet((pet) => ({ ...pet, hp: pet.hp - 20 }))}>
+                  -hp
+                </button>
                 <span className="dev-sep">|</span>
                 <span className="dev-label">size:{petScalePct}%</span>
                 <button className="reset-btn" onClick={() => setPetScalePct((value) => Math.max(10, value - 5))}>

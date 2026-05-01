@@ -12,6 +12,7 @@ import { detectDuplicatesAcrossImages } from '../utils/duplicateDetection';
 import { mergeTransactions, prepareForFirebase } from '../utils/transactionMerger';
 import {
   formatActivityTimestamp,
+  formatDateKeyForDisplay,
 } from '../utils/adminReporting';
 import { useAdminDashboardData } from '../hooks/useAdminDashboardData';
 import {
@@ -267,6 +268,19 @@ function getUploadResultStats(summary = {}, addedCount = 0) {
   };
 }
 
+function getImportedAuditItems(entry) {
+  return (entry?.decisions || []).filter((decision) => decision.outcome === 'import_ready');
+}
+
+function getAuditItemCount(entry) {
+  return Number(entry?.summary?.toAdd || entry?.summary?.removedTransactions || 0);
+}
+
+const EMAIL_RECIPIENTS_BY_PROFILE = {
+  Tony: 'spr.tony@gmail.com',
+  Nugs: 'nguyet_anh_le@hotmail.com',
+};
+
 function getReviewSummaryStats(manualReview, duplicateDetection) {
   const reviewSummary = manualReview?.summary || {};
   const total = Number(reviewSummary.total ?? duplicateDetection?.summary?.total ?? 0);
@@ -299,6 +313,9 @@ export default function AdminUploadPage() {
   const [successMessage, setSuccessMessage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isEmailSending, setIsEmailSending] = useState(false);
+  const [quickUpdateMessage, setQuickUpdateMessage] = useState('');
+  const [quickUpdateTony, setQuickUpdateTony] = useState(true);
+  const [quickUpdateNugs, setQuickUpdateNugs] = useState(true);
   const {
     adminActivityLog,
     authReady,
@@ -547,6 +564,9 @@ export default function AdminUploadPage() {
     setNotificationReports([]);
     setConfirmTonyEmail(false);
     setConfirmNugsEmail(false);
+    setQuickUpdateMessage('');
+    setQuickUpdateTony(true);
+    setQuickUpdateNugs(true);
   };
 
   const handleUndoLastUpload = async () => {
@@ -680,11 +700,6 @@ export default function AdminUploadPage() {
       return;
     }
 
-    const recipientsByProfile = {
-      Tony: 'spr.tony@gmail.com',
-      Nugs: 'nguyet_anh_le@hotmail.com',
-    };
-
     setIsEmailSending(true);
     setEmailStatus(null);
 
@@ -706,7 +721,7 @@ export default function AdminUploadPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            to: [recipientsByProfile[profileName]],
+            to: [EMAIL_RECIPIENTS_BY_PROFILE[profileName]],
             reports: [
               {
                 ...report,
@@ -732,6 +747,68 @@ export default function AdminUploadPage() {
       setEmailStatus({
         type: 'error',
         message: err.message || 'Failed to send the selected emails.',
+      });
+    } finally {
+      setIsEmailSending(false);
+    }
+  };
+
+  const handleSendQuickUpdate = async () => {
+    const selectedProfiles = [];
+    if (quickUpdateTony) selectedProfiles.push('Tony');
+    if (quickUpdateNugs) selectedProfiles.push('Nugs');
+
+    const message = quickUpdateMessage.trim();
+
+    if (selectedProfiles.length === 0) {
+      setEmailStatus({
+        type: 'error',
+        message: 'Tick Tony and/or Nugs before sending the update.',
+      });
+      return;
+    }
+
+    if (!message) {
+      setEmailStatus({
+        type: 'error',
+        message: 'Write a quick update before sending.',
+      });
+      return;
+    }
+
+    setIsEmailSending(true);
+    setEmailStatus(null);
+
+    try {
+      const response = await fetch('/api/send-notification-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          kind: 'custom_update',
+          to: selectedProfiles.map((profileName) => EMAIL_RECIPIENTS_BY_PROFILE[profileName]),
+          subject: 'Westpac CC Tracker quick update',
+          message,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to send the quick update.');
+      }
+
+      setQuickUpdateMessage('');
+      setEmailStatus({
+        type: 'success',
+        message: `Sent quick update to ${selectedProfiles.join(' and ')}.`,
+      });
+    } catch (err) {
+      console.error('Failed to send quick update:', err);
+      setEmailStatus({
+        type: 'error',
+        message: err.message || 'Failed to send the quick update.',
       });
     } finally {
       setIsEmailSending(false);
@@ -923,6 +1000,52 @@ export default function AdminUploadPage() {
               >
                 {isEmailSending ? 'Sending...' : 'Send selected emails'}
               </button>
+
+              <div className="mt-5 border-t border-slate-700 pt-4">
+                <p className="text-sm text-slate-300 mb-3">Quick update</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/70 p-3">
+                    <input
+                      type="checkbox"
+                      checked={quickUpdateTony}
+                      onChange={(e) => setQuickUpdateTony(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500"
+                    />
+                    <span className="text-sm text-slate-200">Tony</span>
+                  </label>
+                  <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/70 p-3">
+                    <input
+                      type="checkbox"
+                      checked={quickUpdateNugs}
+                      onChange={(e) => setQuickUpdateNugs(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500"
+                    />
+                    <span className="text-sm text-slate-200">Nugs</span>
+                  </label>
+                </div>
+                <textarea
+                  value={quickUpdateMessage}
+                  onChange={(e) => setQuickUpdateMessage(e.target.value)}
+                  maxLength={1200}
+                  rows={3}
+                  placeholder="Write a short update..."
+                  className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-950/80 p-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                />
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="text-xs text-slate-500">{quickUpdateMessage.length}/1200</span>
+                  <button
+                    onClick={handleSendQuickUpdate}
+                    disabled={
+                      isEmailSending ||
+                      !quickUpdateMessage.trim() ||
+                      (!quickUpdateTony && !quickUpdateNugs)
+                    }
+                    className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-600 disabled:opacity-50"
+                  >
+                    {isEmailSending ? 'Sending...' : 'Send update'}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/50 p-4">
@@ -931,7 +1054,7 @@ export default function AdminUploadPage() {
                   User activity log
                 </p>
                 <span className="text-xs text-slate-500">
-                  Refreshes every 10s
+                  Last 12 hrs | refreshes every 10s
                 </span>
               </div>
               <div className="space-y-2">
@@ -959,11 +1082,11 @@ export default function AdminUploadPage() {
                       Last assignment:{' '}
                       {entry.latestSubmission
                         ? `${formatActivityTimestamp(entry.latestSubmission.ts)}${entry.latestSubmission.value ? ` (${entry.latestSubmission.value})` : ''}`
-                        : 'No assignments yet'}
+                        : 'No assignments in the last 12 hrs'}
                     </p>
                     {entry.latestSubmission?.dateKey ? (
                       <p className="mt-1 text-[11px] text-slate-500">
-                        Assignment date: {entry.latestSubmission.dateKey}
+                        Assignment date: {formatDateKeyForDisplay(entry.latestSubmission.dateKey)}
                       </p>
                     ) : null}
                   </div>
@@ -1025,39 +1148,70 @@ export default function AdminUploadPage() {
                 <p className="text-xs text-slate-500">No recent import, undo, or delete events were recorded yet.</p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-auto pr-1">
-                  {importAuditHistory.map((entry) => (
-                    <details
-                      key={entry.id}
-                      className="rounded-lg border border-slate-700 bg-slate-950/80 p-3"
-                    >
-                      <summary className="cursor-pointer list-none">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-white">{entry.actionLabel}</p>
-                            <p className="text-xs text-slate-400 mt-1">
-                              {entry.createdAt ? formatLocalDateTime(new Date(entry.createdAt)) : 'Unknown time'}
-                            </p>
+                  {importAuditHistory.map((entry) => {
+                    const itemCount = getAuditItemCount(entry);
+                    const importedItems = getImportedAuditItems(entry);
+
+                    return (
+                      <details
+                        key={entry.id}
+                        className="rounded-lg border border-slate-700 bg-slate-950/80 p-3"
+                      >
+                        <summary className="cursor-pointer list-none">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-white">{entry.actionLabel}</p>
+                              <p className="text-xs text-slate-400 mt-1">
+                                {entry.createdAt ? formatLocalDateTime(new Date(entry.createdAt)) : 'Unknown time'}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-slate-700 px-2 py-1 text-[11px] text-slate-200">
+                              {itemCount} item{itemCount === 1 ? '' : 's'}
+                            </span>
                           </div>
-                          <span className="rounded-full bg-slate-700 px-2 py-1 text-[11px] text-slate-200">
-                            {entry.summary?.toAdd || entry.summary?.removedTransactions || 0} item
-                            {(entry.summary?.toAdd || entry.summary?.removedTransactions || 0) === 1 ? '' : 's'}
-                          </span>
+                        </summary>
+                        <div className="mt-3 space-y-2 text-left">
+                          {entry.summary ? (
+                            <p className="text-xs text-slate-400">
+                              Imported: {entry.summary.toAdd || 0} | Skipped: {entry.summary.skipped || 0} | Flagged: {entry.summary.flagged || 0}
+                            </p>
+                          ) : null}
+                          {entry.type === 'import_batch' ? (
+                            <div className="space-y-1">
+                              {importedItems.length > 0 ? (
+                                importedItems.map((item, idx) => (
+                                  <div
+                                    key={`${entry.id}-imported-${idx}`}
+                                    className="flex items-start justify-between gap-3 rounded-md bg-slate-900/80 px-2 py-2"
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="truncate text-xs font-medium text-slate-200">
+                                        {item.merchant || 'Unknown item'}
+                                      </p>
+                                      <p className="mt-0.5 text-[11px] text-slate-500">
+                                        {formatDateKeyForDisplay(item.date)}
+                                        {item.imageName ? ` | ${item.imageName}` : ''}
+                                      </p>
+                                    </div>
+                                    <span className="shrink-0 text-xs font-semibold text-white">
+                                      ${Number(item.amount || 0).toFixed(2)}
+                                    </span>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-xs text-slate-500">No imported item details were recorded for this event.</p>
+                              )}
+                            </div>
+                          ) : null}
+                          {(entry.images || []).map((image) => (
+                            <p key={`${entry.id}-${image.imageHash || image.imageName}`} className="text-xs text-slate-300">
+                              {image.imageName || 'Unknown image'}
+                            </p>
+                          ))}
                         </div>
-                      </summary>
-                      <div className="mt-3 space-y-2 text-left">
-                        {entry.summary ? (
-                          <p className="text-xs text-slate-400">
-                            Imported: {entry.summary.toAdd || 0} | Skipped: {entry.summary.skipped || 0} | Flagged: {entry.summary.flagged || 0}
-                          </p>
-                        ) : null}
-                        {(entry.images || []).map((image) => (
-                          <p key={`${entry.id}-${image.imageHash || image.imageName}`} className="text-xs text-slate-300">
-                            {image.imageName || 'Unknown image'}
-                          </p>
-                        ))}
-                      </div>
-                    </details>
-                  ))}
+                      </details>
+                    );
+                  })}
                 </div>
               )}
             </div>

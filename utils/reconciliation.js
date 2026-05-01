@@ -53,9 +53,17 @@ export function getTransactionReferenceDateKey(transaction, referenceDateKey) {
 }
 
 export function getSurfacedSubmissionValue(submission, user, referenceDateKey) {
-  const submittedDateKey = getSubmissionDateKey(submission, user);
-  if (!submittedDateKey || submittedDateKey >= referenceDateKey) return null;
-  return getSubmissionValue(submission, user);
+  const entry = submission?.[user];
+  const submittedDateKey = getSubmissionDateKeyEntry(entry);
+  if (!submittedDateKey) return null;
+  if (submittedDateKey >= referenceDateKey) {
+    const previousDateKey = entry?.previousDateKey;
+    if (previousDateKey && previousDateKey < referenceDateKey) {
+      return entry?.previousValue ?? null;
+    }
+    return null;
+  }
+  return entry?.value ?? null;
 }
 
 export function getSurfacedSubmissionStatus(submission, referenceDateKey, users = PROFILE_NAMES) {
@@ -87,7 +95,6 @@ export function isVisibleForUser(transaction, submissions, user, referenceDateKe
   if (!user) return true;
 
   const submission = submissions[transaction.id] || {};
-  const liveStatus = getSubmissionStatus(submission, users);
   const surfacedStatus = getSurfacedSubmissionStatus(submission, referenceDateKey, users);
   const submittedDateKey = getSubmissionDateKey(submission, user);
   const transactionReferenceDateKey = getTransactionReferenceDateKey(transaction, referenceDateKey);
@@ -96,7 +103,9 @@ export function isVisibleForUser(transaction, submissions, user, referenceDateKe
     transactionReferenceDateKey !== null &&
     submittedDateKey >= transactionReferenceDateKey;
 
-  if (liveStatus.conflict || surfacedStatus.conflict) return true;
+  if (surfacedStatus.conflict || surfacedStatus.unsure) {
+    return !hasSubmissionOnDate(submission, user, referenceDateKey);
+  }
 
   return !surfacedStatus.resolved && !submittedForThisTransaction;
 }

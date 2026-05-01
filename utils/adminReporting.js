@@ -8,6 +8,7 @@ import {
 import { formatLocalDateTime } from './simulationDate';
 
 export const PRESENCE_TTL_MS = 12000;
+export const ADMIN_ACTIVITY_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 function dateToMs(dateKey) {
   if (!dateKey) return null;
@@ -22,12 +23,13 @@ function daysBetween(olderKey, newerKey) {
   return Math.floor((newerMs - olderMs) / 86400000);
 }
 
-function getLatestSubmissionEntryForUser(submissions = {}, user) {
+function getLatestSubmissionEntryForUser(submissions = {}, user, cutoffTs = 0) {
   return Object.entries(submissions).reduce((latest, [txId, submission]) => {
     const entry = submission?.[user];
     const ts = Number(entry?.ts);
 
     if (!Number.isFinite(ts)) return latest;
+    if (cutoffTs && ts < cutoffTs) return latest;
     if (!latest || ts > latest.ts) {
       return {
         txId,
@@ -134,6 +136,12 @@ export function buildImportAuditHistory(entries = []) {
     });
 }
 
+export function formatDateKeyForDisplay(dateKey) {
+  const match = String(dateKey || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return dateKey || 'n/a';
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
 export function formatActivityTimestamp(ts) {
   const value = Number(ts);
   if (!Number.isFinite(value) || value <= 0) return 'No activity yet';
@@ -141,19 +149,22 @@ export function formatActivityTimestamp(ts) {
 }
 
 export function buildAdminActivityLog(presenceEntries = {}, submissions = {}, now = Date.now()) {
+  const cutoffTs = now - ADMIN_ACTIVITY_WINDOW_MS;
+
   return PROFILE_NAMES.map((user) => {
     const userPresenceEntries = Object.values(presenceEntries || {}).filter(
       (entry) => entry && typeof entry === 'object' && entry.user === user
     );
     const latestPresenceTs = userPresenceEntries.reduce((latest, entry) => {
       const ts = Number(entry?.ts);
+      if (!Number.isFinite(ts) || ts < cutoffTs) return latest;
       return Number.isFinite(ts) && ts > latest ? ts : latest;
     }, 0);
     const hasActivePresence = userPresenceEntries.some((entry) => {
       const ts = Number(entry?.ts);
       return Number.isFinite(ts) && now - ts <= PRESENCE_TTL_MS;
     });
-    const latestSubmission = getLatestSubmissionEntryForUser(submissions, user);
+    const latestSubmission = getLatestSubmissionEntryForUser(submissions, user, cutoffTs);
 
     return {
       user,

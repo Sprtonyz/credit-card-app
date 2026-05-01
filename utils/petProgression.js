@@ -2,6 +2,7 @@ const DEFAULT_MOOD = 'okay';
 const VALID_MOODS = ['happy', 'okay', 'hungry', 'neglected'];
 const VALID_PET_TYPES = ['classic', 'shiny', 'ember'];
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const HP_DECAY_PER_UNFED_DAY = 12;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -34,6 +35,29 @@ function diffDays(currentDateKey, previousDateKey) {
   const previousMs = parseDateKey(previousDateKey);
   if (currentMs === null || previousMs === null) return null;
   return Math.round((currentMs - previousMs) / MS_PER_DAY);
+}
+
+function applyHpDecay(rawState, dateKey) {
+  const hp = clamp(toFiniteNumber(rawState?.hp, 60), 0, 100);
+  const currentDateKey = isDateKey(dateKey) ? dateKey : null;
+  if (!currentDateKey) {
+    return {
+      hp,
+      lastHpDecayDate: isDateKey(rawState?.lastHpDecayDate) ? rawState.lastHpDecayDate : null,
+    };
+  }
+
+  const lastHpDecayDate = isDateKey(rawState?.lastHpDecayDate)
+    ? rawState.lastHpDecayDate
+    : isDateKey(rawState?.lastFedDate)
+      ? rawState.lastFedDate
+      : currentDateKey;
+  const elapsedDays = Math.max(0, diffDays(currentDateKey, lastHpDecayDate) || 0);
+
+  return {
+    hp: clamp(hp - elapsedDays * HP_DECAY_PER_UNFED_DAY, 0, 100),
+    lastHpDecayDate: currentDateKey,
+  };
 }
 
 export function buildMissionResetKey(dateKey) {
@@ -200,6 +224,7 @@ export function normalizePetState(rawState, dateKey) {
     '1970-01-01';
   const templates = createDailyPetMissions(fallbackDateKey);
   const missionMap = new Map(sourceMissions.map((mission) => [mission?.id, mission]));
+  const decayedHp = applyHpDecay(rawState, fallbackDateKey);
 
   const missions = templates.map((template) => {
     const saved = missionMap.get(template.id);
@@ -210,13 +235,14 @@ export function normalizePetState(rawState, dateKey) {
   return {
     coins: Math.max(0, toFiniteNumber(rawState?.coins, 0)),
     food: Math.max(0, toFiniteNumber(rawState?.food, 0)),
-    hp: clamp(toFiniteNumber(rawState?.hp, 60), 0, 100),
+    hp: decayedHp.hp,
     xp: Math.max(0, toFiniteNumber(rawState?.xp, 0)),
     petType: normalizePetType(rawState?.petType),
     streak: Math.max(0, Math.floor(toFiniteNumber(rawState?.streak, 0))),
     lastStreakDate: isDateKey(rawState?.lastStreakDate) ? rawState.lastStreakDate : null,
     mood: normalizeMood(rawState?.mood),
     lastFedDate: isDateKey(rawState?.lastFedDate) ? rawState.lastFedDate : null,
+    lastHpDecayDate: decayedHp.lastHpDecayDate,
     missions,
   };
 }
@@ -282,6 +308,7 @@ export function applyPetActionProgress(profile, payload) {
   if (payload?.kind === 'feed') {
     next.food = Math.max(0, next.food - 1);
     next.lastFedDate = dateKey;
+    next.lastHpDecayDate = dateKey;
     next.hp = clamp(next.hp + Math.max(0, toFiniteNumber(payload.hpGain, 0)), 0, 100);
     next.xp += Math.max(0, toFiniteNumber(payload.xpGain, 0));
   }

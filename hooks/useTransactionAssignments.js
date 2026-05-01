@@ -2,7 +2,11 @@ import { useState } from 'react';
 import { ref, set } from 'firebase/database';
 import { db } from '../config/firebase';
 import { applyPetActionProgress, normalizePetState } from '../utils/petProgression';
-import { getSubmissionDateKeyEntry, getSubmissionStatus } from '../utils/reconciliation';
+import {
+  getSubmissionDateKeyEntry,
+  getSubmissionStatus,
+  getSurfacedSubmissionStatus,
+} from '../utils/reconciliation';
 
 const ASSIGNMENT_COMMENT_MAX_LENGTH = 180;
 const ASSIGNMENT_COMMENTS_ROOT = 'cc_v5_app_state/assignmentComments';
@@ -64,6 +68,18 @@ function buildSubmissionPayload({ day, dateKey, ts, value, comment }) {
   return payload;
 }
 
+function addPreviousSubmissionSnapshot(payload, currentSubmission) {
+  if (!currentSubmission?.value) return payload;
+  const previousDateKey = getSubmissionDateKeyEntry(currentSubmission);
+  if (!previousDateKey) return payload;
+
+  return {
+    ...payload,
+    previousValue: currentSubmission.value,
+    previousDateKey,
+  };
+}
+
 function buildCommentPayload(submission) {
   const comment = normalizeAssignmentComment(submission?.comment);
   if (!comment) return null;
@@ -97,14 +113,24 @@ export function useTransactionAssignments({
     const currentSubmission = txSubmissions[currentUser] || null;
     const previousValue = currentSubmission?.value ?? null;
     const previousStatus = getSubmissionStatus(txSubmissions);
+    const previousSurfacedStatus = getSurfacedSubmissionStatus(txSubmissions, referenceDateKey);
     const ts = Date.now();
-    const submissionPayload = buildSubmissionPayload({
+    let submissionPayload = buildSubmissionPayload({
       day,
       dateKey: referenceDateKey,
       ts,
       value,
       comment: comment === undefined ? currentSubmission?.comment : comment,
     });
+    const currentSubmissionDateKey = getSubmissionDateKeyEntry(currentSubmission);
+
+    if (
+      (previousSurfacedStatus.conflict || previousSurfacedStatus.unsure) &&
+      currentSubmissionDateKey &&
+      currentSubmissionDateKey < referenceDateKey
+    ) {
+      submissionPayload = addPreviousSubmissionSnapshot(submissionPayload, currentSubmission);
+    }
     const nextSubmission = {
       ...(currentSubmission || {}),
       ...submissionPayload,

@@ -91,13 +91,17 @@ export function getAutomatedEmailSchedule({
   const normalizedTime = formatScheduledTime(time);
   const parsedTime = parseScheduledTime(normalizedTime);
   const parsedWindow = Number(windowMinutes);
+  const minimumWindow = DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES;
 
   return {
     time: normalizedTime,
     timeZone,
     hour: parsedTime.hour,
     minute: parsedTime.minute,
-    windowMinutes: Number.isFinite(parsedWindow) && parsedWindow > 0 ? parsedWindow : DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+    windowMinutes:
+      Number.isFinite(parsedWindow) && parsedWindow > 0
+        ? Math.max(parsedWindow, minimumWindow)
+        : minimumWindow,
   };
 }
 

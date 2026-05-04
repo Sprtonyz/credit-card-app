@@ -24,6 +24,7 @@ import {
   deleteTransactionsByIds,
   deleteProcessedLogs,
   clearUploadedData,
+  getNotificationAutomationEvents,
   getNotificationAutomationSettings,
   getTodayDate,
   saveNotificationAutomationSettings,
@@ -301,7 +302,19 @@ function getReviewSummaryStats(manualReview, duplicateDetection) {
   };
 }
 
-const ADMIN_UPLOAD_VERSION = '1.0.7';
+function getAutomationEventLabel(event) {
+  if (!event) return 'No scheduler checks yet';
+  if (event.type === 'cron_result') {
+    if (event.skipped) return `Skipped: ${event.reason || 'not due'}`;
+    return `Sent: ${(event.sentProfiles || []).join(' and ') || 'automatic emails'}`;
+  }
+  if (event.type === 'cron_invoked') return 'Scheduler checked in';
+  if (event.type === 'cron_unauthorized') return 'Scheduler authorization failed';
+  if (event.type === 'cron_error') return `Scheduler error: ${event.error || 'unknown error'}`;
+  return event.type || 'Scheduler event';
+}
+
+const ADMIN_UPLOAD_VERSION = '1.0.9';
 
 export default function AdminUploadPage() {
   const [step, setStep] = useState('upload');
@@ -322,7 +335,10 @@ export default function AdminUploadPage() {
   const [automatedEmailTime, setAutomatedEmailTime] = useState(DEFAULT_AUTOMATED_EMAIL_TIME);
   const [automationSettingsUpdatedAt, setAutomationSettingsUpdatedAt] = useState(null);
   const [automationScheduleStatus, setAutomationScheduleStatus] = useState(null);
+  const [automationEvents, setAutomationEvents] = useState([]);
   const [isSavingAutomationSchedule, setIsSavingAutomationSchedule] = useState(false);
+  const [isSendingAutomationNow, setIsSendingAutomationNow] = useState(false);
+  const [isRefreshingAutomationStatus, setIsRefreshingAutomationStatus] = useState(false);
   const {
     adminActivityLog,
     authReady,
@@ -341,6 +357,24 @@ export default function AdminUploadPage() {
     setNotificationReports,
     uploadedBatches,
   } = useAdminDashboardData(step, successMessage, setError);
+
+  const refreshAutomationEvents = async () => {
+    setIsRefreshingAutomationStatus(true);
+    try {
+      const events = await getNotificationAutomationEvents();
+      setAutomationEvents(events.slice(0, 8));
+      return events;
+    } catch (err) {
+      console.error('Failed to load automatic email event log:', err);
+      setAutomationScheduleStatus({
+        type: 'error',
+        message: err.message || 'Failed to load automatic email status.',
+      });
+      return [];
+    } finally {
+      setIsRefreshingAutomationStatus(false);
+    }
+  };
 
   useEffect(() => {
     if (!authReady) return undefined;
@@ -365,6 +399,27 @@ export default function AdminUploadPage() {
     };
 
     loadAutomationSchedule();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady]);
+
+  useEffect(() => {
+    if (!authReady) return undefined;
+
+    let cancelled = false;
+
+    const loadEvents = async () => {
+      const events = await getNotificationAutomationEvents();
+      if (!cancelled) {
+        setAutomationEvents(events.slice(0, 8));
+      }
+    };
+
+    loadEvents().catch((err) => {
+      console.error('Failed to load automatic email event log:', err);
+    });
 
     return () => {
       cancelled = true;
@@ -742,6 +797,7 @@ export default function AdminUploadPage() {
         type: 'success',
         message: `Automatic emails now send at ${savedSettings.time} Melbourne time.`,
       });
+      await refreshAutomationEvents();
     } catch (err) {
       console.error('Failed to save automatic email schedule:', err);
       setAutomationScheduleStatus({
@@ -750,6 +806,36 @@ export default function AdminUploadPage() {
       });
     } finally {
       setIsSavingAutomationSchedule(false);
+    }
+  };
+
+  const handleSendAutomationNow = async () => {
+    setIsSendingAutomationNow(true);
+    setAutomationScheduleStatus(null);
+
+    try {
+      const response = await fetch('/api/send-automated-notification-now', {
+        method: 'POST',
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to send automatic emails now.');
+      }
+
+      setAutomationScheduleStatus({
+        type: 'success',
+        message: `Sent automatic emails now to ${data.sent?.map((item) => item.profileName).join(' and ') || 'Tony and Nugs'}.`,
+      });
+      await refreshAutomationEvents();
+    } catch (err) {
+      console.error('Failed to send automatic emails now:', err);
+      setAutomationScheduleStatus({
+        type: 'error',
+        message: err.message || 'Failed to send automatic emails now.',
+      });
+    } finally {
+      setIsSendingAutomationNow(false);
     }
   };
 
@@ -1054,6 +1140,14 @@ export default function AdminUploadPage() {
                   >
                     {isSavingAutomationSchedule ? 'Saving...' : 'Save time'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleSendAutomationNow}
+                    disabled={isSendingAutomationNow || !authReady}
+                    className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-600 disabled:opacity-50"
+                  >
+                    {isSendingAutomationNow ? 'Sending...' : 'Send now'}
+                  </button>
                 </div>
                 {automationScheduleStatus ? (
                   <p
@@ -1064,6 +1158,34 @@ export default function AdminUploadPage() {
                     {automationScheduleStatus.message}
                   </p>
                 ) : null}
+                <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950/70 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs uppercase tracking-wider text-slate-400">Scheduler status</p>
+                    <button
+                      type="button"
+                      onClick={refreshAutomationEvents}
+                      disabled={isRefreshingAutomationStatus || !authReady}
+                      className="rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
+                    >
+                      {isRefreshingAutomationStatus ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                  </div>
+                  {automationEvents.length === 0 ? (
+                    <p className="mt-2 text-sm text-slate-400">No scheduler check has been recorded yet.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {automationEvents.slice(0, 3).map((event) => (
+                        <div key={event.id} className="rounded-md bg-slate-900/90 px-2 py-2">
+                          <p className="text-sm text-slate-200">{getAutomationEventLabel(event)}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {event.createdAt ? formatLocalDateTime(new Date(event.createdAt)) : 'Unknown time'}
+                            {event.localTime ? ` | app time ${event.localTime}` : ''}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">

@@ -11,6 +11,7 @@ export const DEFAULT_EMAIL_RECIPIENTS = Object.values(DEFAULT_RECIPIENTS_BY_PROF
 
 export const DEFAULT_AUTOMATED_EMAIL_TIME = '23:00';
 export const DEFAULT_AUTOMATED_EMAIL_TIME_ZONE = 'Australia/Melbourne';
-export const DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES = 60;
+export const DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES = 24 * 60;
 export const AUTOMATED_NOTIFICATION_SETTINGS_ROOT = 'notificationAutomation/settings';
 export const AUTOMATED_NOTIFICATION_RUNS_ROOT = 'notificationAutomation/runs';
+export const AUTOMATED_NOTIFICATION_EVENTS_ROOT = 'notificationAutomation/events';

@@ -16,6 +16,7 @@ import {
   shiftDateKey,
 } from '../utils/simulationDate';
 import {
+  AUTOMATED_NOTIFICATION_EVENTS_ROOT,
   AUTOMATED_NOTIFICATION_SETTINGS_ROOT,
   DEFAULT_AUTOMATED_EMAIL_TIME,
   DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
@@ -310,6 +311,33 @@ export async function saveNotificationAutomationSettings(settings = {}) {
     return nextSettings;
   } catch (error) {
     console.error('Error saving notification automation settings:', error);
+    throw error;
+  }
+}
+
+export async function getNotificationAutomationEvents() {
+  try {
+    const snapshot = await get(ref(db, AUTOMATED_NOTIFICATION_EVENTS_ROOT));
+
+    if (!snapshot.exists()) {
+      return [];
+    }
+
+    const results = [];
+    snapshot.forEach((child) => {
+      results.push({
+        id: child.key,
+        ...child.val(),
+      });
+    });
+
+    return results.sort((left, right) => {
+      const leftTime = Date.parse(left.createdAt || '') || 0;
+      const rightTime = Date.parse(right.createdAt || '') || 0;
+      return rightTime - leftTime;
+    });
+  } catch (error) {
+    console.error('Error getting notification automation events:', error);
     throw error;
   }
 }

@@ -1,5 +1,6 @@
 import { firebaseConfig } from '../config/firebase';
 import {
+  AUTOMATED_NOTIFICATION_EVENTS_ROOT,
   AUTOMATED_NOTIFICATION_SETTINGS_ROOT,
   DEFAULT_AUTOMATED_EMAIL_TIME,
   DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
@@ -131,6 +132,20 @@ export async function saveAutomationSettings(settings, authToken) {
         Number(settings.windowMinutes) || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
       updatedAt: settings.updatedAt || new Date().toISOString(),
     },
+  });
+}
+
+export async function appendAutomationEvent(event = {}, authToken = null) {
+  const resolvedAuthToken = authToken || (await getFirebaseRestAuthToken());
+  const payload = {
+    ...event,
+    createdAt: event.createdAt || new Date().toISOString(),
+  };
+
+  return requestFirebaseJson(AUTOMATED_NOTIFICATION_EVENTS_ROOT, {
+    authToken: resolvedAuthToken,
+    method: 'POST',
+    body: payload,
   });
 }
 

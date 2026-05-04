@@ -1,0 +1,28 @@
+name: Email scheduler
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  wake-email-scheduler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call email scheduler
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          app_url="${APP_URL:-https://ccapp-nine.vercel.app}"
+          endpoint="${app_url%/}/api/cron/send-notification-email"
+
+          if [ -n "${CRON_SECRET:-}" ]; then
+            curl --fail --show-error --silent \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              "${endpoint}"
+          else
+            curl --fail --show-error --silent "${endpoint}"
+          fi

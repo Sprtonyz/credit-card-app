@@ -106,7 +106,9 @@ This email feature needs a standard Next.js/Vercel deployment. Avoid the static 
 
 Automatic emails are sent from `/api/cron/send-notification-email`. The default schedule is 11:00 PM Melbourne time and the app sends Tony and Nugs their own profile summaries once per local day. You can change the send time from the admin upload page; it is saved in Firebase under `notificationAutomation/settings`, so changing it does not require a redeploy. `AUTOMATED_EMAIL_TIME` is only the fallback default when no saved setting exists.
 
-The `vercel.json` cron entries wake the endpoint hourly. The endpoint checks the saved `Australia/Melbourne` time before sending, so changing the saved time to `22:00` will move the daily send to 10:00 PM Melbourne time.
+Vercel Hobby cron jobs can only run once per day, so `vercel.json` keeps a single daily fallback cron. For editable send times, `.github/workflows/email-scheduler.yml` wakes the endpoint every 15 minutes. The endpoint checks the saved `Australia/Melbourne` time before sending, so changing the saved time to `22:00` will move the daily send to the next scheduler wake-up after 10:00 PM Melbourne time.
+
+If you set `CRON_SECRET` in Vercel, add the same value as a GitHub Actions repository secret named `CRON_SECRET`. If the production app URL changes, add a GitHub Actions repository secret named `APP_URL`; otherwise it defaults to `https://ccapp-nine.vercel.app`.
 
 You can also update it from the backend with `POST /api/notification-automation-settings` and a JSON body such as:
 
@@ -115,6 +117,10 @@ You can also update it from the backend with `POST /api/notification-automation-
   "time": "22:00"
 }
 ```
+
+To test the full backend send path immediately, use the admin page's `Send now` button or call `POST /api/send-automated-notification-now`.
+
+The admin page also shows the latest scheduler events from `notificationAutomation/events`, which helps confirm whether Vercel or GitHub Actions has actually invoked the cron endpoint.
 
 Set `CRON_SECRET` in Vercel to protect the cron endpoint. Vercel will include it in the cron request automatically.
 

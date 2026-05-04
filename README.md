@@ -93,11 +93,30 @@ EMAIL_FROM=Westpac CC Tracker <westpactracker@gmail.com>
 EMAIL_FROM_NAME=Westpac CC Tracker
 EMAIL_REPLY_TO=
 EMAIL_TEST_RECIPIENT=spr.tony@gmail.com
+EMAIL_RECIPIENT_TONY=spr.tony@gmail.com
+EMAIL_RECIPIENT_NUGS=nguyet_anh_le@hotmail.com
+AUTOMATED_EMAIL_TIME=23:00
+AUTOMATED_EMAIL_TIME_ZONE=Australia/Melbourne
+CRON_SECRET=choose_a_long_random_value
 ```
 
 This setup uses Gmail SMTP, so you do not need a custom domain. Create a Gmail app password for `westpactracker@gmail.com` and store it in `GMAIL_APP_PASSWORD`. The app will send from `westpactracker@gmail.com`, which can be used for both Tony and Nugs recipients.
 
 This email feature needs a standard Next.js/Vercel deployment. Avoid the static `next export` path for the live app, because API routes do not run in a pure static export.
+
+Automatic emails are sent from `/api/cron/send-notification-email`. The default schedule is 11:00 PM Melbourne time and the app sends Tony and Nugs their own profile summaries once per local day. You can change the send time from the admin upload page; it is saved in Firebase under `notificationAutomation/settings`, so changing it does not require a redeploy. `AUTOMATED_EMAIL_TIME` is only the fallback default when no saved setting exists.
+
+The `vercel.json` cron entries wake the endpoint hourly. The endpoint checks the saved `Australia/Melbourne` time before sending, so changing the saved time to `22:00` will move the daily send to 10:00 PM Melbourne time.
+
+You can also update it from the backend with `POST /api/notification-automation-settings` and a JSON body such as:
+
+```json
+{
+  "time": "22:00"
+}
+```
+
+Set `CRON_SECRET` in Vercel to protect the cron endpoint. Vercel will include it in the cron request automatically.
 
 The email includes:
 

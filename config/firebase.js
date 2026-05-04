@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: 'AIzaSyD5bGuDs4WD6vFL2nU06vzCSlHPU9GQIjY',
   authDomain: 'credit-card-app-96107.firebaseapp.com',
   databaseURL: 'https://credit-card-app-96107-default-rtdb.asia-southeast1.firebasedatabase.app',

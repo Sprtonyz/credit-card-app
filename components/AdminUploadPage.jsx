@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import ImageUploader from './ImageUploader';
 import ImageReviewModal from './ImageReviewModal';
@@ -24,9 +24,17 @@ import {
   deleteTransactionsByIds,
   deleteProcessedLogs,
   clearUploadedData,
+  getNotificationAutomationSettings,
   getTodayDate,
+  saveNotificationAutomationSettings,
 } from '../services/firebaseService';
 import { formatLocalDateTime } from '../utils/simulationDate';
+import { formatScheduledTime } from '../utils/emailSchedule';
+import {
+  DEFAULT_AUTOMATED_EMAIL_TIME,
+  DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
+  DEFAULT_RECIPIENTS_BY_PROFILE,
+} from '../config/emailNotifications';
 
 
 function buildAllTransactions(processedImages) {
@@ -276,11 +284,6 @@ function getAuditItemCount(entry) {
   return Number(entry?.summary?.toAdd || entry?.summary?.removedTransactions || 0);
 }
 
-const EMAIL_RECIPIENTS_BY_PROFILE = {
-  Tony: 'spr.tony@gmail.com',
-  Nugs: 'nguyet_anh_le@hotmail.com',
-};
-
 function getReviewSummaryStats(manualReview, duplicateDetection) {
   const reviewSummary = manualReview?.summary || {};
   const total = Number(reviewSummary.total ?? duplicateDetection?.summary?.total ?? 0);
@@ -298,7 +301,7 @@ function getReviewSummaryStats(manualReview, duplicateDetection) {
   };
 }
 
-const ADMIN_UPLOAD_VERSION = '1.0.5';
+const ADMIN_UPLOAD_VERSION = '1.0.7';
 
 export default function AdminUploadPage() {
   const [step, setStep] = useState('upload');
@@ -316,6 +319,10 @@ export default function AdminUploadPage() {
   const [quickUpdateMessage, setQuickUpdateMessage] = useState('');
   const [quickUpdateTony, setQuickUpdateTony] = useState(true);
   const [quickUpdateNugs, setQuickUpdateNugs] = useState(true);
+  const [automatedEmailTime, setAutomatedEmailTime] = useState(DEFAULT_AUTOMATED_EMAIL_TIME);
+  const [automationSettingsUpdatedAt, setAutomationSettingsUpdatedAt] = useState(null);
+  const [automationScheduleStatus, setAutomationScheduleStatus] = useState(null);
+  const [isSavingAutomationSchedule, setIsSavingAutomationSchedule] = useState(false);
   const {
     adminActivityLog,
     authReady,
@@ -334,6 +341,35 @@ export default function AdminUploadPage() {
     setNotificationReports,
     uploadedBatches,
   } = useAdminDashboardData(step, successMessage, setError);
+
+  useEffect(() => {
+    if (!authReady) return undefined;
+
+    let cancelled = false;
+
+    const loadAutomationSchedule = async () => {
+      try {
+        const settings = await getNotificationAutomationSettings();
+        if (cancelled) return;
+        setAutomatedEmailTime(formatScheduledTime(settings.time));
+        setAutomationSettingsUpdatedAt(settings.updatedAt || null);
+      } catch (err) {
+        console.error('Failed to load automatic email schedule:', err);
+        if (!cancelled) {
+          setAutomationScheduleStatus({
+            type: 'error',
+            message: err.message || 'Failed to load the automatic email schedule.',
+          });
+        }
+      }
+    };
+
+    loadAutomationSchedule();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady]);
 
   const runOcrPipeline = async () => {
     const results = await processImages(
@@ -687,6 +723,36 @@ export default function AdminUploadPage() {
     }
   };
 
+  const handleSaveAutomationSchedule = async () => {
+    if (!authReady) return;
+
+    setIsSavingAutomationSchedule(true);
+    setAutomationScheduleStatus(null);
+
+    try {
+      const normalizedTime = formatScheduledTime(automatedEmailTime);
+      const savedSettings = await saveNotificationAutomationSettings({
+        time: normalizedTime,
+        timeZone: DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
+      });
+
+      setAutomatedEmailTime(savedSettings.time);
+      setAutomationSettingsUpdatedAt(savedSettings.updatedAt || null);
+      setAutomationScheduleStatus({
+        type: 'success',
+        message: `Automatic emails now send at ${savedSettings.time} Melbourne time.`,
+      });
+    } catch (err) {
+      console.error('Failed to save automatic email schedule:', err);
+      setAutomationScheduleStatus({
+        type: 'error',
+        message: err.message || 'Failed to save the automatic email schedule.',
+      });
+    } finally {
+      setIsSavingAutomationSchedule(false);
+    }
+  };
+
   const handleSendSelectedEmails = async () => {
     const selectedProfiles = [];
     if (confirmTonyEmail) selectedProfiles.push('Tony');
@@ -721,7 +787,7 @@ export default function AdminUploadPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            to: [EMAIL_RECIPIENTS_BY_PROFILE[profileName]],
+            to: [DEFAULT_RECIPIENTS_BY_PROFILE[profileName]],
             reports: [
               {
                 ...report,
@@ -787,7 +853,7 @@ export default function AdminUploadPage() {
         },
         body: JSON.stringify({
           kind: 'custom_update',
-          to: selectedProfiles.map((profileName) => EMAIL_RECIPIENTS_BY_PROFILE[profileName]),
+          to: selectedProfiles.map((profileName) => DEFAULT_RECIPIENTS_BY_PROFILE[profileName]),
           subject: 'Westpac CC Tracker quick update',
           message,
         }),
@@ -941,7 +1007,7 @@ export default function AdminUploadPage() {
                     className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500"
                   />
                   <span className="text-sm text-slate-200">
-                    Send Tony summary to <span className="text-white">spr.tony@gmail.com</span>
+                    Send Tony summary to <span className="text-white">{DEFAULT_RECIPIENTS_BY_PROFILE.Tony}</span>
                   </span>
                 </label>
 
@@ -953,9 +1019,51 @@ export default function AdminUploadPage() {
                     className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500"
                   />
                   <span className="text-sm text-slate-200">
-                    Send Nugs summary to <span className="text-white">nguyet_anh_le@hotmail.com</span>
+                    Send Nugs summary to <span className="text-white">{DEFAULT_RECIPIENTS_BY_PROFILE.Nugs}</span>
                   </span>
                 </label>
+              </div>
+
+              <div className="mt-3 rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3 text-left">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-cyan-200">Automatic daily send</p>
+                    <p className="mt-1 text-sm text-slate-200">
+                      {automatedEmailTime} {DEFAULT_AUTOMATED_EMAIL_TIME_ZONE} to Tony and Nugs
+                    </p>
+                    {automationSettingsUpdatedAt ? (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Updated {formatLocalDateTime(new Date(automationSettingsUpdatedAt))}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="time"
+                    step="3600"
+                    value={automatedEmailTime}
+                    onChange={(e) => setAutomatedEmailTime(e.target.value)}
+                    className="rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveAutomationSchedule}
+                    disabled={isSavingAutomationSchedule || !authReady}
+                    className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-600 disabled:opacity-50"
+                  >
+                    {isSavingAutomationSchedule ? 'Saving...' : 'Save time'}
+                  </button>
+                </div>
+                {automationScheduleStatus ? (
+                  <p
+                    className={`mt-2 text-sm ${
+                      automationScheduleStatus.type === 'success' ? 'text-emerald-300' : 'text-rose-300'
+                    }`}
+                  >
+                    {automationScheduleStatus.message}
+                  </p>
+                ) : null}
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">

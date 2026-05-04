@@ -15,6 +15,12 @@ import {
   getSimulatedTodayDate,
   shiftDateKey,
 } from '../utils/simulationDate';
+import {
+  AUTOMATED_NOTIFICATION_SETTINGS_ROOT,
+  DEFAULT_AUTOMATED_EMAIL_TIME,
+  DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
+  DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+} from '../config/emailNotifications';
 
 export async function addTransactions(transactions) {
   try {
@@ -261,6 +267,49 @@ export async function clearUploadedData() {
     ]);
   } catch (error) {
     console.error('Error clearing uploaded data:', error);
+    throw error;
+  }
+}
+
+export async function getNotificationAutomationSettings() {
+  try {
+    const snapshot = await get(ref(db, AUTOMATED_NOTIFICATION_SETTINGS_ROOT));
+
+    if (!snapshot.exists()) {
+      return {
+        time: DEFAULT_AUTOMATED_EMAIL_TIME,
+        timeZone: DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
+        windowMinutes: DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+      };
+    }
+
+    return {
+      time: snapshot.val()?.time || DEFAULT_AUTOMATED_EMAIL_TIME,
+      timeZone: snapshot.val()?.timeZone || DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
+      windowMinutes:
+        Number(snapshot.val()?.windowMinutes) || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+      updatedAt: snapshot.val()?.updatedAt || null,
+    };
+  } catch (error) {
+    console.error('Error getting notification automation settings:', error);
+    throw error;
+  }
+}
+
+export async function saveNotificationAutomationSettings(settings = {}) {
+  try {
+    const nextSettings = {
+      time: settings.time || DEFAULT_AUTOMATED_EMAIL_TIME,
+      timeZone: settings.timeZone || DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
+      windowMinutes:
+        Number(settings.windowMinutes) || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+      updatedAt: getSimulatedISOString(),
+    };
+
+    await set(ref(db, AUTOMATED_NOTIFICATION_SETTINGS_ROOT), nextSettings);
+    return nextSettings;
+  } catch (error) {
+    console.error('Error saving notification automation settings:', error);
     throw error;
   }
 }

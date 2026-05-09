@@ -253,6 +253,7 @@ function buildDecision(transaction, partialDecision) {
     transaction,
     outcome: partialDecision.outcome,
     reasonCode: partialDecision.reasonCode,
+    overrideReasonCode: partialDecision.overrideReasonCode || null,
     existingMatch: partialDecision.existingMatch || null,
     duplicateMatch: partialDecision.duplicateMatch || null,
     processedDay: partialDecision.processedDay || null,
@@ -284,45 +285,70 @@ export function mergeTransactions(
       date: tx.date || today,
       isPending: tx.isPending || !tx.date,
     };
+    const adminReviewApproved = Boolean(txWithDate.adminReviewApproved);
+    let manualOverride = null;
+    const markManualOverride = (overrideReasonCode, details = {}) => {
+      if (!adminReviewApproved || manualOverride) return;
+
+      manualOverride = {
+        outcome: 'import_ready',
+        reasonCode: 'manual_review_override',
+        overrideReasonCode,
+        ...details,
+      };
+    };
     const txKey = buildTransactionKey(txWithDate);
 
     const processedMatch = findProcessedLogMatch(txWithDate, processedLog);
     if (processedMatch) {
-      const decision = buildDecision(txWithDate, {
-        outcome: 'skipped',
-        reasonCode: 'already_processed',
-        processedDay: processedMatch.log?.uploadDay,
-        processedDate: processedMatch.log?.uploadDate,
-      });
-      skipped.push({
-        transaction: txWithDate,
-        reason: 'already_processed',
-        processedDate: processedMatch.log?.uploadDate,
-        processedDay: processedMatch.log?.uploadDay,
-        processedMatchType: processedMatch.matchType,
-        explanation: decision.explanation,
-        confidence: decision.confidence,
-        trace: decision.trace,
-      });
-      decisions.push(decision);
-      continue;
+      if (adminReviewApproved) {
+        markManualOverride('already_processed', {
+          processedDay: processedMatch.log?.uploadDay,
+          processedDate: processedMatch.log?.uploadDate,
+        });
+      } else {
+        const decision = buildDecision(txWithDate, {
+          outcome: 'skipped',
+          reasonCode: 'already_processed',
+          processedDay: processedMatch.log?.uploadDay,
+          processedDate: processedMatch.log?.uploadDate,
+        });
+        skipped.push({
+          transaction: txWithDate,
+          reason: 'already_processed',
+          processedDate: processedMatch.log?.uploadDate,
+          processedDay: processedMatch.log?.uploadDay,
+          processedMatchType: processedMatch.matchType,
+          explanation: decision.explanation,
+          confidence: decision.confidence,
+          trace: decision.trace,
+        });
+        decisions.push(decision);
+        continue;
+      }
     }
 
     if (txKey && batchKeys.has(txKey)) {
-      const decision = buildDecision(txWithDate, {
-        outcome: 'skipped',
-        reasonCode: 'duplicate_in_upload',
-        duplicateMatch: tx.duplicateMatch || null,
-      });
-      skipped.push({
-        transaction: txWithDate,
-        reason: 'duplicate_in_upload',
-        explanation: decision.explanation,
-        confidence: decision.confidence,
-        trace: decision.trace,
-      });
-      decisions.push(decision);
-      continue;
+      if (adminReviewApproved) {
+        markManualOverride('duplicate_in_upload', {
+          duplicateMatch: tx.duplicateMatch || null,
+        });
+      } else {
+        const decision = buildDecision(txWithDate, {
+          outcome: 'skipped',
+          reasonCode: 'duplicate_in_upload',
+          duplicateMatch: tx.duplicateMatch || null,
+        });
+        skipped.push({
+          transaction: txWithDate,
+          reason: 'duplicate_in_upload',
+          explanation: decision.explanation,
+          confidence: decision.confidence,
+          trace: decision.trace,
+        });
+        decisions.push(decision);
+        continue;
+      }
     }
 
     const existingMatch = findExistingMatch(txWithDate, existingTransactions);
@@ -345,21 +371,27 @@ export function mergeTransactions(
     }
 
     if (existingMatch) {
-      const decision = buildDecision(txWithDate, {
-        outcome: 'skipped',
-        reasonCode: 'already_exists_overlap',
-        existingMatch,
-      });
-      skipped.push({
-        transaction: txWithDate,
-        reason: 'already_exists_overlap',
-        existingMatch,
-        explanation: decision.explanation,
-        confidence: decision.confidence,
-        trace: decision.trace,
-      });
-      decisions.push(decision);
-      continue;
+      if (adminReviewApproved) {
+        markManualOverride('already_exists_overlap', {
+          existingMatch,
+        });
+      } else {
+        const decision = buildDecision(txWithDate, {
+          outcome: 'skipped',
+          reasonCode: 'already_exists_overlap',
+          existingMatch,
+        });
+        skipped.push({
+          transaction: txWithDate,
+          reason: 'already_exists_overlap',
+          existingMatch,
+          explanation: decision.explanation,
+          confidence: decision.confidence,
+          trace: decision.trace,
+        });
+        decisions.push(decision);
+        continue;
+      }
     }
 
     if (txWithDate.isPending) {
@@ -373,27 +405,35 @@ export function mergeTransactions(
       );
 
       if (existsYesterday) {
-        const decision = buildDecision(txWithDate, {
-          outcome: 'skipped',
-          reasonCode: 'already_exists_yesterday',
-          existingMatch: {
-            merchant: existsYesterday.merchant || null,
-            date: existsYesterday.date || yesterdayStr,
-            uploadedDay: existsYesterday.uploadedDay || null,
-            amount: Number(existsYesterday.amount || 0),
-            matchType: 'exact',
-            merchantSimilarity: 100,
-          },
-        });
-        skipped.push({
-          transaction: txWithDate,
-          reason: 'already_exists_yesterday',
-          explanation: decision.explanation,
-          confidence: decision.confidence,
-          trace: decision.trace,
-        });
-        decisions.push(decision);
-        continue;
+        const yesterdayMatch = {
+          merchant: existsYesterday.merchant || null,
+          date: existsYesterday.date || yesterdayStr,
+          uploadedDay: existsYesterday.uploadedDay || null,
+          amount: Number(existsYesterday.amount || 0),
+          matchType: 'exact',
+          merchantSimilarity: 100,
+        };
+
+        if (adminReviewApproved) {
+          markManualOverride('already_exists_yesterday', {
+            existingMatch: yesterdayMatch,
+          });
+        } else {
+          const decision = buildDecision(txWithDate, {
+            outcome: 'skipped',
+            reasonCode: 'already_exists_yesterday',
+            existingMatch: yesterdayMatch,
+          });
+          skipped.push({
+            transaction: txWithDate,
+            reason: 'already_exists_yesterday',
+            explanation: decision.explanation,
+            confidence: decision.confidence,
+            trace: decision.trace,
+          });
+          decisions.push(decision);
+          continue;
+        }
       }
     }
 
@@ -402,10 +442,13 @@ export function mergeTransactions(
     }
     toAdd.push(txWithDate);
     decisions.push(
-      buildDecision(txWithDate, {
-        outcome: 'import_ready',
-        reasonCode: 'ready_to_import',
-      })
+      buildDecision(
+        txWithDate,
+        manualOverride || {
+          outcome: 'import_ready',
+          reasonCode: 'ready_to_import',
+        }
+      )
     );
   }
 

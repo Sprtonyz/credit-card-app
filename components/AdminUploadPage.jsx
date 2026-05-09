@@ -462,12 +462,25 @@ export default function AdminUploadPage() {
       let allTransactions = buildAllTransactions(processedOverride);
 
       if (Array.isArray(selectedIndices)) {
+        const selectedIndexSet = new Set(selectedIndices);
+        const reviewItems = manualReview?.items || [];
+        const reviewItemByIndex = new Map(reviewItems.map((item) => [item.index, item]));
+
         allTransactions = allTransactions
-          .filter((_, idx) => selectedIndices.includes(idx))
-          .map((tx) => ({
-            ...tx,
-            adminReviewApproved: true,
-          }));
+          .map((tx, idx) => ({ tx, idx }))
+          .filter(({ idx }) => selectedIndexSet.has(idx))
+          .map(({ tx, idx }) => {
+            const reviewItem = reviewItemByIndex.get(idx);
+            const approvesDuplicateOverride =
+              reviewItems.length === 0 || (reviewItem && reviewItem.reason !== 'ready_to_import');
+
+            return approvesDuplicateOverride
+              ? {
+                  ...tx,
+                  adminReviewApproved: true,
+                }
+              : tx;
+          });
       }
 
       const existingTransactions = await getAllTransactions();
@@ -555,6 +568,7 @@ export default function AdminUploadPage() {
           imageName: decision.transaction?.imageName || null,
           outcome: decision.outcome,
           reasonCode: decision.reasonCode,
+          overrideReasonCode: decision.overrideReasonCode || null,
           explanation: decision.explanation,
           confidenceLevel: decision.confidence?.level || null,
           confidenceScore: decision.confidence?.score ?? null,

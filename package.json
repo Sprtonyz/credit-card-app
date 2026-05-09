@@ -8,10 +8,11 @@
     "build": "node ./scripts/next-runner.js build",
     "start": "node ./scripts/next-runner.js start",
     "export": "node ./scripts/next-runner.js build && node ./scripts/next-runner.js export",
-    "test": "npm run test:assignment-matcher && npm run test:reconciliation && npm run test:pet-progression",
+    "test": "npm run test:assignment-matcher && npm run test:reconciliation && npm run test:pet-progression && npm run test:transaction-merger",
     "test:assignment-matcher": "node ./scripts/verify-assignment-matcher.mjs",
     "test:reconciliation": "node ./scripts/verify-reconciliation.mjs",
-    "test:pet-progression": "node ./scripts/verify-pet-progression.mjs"
+    "test:pet-progression": "node ./scripts/verify-pet-progression.mjs",
+    "test:transaction-merger": "node ./scripts/verify-transaction-merger.mjs"
   },
   "dependencies": {
     "firebase": "^9.23.0",

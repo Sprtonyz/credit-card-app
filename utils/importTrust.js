@@ -18,6 +18,17 @@ function toTitleCase(value) {
     .join(' ');
 }
 
+function formatReasonCodeLabel(reasonCode) {
+  const labels = {
+    already_processed: 'the already-imported screenshot check',
+    duplicate_in_upload: 'the duplicate-in-upload check',
+    already_exists_overlap: 'the existing-transaction check',
+    already_exists_yesterday: 'the pending-from-yesterday check',
+  };
+
+  return labels[reasonCode] || 'an automatic duplicate check';
+}
+
 export function getConfidenceLevel(score) {
   if (score >= 75) return 'high';
   if (score >= 45) return 'medium';
@@ -239,6 +250,7 @@ export function buildDecisionTrace(transaction, decision = {}) {
     finalDecision: {
       outcome: decision.outcome || null,
       reasonCode: decision.reasonCode || null,
+      overrideReasonCode: decision.overrideReasonCode || null,
       explanation: decision.explanation || null,
     },
   };
@@ -287,6 +299,12 @@ export function formatDecisionExplanation(decision = {}) {
     }
 
     return 'Flagged for review because this transaction is not confident enough to auto-decide.';
+  }
+
+  if (reasonCode === 'manual_review_override') {
+    return `Imported because an admin confirmed it during review, overriding ${formatReasonCodeLabel(
+      decision.overrideReasonCode
+    )}.`;
   }
 
   if (reasonCode === 'ready_to_import') {

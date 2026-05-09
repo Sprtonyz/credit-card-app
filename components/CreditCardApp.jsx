@@ -1575,6 +1575,7 @@ export default function CreditCardApp() {
   const [petScalePct, setPetScalePct] = useState(25);
   const [petProfiles, setPetProfiles] = useState({});
   const [petProfilesHydrated, setPetProfilesHydrated] = useState(false);
+  const [petProfilesRemoteReady, setPetProfilesRemoteReady] = useState(false);
   const [coinPops, setCoinPops] = useState([]);
   const [levelUpMsg, setLevelUpMsg] = useState(null);
   const [day, setDay] = useState(() => getSavedSimulatedDay());
@@ -1594,6 +1595,8 @@ export default function CreditCardApp() {
   const petLevelReadyRef = useRef(false);
   const lastQuestSnapshotRef = useRef('');
   const localPetProfilesRef = useRef({});
+  const remotePetProfilesRef = useRef({});
+  const petProfilesRemoteReadyRef = useRef(false);
   const petBootstrapCompleteRef = useRef(false);
 
   const appendQuestDebugLog = (label, details = {}) => {
@@ -1706,6 +1709,9 @@ export default function CreditCardApp() {
     return () => window.clearInterval(timer);
   }, []);
 
+  const simulatedNow = useMemo(() => getSimulatedNow(new Date(clockTick), day), [clockTick, day]);
+  const referenceDateKey = useMemo(() => formatLocalDate(simulatedNow), [simulatedNow]);
+
   useEffect(() => {
     if (currentUser) localStorage.setItem(USER_KEY, currentUser);
   }, [currentUser]);
@@ -1735,11 +1741,17 @@ export default function CreditCardApp() {
   }, [petProfiles, petProfilesHydrated]);
 
   useEffect(() => {
-    if (!authReady) return undefined;
+    if (!authReady) {
+      petProfilesRemoteReadyRef.current = false;
+      setPetProfilesRemoteReady(false);
+      return undefined;
+    }
 
     const petProfilesRef = ref(db, PET_PROFILES_ROOT);
     const legacyPetRef = ref(db, LEGACY_PET_ROOT);
     const legacyFoodRef = ref(db, LEGACY_FOOD_ROOT);
+    petProfilesRemoteReadyRef.current = false;
+    setPetProfilesRemoteReady(false);
 
     const hydrateLegacyPetProfiles = async (baseProfiles, dateKey) => {
       try {
@@ -1780,6 +1792,7 @@ export default function CreditCardApp() {
       petProfilesRef,
       (snapshot) => {
         const remoteProfiles = normalizePetProfilesMap(snapshot.val(), referenceDateKey);
+        remotePetProfilesRef.current = remoteProfiles;
 
         void (async () => {
           let mergedProfiles = mergePetProfileMaps(remoteProfiles, localPetProfilesRef.current, referenceDateKey);
@@ -1796,19 +1809,57 @@ export default function CreditCardApp() {
           });
 
           if (JSON.stringify(remoteProfiles) !== JSON.stringify(mergedProfiles)) {
+            remotePetProfilesRef.current = mergedProfiles;
             set(petProfilesRef, mergedProfiles).catch((error) => {
               console.error('Failed to sync pet profiles to Firebase:', error);
+              remotePetProfilesRef.current = remoteProfiles;
             });
           }
+
+          petProfilesRemoteReadyRef.current = true;
+          setPetProfilesRemoteReady(true);
         })();
       },
       (error) => {
         console.error('Failed to subscribe to pet profiles:', error);
+        petProfilesRemoteReadyRef.current = true;
+        setPetProfilesRemoteReady(true);
       }
     );
 
     return () => unsubscribe();
   }, [authReady, referenceDateKey]);
+
+  useEffect(() => {
+    if (!authReady || !petProfilesHydrated || !petProfilesRemoteReady || !petProfilesRemoteReadyRef.current) return;
+
+    const normalizedProfiles = normalizePetProfilesMap(petProfiles, referenceDateKey);
+    const updates = {};
+
+    USERS.forEach((user) => {
+      const profile = normalizedProfiles[user];
+      if (!profile) return;
+
+      const remoteProfile = remotePetProfilesRef.current?.[user];
+      if (JSON.stringify(profile) !== JSON.stringify(remoteProfile)) {
+        updates[user] = profile;
+      }
+    });
+
+    const updateKeys = Object.keys(updates);
+    if (!updateKeys.length) return;
+
+    const previousRemoteProfiles = remotePetProfilesRef.current;
+    remotePetProfilesRef.current = {
+      ...remotePetProfilesRef.current,
+      ...updates,
+    };
+
+    update(ref(db, PET_PROFILES_ROOT), updates).catch((error) => {
+      console.error('Failed to persist pet profile changes to Firebase:', error);
+      remotePetProfilesRef.current = previousRemoteProfiles;
+    });
+  }, [authReady, petProfiles, petProfilesHydrated, petProfilesRemoteReady, referenceDateKey]);
 
   const usingFirebaseTransactions = Array.isArray(firebaseTransactions);
   const sourceTransactions = useMemo(
@@ -1819,8 +1870,6 @@ export default function CreditCardApp() {
     () => Object.fromEntries((sourceTransactions || []).map((tx) => [tx.id, tx])),
     [sourceTransactions]
   );
-  const simulatedNow = useMemo(() => getSimulatedNow(new Date(clockTick), day), [clockTick, day]);
-  const referenceDateKey = useMemo(() => formatLocalDate(simulatedNow), [simulatedNow]);
   const liveDateTimeLabel = useMemo(() => formatLocalDateTime(simulatedNow), [simulatedNow]);
   const otherUser = currentUser ? getOtherUser(currentUser) : USERS[0];
   const dayLabel = day === 0 ? 'live' : `+${day} day${day === 1 ? '' : 's'}`;
@@ -2375,7 +2424,11 @@ export default function CreditCardApp() {
     setShowDevTools(false);
     setCurrentUser(null);
     setBreakdownUser(null);
+    localPetProfilesRef.current = {};
+    remotePetProfilesRef.current = {};
+    petProfilesRemoteReadyRef.current = false;
     setPetProfiles({});
+    setPetProfilesRemoteReady(false);
     setLevelUpMsg(null);
     setCoinPops([]);
     setDay(0);

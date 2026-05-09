@@ -274,19 +274,10 @@ function buildUndoPayload(addedRecords, processedImages) {
   };
 }
 
-function getUploadResultStats(summary = {}, addedCount = 0) {
-  const skippedByReason = summary?.skippedByReason || {};
-  const flaggedByReason = summary?.flaggedByReason || {};
-
+function getUploadResultStats(summary = {}, addedCount = 0, skippedCount = null) {
   return {
     added: Number(addedCount || 0),
-    skippedExisting:
-      Number(skippedByReason.already_exists_overlap || 0) +
-      Number(skippedByReason.already_exists_pending_carry_forward || 0) +
-      Number(skippedByReason.already_exists_yesterday || 0) +
-      Number(skippedByReason.already_processed || 0),
-    skippedCurrentUpload: Number(skippedByReason.duplicate_in_upload || 0),
-    flaggedForReview: Number(flaggedByReason.flagged_for_review || 0),
+    skipped: Number(skippedCount ?? summary?.skipped ?? 0),
   };
 }
 
@@ -1660,40 +1651,25 @@ export default function AdminUploadPage() {
             {(() => {
               const resultStats = getUploadResultStats(
                 successMessage.summary || lastMergeReport?.summary,
-                successMessage.added
+                successMessage.added,
+                successMessage.skipped
               );
 
               return (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-6 text-left">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 text-left">
                   <div className="bg-slate-900 rounded-lg border border-emerald-500/30 p-4">
-                    <p className="text-xs uppercase tracking-wider text-emerald-300">New Added</p>
+                    <p className="text-xs uppercase tracking-wider text-emerald-300">Added</p>
                     <p className="text-2xl font-bold text-white mt-1">{resultStats.added}</p>
                     <p className="text-xs text-slate-400 mt-1">Transactions written to Firebase</p>
                   </div>
                   <div className="bg-slate-900 rounded-lg border border-amber-500/30 p-4">
-                    <p className="text-xs uppercase tracking-wider text-amber-300">Skipped Existing</p>
-                    <p className="text-2xl font-bold text-white mt-1">{resultStats.skippedExisting}</p>
-                    <p className="text-xs text-slate-400 mt-1">Matched against earlier uploads</p>
-                  </div>
-                  <div className="bg-slate-900 rounded-lg border border-sky-500/30 p-4">
-                    <p className="text-xs uppercase tracking-wider text-sky-300">Skipped In Upload</p>
-                    <p className="text-2xl font-bold text-white mt-1">{resultStats.skippedCurrentUpload}</p>
-                    <p className="text-xs text-slate-400 mt-1">Collapsed inside this OCR batch</p>
-                  </div>
-                  <div className="bg-slate-900 rounded-lg border border-yellow-500/30 p-4">
-                    <p className="text-xs uppercase tracking-wider text-yellow-300">Flagged For Review</p>
-                    <p className="text-2xl font-bold text-white mt-1">{resultStats.flaggedForReview}</p>
-                    <p className="text-xs text-slate-400 mt-1">Held back for manual confirmation</p>
+                    <p className="text-xs uppercase tracking-wider text-amber-300">Skipped</p>
+                    <p className="text-2xl font-bold text-white mt-1">{resultStats.skipped}</p>
+                    <p className="text-xs text-slate-400 mt-1">Already processed, carried forward, or duplicate rows</p>
                   </div>
                 </div>
               );
             })()}
-
-            {successMessage.skipped > 0 && (
-              <p className="text-slate-400 text-sm mb-6">
-                {successMessage.skipped} item{successMessage.skipped === 1 ? '' : 's'} skipped.
-              </p>
-            )}
 
             {lastMergeReport?.decisions?.length > 0 && (
               <details className="text-left bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-6">

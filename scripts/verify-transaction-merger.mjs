@@ -87,6 +87,17 @@ function transaction(overrides = {}) {
   };
 }
 
+function pendingTransaction(overrides = {}) {
+  return transaction({
+    date: null,
+    isPending: true,
+    rawParsed: {
+      date: null,
+    },
+    ...overrides,
+  });
+}
+
 const existingCoffee = {
   id: 'existing-coffee',
   merchant: 'Coffee House',
@@ -223,6 +234,43 @@ run('skips gap-tolerant ordered overlaps against earlier processed screenshots',
   assertEqual(result.toAdd.length, 0, 'added count');
   assertEqual(result.skipped.length, 1, 'skipped count');
   assertEqual(result.skipped[0].reason, 'already_processed', 'skip reason');
+});
+
+run('keeps the new parking amount but skips carried-forward old parking rows', () => {
+  const existingParking = [
+    {
+      id: 'old-parking-1',
+      merchant: 'SecureParking Sydney AU',
+      amount: 20.2,
+      date: '2026-05-08',
+      uploadedDay: '2026-05-08',
+      isPending: true,
+    },
+    {
+      id: 'old-parking-2',
+      merchant: 'SecureParking Sydney AU',
+      amount: 20.2,
+      date: '2026-05-08',
+      uploadedDay: '2026-05-08',
+      isPending: true,
+    },
+  ];
+
+  const result = mergeTransactions(
+    [
+      pendingTransaction({ merchant: 'SecureParking Sydney AU', amount: 22.22 }),
+      pendingTransaction({ merchant: 'SecureParking Sydney AU', amount: 20.2 }),
+      pendingTransaction({ merchant: 'SecureParking Sydney AU', amount: 20.2 }),
+    ],
+    existingParking,
+    {}
+  );
+
+  assertEqual(result.toAdd.length, 1, 'added count');
+  assertEqual(result.toAdd[0].amount, 22.22, 'new parking amount');
+  assertEqual(result.skipped.length, 2, 'skipped count');
+  assertEqual(result.skipped[0].reason, 'already_exists_pending_carry_forward', 'first skip reason');
+  assertEqual(result.skipped[1].reason, 'already_exists_pending_carry_forward', 'second skip reason');
 });
 
 console.log('transaction merger verification passed');

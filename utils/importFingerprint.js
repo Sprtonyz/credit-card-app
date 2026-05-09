@@ -16,9 +16,13 @@ function normalizeDate(value) {
   return value ? String(value) : 'pending';
 }
 
+function normalizeFingerprintDate(transaction = {}) {
+  return transaction.isPending || !transaction.date ? 'pending' : normalizeDate(transaction.date);
+}
+
 export function buildTransactionFingerprint(transaction = {}) {
   return [
-    normalizeDate(transaction.date),
+    normalizeFingerprintDate(transaction),
     normalizeAmount(transaction.amount),
     normalizeText(transaction.merchant),
     transaction.isPending ? 'pending' : 'posted',
@@ -31,7 +35,7 @@ export function buildTransactionRowFingerprint(transaction = {}) {
   if (!merchant || amount === '0.00') return null;
 
   return [
-    normalizeDate(transaction.date),
+    normalizeFingerprintDate(transaction),
     amount,
     merchant,
     transaction.isPending ? 'pending' : 'posted',

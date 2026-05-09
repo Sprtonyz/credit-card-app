@@ -173,6 +173,7 @@ function buildManualReviewItems(processedImages, duplicateDetection, existingTra
       skippedExisting: reviewItems.filter(
         (item) =>
           item.reason === 'already_exists_overlap' ||
+          item.reason === 'already_exists_pending_carry_forward' ||
           item.reason === 'already_exists_yesterday' ||
           item.reason === 'already_processed'
       ).length,
@@ -281,6 +282,7 @@ function getUploadResultStats(summary = {}, addedCount = 0) {
     added: Number(addedCount || 0),
     skippedExisting:
       Number(skippedByReason.already_exists_overlap || 0) +
+      Number(skippedByReason.already_exists_pending_carry_forward || 0) +
       Number(skippedByReason.already_exists_yesterday || 0) +
       Number(skippedByReason.already_processed || 0),
     skippedCurrentUpload: Number(skippedByReason.duplicate_in_upload || 0),

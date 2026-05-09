@@ -5,6 +5,7 @@ function formatReason(reason) {
     ready_to_import: 'ready',
     duplicate_in_upload: 'screenshot overlap',
     already_exists_overlap: 'matched existing',
+    already_exists_pending_carry_forward: 'pending carry-forward',
     already_exists_yesterday: 'matched yesterday pending',
     already_processed: 'already imported screenshot',
     flagged_for_review: 'needs review',
@@ -17,7 +18,11 @@ function getBadgeClass(reason, selected) {
   if (selected) return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
   if (reason === 'duplicate_in_upload') return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
   if (reason === 'flagged_for_review') return 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30';
-  if (reason === 'already_exists_overlap' || reason === 'already_processed') {
+  if (
+    reason === 'already_exists_overlap' ||
+    reason === 'already_exists_pending_carry_forward' ||
+    reason === 'already_processed'
+  ) {
     return 'bg-rose-500/15 text-rose-300 border-rose-500/30';
   }
 
@@ -32,7 +37,11 @@ function getConfidenceClass(level) {
 
 function getReviewPriority(item) {
   if (item?.reason === 'flagged_for_review') return 0;
-  if (item?.reason === 'already_exists_overlap' || item?.reason === 'already_processed') return 1;
+  if (
+    item?.reason === 'already_exists_overlap' ||
+    item?.reason === 'already_exists_pending_carry_forward' ||
+    item?.reason === 'already_processed'
+  ) return 1;
   if (item?.reason === 'duplicate_in_upload') return 2;
   return 3;
 }

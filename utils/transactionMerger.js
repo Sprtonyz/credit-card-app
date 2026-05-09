@@ -117,6 +117,14 @@ function buildTransactionKey(tx) {
   return [dateKey, amountKey, merchantKey].join('|');
 }
 
+function buildPendingCarryForwardKey(tx) {
+  const amountKey = normalizeAmountKey(tx?.amount);
+  const merchantKey = normalizeMerchantKey(tx?.merchant);
+
+  if (!amountKey || !merchantKey) return null;
+  return `${amountKey}|${merchantKey}`;
+}
+
 function getReferenceDateKey(tx) {
   return tx.uploadedDay || tx.date || null;
 }
@@ -185,6 +193,31 @@ function hasStrongRowContextEvidence(newTx, existingTx) {
   return beforeOverlap && afterOverlap;
 }
 
+function isRecentPendingCarryForward(newTx, existingTx) {
+  if (!newTx?.isPending || !existingTx?.isPending) return false;
+  if (buildPendingCarryForwardKey(newTx) !== buildPendingCarryForwardKey(existingTx)) return false;
+
+  const newReferenceDate = getReferenceDateKey(newTx);
+  const existingReferenceDate = getReferenceDateKey(existingTx);
+  const dayDistance = getDateKeyDistance(newReferenceDate, existingReferenceDate);
+
+  return dayDistance !== null && dayDistance <= RECENT_PENDING_DUPLICATE_DAYS;
+}
+
+function buildExistingMatch(existing, overrides = {}) {
+  return {
+    id: existing.id || null,
+    merchant: existing.merchant || null,
+    date: existing.date || null,
+    uploadedDay: existing.uploadedDay || null,
+    amount: Number(existing.amount || 0),
+    matchType: overrides.matchType || 'exact',
+    merchantSimilarity: overrides.merchantSimilarity ?? 100,
+    isPending: Boolean(existing.isPending),
+    score: overrides.score ?? 108,
+  };
+}
+
 function merchantLooksSame(newTx, existingTx) {
   const newMerchant = normalizeMerchantKey(newTx.merchant);
   const existingMerchant = normalizeMerchantKey(existingTx.merchant);
@@ -233,17 +266,11 @@ function findExistingMatch(newTx, existingTxs) {
     const merchantSimilarity = calculateMerchantSimilarity(newTx.merchant, existing.merchant);
     const matchType = exactMerchant ? 'exact' : 'fuzzy';
     const score = merchantSimilarity + (exactMerchant ? 5 : 0) + (newTx.date && existing.date ? 3 : 0);
-    const candidate = {
-      id: existing.id || null,
-      merchant: existing.merchant || null,
-      date: existing.date || null,
-      uploadedDay: existing.uploadedDay || null,
-      amount: Number(existing.amount || 0),
+    const candidate = buildExistingMatch(existing, {
       matchType,
       merchantSimilarity,
-      isPending: Boolean(existing.isPending),
       score,
-    };
+    });
 
     if (!bestMatch || candidate.score > bestMatch.score) {
       bestMatch = candidate;
@@ -251,6 +278,34 @@ function findExistingMatch(newTx, existingTxs) {
   });
 
   return bestMatch;
+}
+
+function findPendingCarryForwardMatch(newTx, existingTxs, usedPendingMatches) {
+  if (!newTx?.isPending) return null;
+
+  const carryForwardKey = buildPendingCarryForwardKey(newTx);
+  if (!carryForwardKey) return null;
+
+  const candidates = existingTxs
+    .filter((existing) => isRecentPendingCarryForward(newTx, existing))
+    .sort((left, right) => {
+      const leftDate = getReferenceDateKey(left) || '';
+      const rightDate = getReferenceDateKey(right) || '';
+      if (leftDate !== rightDate) return rightDate.localeCompare(leftDate);
+      return String(left.id || '').localeCompare(String(right.id || ''));
+    });
+
+  const usedCount = usedPendingMatches.get(carryForwardKey) || 0;
+  const candidate = candidates[usedCount] || null;
+  if (!candidate) return null;
+
+  usedPendingMatches.set(carryForwardKey, usedCount + 1);
+
+  return buildExistingMatch(candidate, {
+    matchType: 'pending_carry_forward',
+    merchantSimilarity: 100,
+    score: 112,
+  });
 }
 
 function isAmbiguousExistingMatch(tx, existingMatch) {
@@ -292,6 +347,7 @@ export function mergeTransactions(
   const decisions = [];
   const today = getTodayDate();
   const batchKeys = new Set();
+  const usedPendingMatches = new Map();
 
   for (const tx of newTransactions) {
     const txWithDate = {
@@ -430,6 +486,35 @@ export function mergeTransactions(
       }
     }
 
+    const pendingCarryForwardMatch = findPendingCarryForwardMatch(
+      txWithDate,
+      existingTransactions,
+      usedPendingMatches
+    );
+    if (pendingCarryForwardMatch) {
+      if (adminReviewApproved) {
+        markManualOverride('already_exists_pending_carry_forward', {
+          existingMatch: pendingCarryForwardMatch,
+        });
+      } else {
+        const decision = buildDecision(txWithDate, {
+          outcome: 'skipped',
+          reasonCode: 'already_exists_pending_carry_forward',
+          existingMatch: pendingCarryForwardMatch,
+        });
+        skipped.push({
+          transaction: txWithDate,
+          reason: 'already_exists_pending_carry_forward',
+          existingMatch: pendingCarryForwardMatch,
+          explanation: decision.explanation,
+          confidence: decision.confidence,
+          trace: decision.trace,
+        });
+        decisions.push(decision);
+        continue;
+      }
+    }
+
     const existingMatch = findExistingMatch(txWithDate, existingTransactions);
     if (existingMatch && isAmbiguousExistingMatch(txWithDate, existingMatch)) {
       const decision = buildDecision(txWithDate, {
@@ -547,6 +632,9 @@ export function mergeTransactions(
         already_processed: skipped.filter((s) => s.reason === 'already_processed').length,
         duplicate_in_upload: skipped.filter((s) => s.reason === 'duplicate_in_upload').length,
         already_exists_overlap: skipped.filter((s) => s.reason === 'already_exists_overlap').length,
+        already_exists_pending_carry_forward: skipped.filter(
+          (s) => s.reason === 'already_exists_pending_carry_forward'
+        ).length,
         already_exists_yesterday: skipped.filter((s) => s.reason === 'already_exists_yesterday').length,
       },
       flaggedByReason: {

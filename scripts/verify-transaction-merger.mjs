@@ -37,7 +37,7 @@ const source = fs
     );`
   )
   .replace(
-    "import { findProcessedLogMatch } from './importFingerprint';",
+    /import \{[\s\S]*?findProcessedLogMatch[\s\S]*?\} from '\.\/importFingerprint';/,
     `const findProcessedLogMatch = (transaction = {}, processedLogs = {}) => {
       if (transaction.imageHash && processedLogs[transaction.imageHash]) {
         return {
@@ -48,6 +48,8 @@ const source = fs
       }
       return null;
     };`
+    + `
+    const findProcessedRowMatch = () => null;`
   )
   .replace(
     "import { shiftDateKey } from './simulationDate';",
@@ -131,11 +133,11 @@ run('imports an already-processed screenshot row after admin review approval', (
   assertEqual(result.decisions[0].overrideReasonCode, 'already_processed', 'override reason');
 });
 
-run('imports selected duplicates from the same OCR batch', () => {
+run('imports repeated same-merchant charges from the same OCR batch by default', () => {
   const result = mergeTransactions(
     [
       transaction({ merchant: 'Parking Meter', amount: 4.2 }),
-      transaction({ merchant: 'Parking Meter', amount: 4.2, adminReviewApproved: true }),
+      transaction({ merchant: 'Parking Meter', amount: 4.2 }),
     ],
     [],
     {}
@@ -143,8 +145,84 @@ run('imports selected duplicates from the same OCR batch', () => {
 
   assertEqual(result.toAdd.length, 2, 'added count');
   assertEqual(result.skipped.length, 0, 'skipped count');
-  assertEqual(result.decisions[1].reasonCode, 'manual_review_override', 'decision reason');
-  assertEqual(result.decisions[1].overrideReasonCode, 'duplicate_in_upload', 'override reason');
+  assertEqual(result.decisions[1].reasonCode, 'ready_to_import', 'decision reason');
+});
+
+run('skips rows explicitly marked as screenshot-overlap duplicates', () => {
+  const result = mergeTransactions(
+    [
+      transaction({ merchant: 'Parking Meter', amount: 4.2 }),
+      transaction({
+        merchant: 'Parking Meter',
+        amount: 4.2,
+        duplicateAction: 'skip',
+        duplicateMatch: {
+          classification: 'screenshot_overlap',
+          reason: 'ordered_screenshot_overlap',
+          merchantSimilarity: 100,
+          overlapLength: 3,
+        },
+      }),
+    ],
+    [],
+    {}
+  );
+
+  assertEqual(result.toAdd.length, 1, 'added count');
+  assertEqual(result.skipped.length, 1, 'skipped count');
+  assertEqual(result.skipped[0].reason, 'duplicate_in_upload', 'skip reason');
+});
+
+run('skips ordered overlaps against earlier processed screenshots', () => {
+  const result = mergeTransactions(
+    [
+      transaction({
+        merchant: 'Parking Meter',
+        amount: 4.2,
+        duplicateAction: 'skip',
+        duplicateMatch: {
+          classification: 'screenshot_overlap',
+          reason: 'processed_screenshot_overlap',
+          merchantSimilarity: 100,
+          overlapLength: 2,
+          processedDay: '2026-05-08',
+        },
+      }),
+    ],
+    [],
+    {}
+  );
+
+  assertEqual(result.toAdd.length, 0, 'added count');
+  assertEqual(result.skipped.length, 1, 'skipped count');
+  assertEqual(result.skipped[0].reason, 'already_processed', 'skip reason');
+  assertEqual(result.skipped[0].processedDay, '2026-05-08', 'processed day');
+});
+
+run('skips gap-tolerant ordered overlaps against earlier processed screenshots', () => {
+  const result = mergeTransactions(
+    [
+      transaction({
+        merchant: 'SecureParking Sydney',
+        amount: 20.2,
+        duplicateAction: 'skip',
+        duplicateMatch: {
+          classification: 'screenshot_overlap',
+          reason: 'processed_ordered_subsequence_overlap',
+          merchantSimilarity: 100,
+          overlapLength: 2,
+          processedDay: '2026-05-08',
+          requiresReview: true,
+        },
+      }),
+    ],
+    [],
+    {}
+  );
+
+  assertEqual(result.toAdd.length, 0, 'added count');
+  assertEqual(result.skipped.length, 1, 'skipped count');
+  assertEqual(result.skipped[0].reason, 'already_processed', 'skip reason');
 });
 
 console.log('transaction merger verification passed');

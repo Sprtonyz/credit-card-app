@@ -8,7 +8,11 @@ import {
   enrichProcessedLogsWithFingerprints,
   findProcessedLogMatch,
 } from '../utils/importFingerprint';
-import { detectDuplicatesAcrossImages } from '../utils/duplicateDetection';
+import {
+  annotateProcessedImagesWithDuplicateDecisions,
+  annotateProcessedImagesWithProcessedLogOverlaps,
+  detectDuplicatesAcrossImages,
+} from '../utils/duplicateDetection';
 import { mergeTransactions, prepareForFirebase } from '../utils/transactionMerger';
 import {
   formatActivityTimestamp,
@@ -49,6 +53,7 @@ function buildAllTransactions(processedImages) {
         ...tx,
         imageHash: image.imageHash,
         imageFingerprint: image.imageFingerprint,
+        orderedImageFingerprint: image.orderedImageFingerprint || tx.orderedImageFingerprint || null,
         imageName: image.fileName,
       });
     });
@@ -63,8 +68,10 @@ function buildManualReviewItems(processedImages, duplicateDetection, existingTra
 
   (duplicateDetection?.duplicates || []).forEach((group) => {
     const items = Array.isArray(group) ? group : group?.group || [];
-    items.forEach((item, itemIndex) => {
-      const sibling = items.find((candidate) => candidate.index !== item.index) || items[itemIndex];
+    items.forEach((item) => {
+      if (item?.duplicateRole !== 'skip' && item?.duplicateAction !== 'skip') return;
+
+      const sibling = items.find((candidate) => candidate.index !== item.index) || null;
       duplicateMap.set(item.index, {
         reason: item?.duplicateMatch?.merchantSimilarity && item.duplicateMatch.merchantSimilarity < 98
           ? 'flagged_for_review'
@@ -119,21 +126,25 @@ function buildManualReviewItems(processedImages, duplicateDetection, existingTra
       confidence = skippedDecision.confidence;
       trace = skippedDecision.trace;
       existingMatch = skippedDecision.existingMatch || null;
-    } else if (duplicateInfo) {
-      reason = duplicateInfo.reason;
+    } else if (duplicateInfo || txForReview.duplicateAction === 'skip') {
+      const duplicateReason = duplicateInfo?.reason || 'duplicate_in_upload';
+      const duplicateMatch = duplicateInfo?.duplicateMatch || txForReview.duplicateMatch || null;
+      reason = duplicateReason;
       defaultSelected = false;
       explanation =
-        duplicateInfo.reason === 'flagged_for_review'
+        duplicateReason === 'flagged_for_review'
           ? 'Flagged for review because another item in this upload is similar, but the duplicate match is fuzzy.'
-          : 'Skipped because another item in this upload appears to be the same transaction.';
+          : 'Skipped because this row is part of an overlapping screenshot region already represented in this upload.';
       confidence = singleMergeResult.decisions?.[0]?.confidence || confidence;
       trace = {
         ...(singleMergeResult.decisions?.[0]?.trace || {}),
-        duplicateEvaluation: duplicateInfo.duplicateMatch
+        duplicateEvaluation: duplicateMatch
           ? {
-              reason: duplicateInfo.duplicateMatch.reason || null,
-              merchantSimilarity: duplicateInfo.duplicateMatch.merchantSimilarity ?? null,
-              sameSource: duplicateInfo.duplicateMatch.sameSource ?? null,
+              classification: duplicateMatch.classification || null,
+              reason: duplicateMatch.reason || null,
+              merchantSimilarity: duplicateMatch.merchantSimilarity ?? null,
+              sameSource: duplicateMatch.sameSource ?? null,
+              overlapLength: duplicateMatch.overlapLength ?? null,
             }
           : null,
       };
@@ -435,16 +446,16 @@ export default function AdminUploadPage() {
       { profile: 'classic', uploadDate: getTodayDate() }
     );
 
-    setProcessedImages(results);
-
     const successfulImages = results.filter((result) => !result.error);
     if (successfulImages.length === 0) {
       throw new Error('Failed to process any images. Please check the image quality and try again.');
     }
 
     const detection = detectDuplicatesAcrossImages(successfulImages);
+    const annotatedResults = annotateProcessedImagesWithDuplicateDecisions(results, detection);
+    setProcessedImages(annotatedResults);
     setDuplicateDetection(detection);
-    return { results, detection };
+    return { results: annotatedResults, detection };
   };
 
   const handleImagesSelected = (files) => {
@@ -549,7 +560,11 @@ export default function AdminUploadPage() {
             image.imageHash,
             imageTransactionIds,
             image.fileName,
-            image.imageFingerprint || null
+            image.imageFingerprint || null,
+            {
+              orderedImageFingerprint: image.orderedImageFingerprint || null,
+              rowContexts: image.rowContexts || [],
+            }
           );
         }
       }
@@ -612,12 +627,15 @@ export default function AdminUploadPage() {
         getAllTransactions(),
         getAllProcessedLogs(),
       ]);
+      const enrichedProcessedLogs = enrichProcessedLogsWithFingerprints(processedLogs || {}, existingTransactions);
+      const reviewResults = annotateProcessedImagesWithProcessedLogOverlaps(results, enrichedProcessedLogs);
+      setProcessedImages(reviewResults);
       setManualReview(
         buildManualReviewItems(
-          results,
+          reviewResults,
           detection,
           existingTransactions,
-          enrichProcessedLogsWithFingerprints(processedLogs || {}, existingTransactions)
+          enrichedProcessedLogs
         )
       );
       setStep('review');

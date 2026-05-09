@@ -22,6 +22,7 @@ import {
   DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
   DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
 } from '../config/emailNotifications';
+import { normalizeScheduleWindowMinutes } from '../utils/emailSchedule';
 
 export async function addTransactions(transactions) {
   try {
@@ -42,6 +43,20 @@ export async function addTransactions(transactions) {
         uploadedDate: getSimulatedISOString(),
         uploadedDay: simulatedUploadDay,
         imageHash: tx.imageHash || null,
+        imageFingerprint: tx.imageFingerprint || null,
+        orderedImageFingerprint: tx.orderedImageFingerprint || null,
+        imageName: tx.imageName || null,
+        rowFingerprint: tx.rowFingerprint || null,
+        sequenceIndex:
+          tx.sequenceIndex !== null && tx.sequenceIndex !== undefined && Number.isFinite(Number(tx.sequenceIndex))
+            ? Number(tx.sequenceIndex)
+            : null,
+        lineIndex:
+          tx.lineIndex !== null && tx.lineIndex !== undefined && Number.isFinite(Number(tx.lineIndex))
+            ? Number(tx.lineIndex)
+            : null,
+        lineBbox: tx.lineBbox || null,
+        dedupeNeighbors: tx.dedupeNeighbors || null,
         owner: null,
       });
       addedIds.push(newTxRef.key);
@@ -162,7 +177,7 @@ export async function checkIfProcessed(imageHash) {
   }
 }
 
-export async function saveProcessedLog(imageHash, transactionIds, imageName, imageFingerprint = null) {
+export async function saveProcessedLog(imageHash, transactionIds, imageName, imageFingerprint = null, metadata = {}) {
   try {
     const processedRef = ref(db, `processedTransactions/${imageHash}`);
     await set(processedRef, {
@@ -172,6 +187,8 @@ export async function saveProcessedLog(imageHash, transactionIds, imageName, ima
       transactions: transactionIds,
       imageName: imageName,
       imageFingerprint: imageFingerprint || null,
+      orderedImageFingerprint: metadata.orderedImageFingerprint || null,
+      rowContexts: metadata.rowContexts || [],
     });
   } catch (error) {
     console.error('Error saving processed log:', error);
@@ -287,8 +304,9 @@ export async function getNotificationAutomationSettings() {
     return {
       time: snapshot.val()?.time || DEFAULT_AUTOMATED_EMAIL_TIME,
       timeZone: snapshot.val()?.timeZone || DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
-      windowMinutes:
-        Number(snapshot.val()?.windowMinutes) || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+      windowMinutes: normalizeScheduleWindowMinutes(
+        snapshot.val()?.windowMinutes || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES
+      ),
       updatedAt: snapshot.val()?.updatedAt || null,
     };
   } catch (error) {
@@ -302,8 +320,9 @@ export async function saveNotificationAutomationSettings(settings = {}) {
     const nextSettings = {
       time: settings.time || DEFAULT_AUTOMATED_EMAIL_TIME,
       timeZone: settings.timeZone || DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
-      windowMinutes:
-        Number(settings.windowMinutes) || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+      windowMinutes: normalizeScheduleWindowMinutes(
+        settings.windowMinutes || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES
+      ),
       updatedAt: getSimulatedISOString(),
     };
 

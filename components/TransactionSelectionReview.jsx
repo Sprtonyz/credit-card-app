@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 function formatReason(reason) {
   const labels = {
     ready_to_import: 'ready',
-    duplicate_in_upload: 'duplicate in upload',
+    duplicate_in_upload: 'screenshot overlap',
     already_exists_overlap: 'matched existing',
     already_exists_yesterday: 'matched yesterday pending',
     already_processed: 'already imported screenshot',
@@ -176,6 +176,9 @@ export default function TransactionSelectionReview({
                         {item.trace.duplicateEvaluation ? (
                           <p>
                             Duplicate check: {item.trace.duplicateEvaluation.reason || 'n/a'} at {item.trace.duplicateEvaluation.merchantSimilarity ?? 'n/a'}% similarity
+                            {item.trace.duplicateEvaluation.overlapLength
+                              ? ` across ${item.trace.duplicateEvaluation.overlapLength} row${item.trace.duplicateEvaluation.overlapLength === 1 ? '' : 's'}`
+                              : ''}
                           </p>
                         ) : null}
                       </div>

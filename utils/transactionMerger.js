@@ -5,7 +5,7 @@ import {
   scoreTransactionConfidence,
   summarizeDecisionCounts,
 } from './importTrust';
-import { findProcessedLogMatch } from './importFingerprint';
+import { findProcessedLogMatch, findProcessedRowMatch } from './importFingerprint';
 import { shiftDateKey } from './simulationDate';
 
 const MERCHANT_STOP_WORDS = new Set([
@@ -138,30 +138,22 @@ function haveComparableDates(newTx, existingTx) {
   // Be conservative with pending rows so recurring merchants with the same
   // amount on different days are not auto-collapsed as duplicates.
   if (newTx.isPending || existingTx.isPending) {
+    if (hasStrongRowContextEvidence(newTx, existingTx)) {
+      return true;
+    }
+
     const newReferenceDate = getReferenceDateKey(newTx);
     const existingReferenceDate = getReferenceDateKey(existingTx);
 
     if (!newReferenceDate || !existingReferenceDate) return false;
-    if (newReferenceDate === existingReferenceDate) return true;
 
     const newDateWasExplicit = Boolean(newTx.rawParsed?.date || newTx.originalDate);
     const existingDateWasExplicit = Boolean(existingTx.rawParsed?.date || existingTx.originalDate);
     const dayDistance = getDateKeyDistance(newReferenceDate, existingReferenceDate);
 
     if (dayDistance === null) return false;
-
-    // Pending rows often reappear across a couple of days with no explicit
-    // transaction date in the screenshot. Allow a small recent window so the
-    // same unresolved pending charge can still be recognized.
-    if (!newDateWasExplicit && !existingDateWasExplicit && dayDistance <= RECENT_PENDING_DUPLICATE_DAYS) {
-      return true;
-    }
-
-    if (!newDateWasExplicit && dayDistance <= 1) {
-      return true;
-    }
-
-    return false;
+    if (!newDateWasExplicit || !existingDateWasExplicit) return false;
+    return dayDistance <= RECENT_PENDING_DUPLICATE_DAYS;
   }
 
   if (newTx.date && existingTx.date) {
@@ -169,6 +161,28 @@ function haveComparableDates(newTx, existingTx) {
   }
 
   return false;
+}
+
+function getDedupeContext(tx) {
+  return {
+    rowFingerprint: tx?.rowFingerprint || null,
+    before: Array.isArray(tx?.dedupeNeighbors?.before) ? tx.dedupeNeighbors.before.filter(Boolean) : [],
+    after: Array.isArray(tx?.dedupeNeighbors?.after) ? tx.dedupeNeighbors.after.filter(Boolean) : [],
+  };
+}
+
+function hasStrongRowContextEvidence(newTx, existingTx) {
+  const newContext = getDedupeContext(newTx);
+  const existingContext = getDedupeContext(existingTx);
+
+  if (!newContext.rowFingerprint || newContext.rowFingerprint !== existingContext.rowFingerprint) {
+    return false;
+  }
+
+  const beforeOverlap = newContext.before.some((fingerprint) => existingContext.before.includes(fingerprint));
+  const afterOverlap = newContext.after.some((fingerprint) => existingContext.after.includes(fingerprint));
+
+  return beforeOverlap && afterOverlap;
 }
 
 function merchantLooksSame(newTx, existingTx) {
@@ -328,7 +342,72 @@ export function mergeTransactions(
       }
     }
 
-    if (txKey && batchKeys.has(txKey)) {
+    const processedRowMatch = findProcessedRowMatch(txWithDate, processedLog);
+    if (processedRowMatch) {
+      if (adminReviewApproved) {
+        markManualOverride('already_processed', {
+          processedDay: processedRowMatch.log?.uploadDay,
+          processedDate: processedRowMatch.log?.uploadDate,
+        });
+      } else {
+        const decision = buildDecision(txWithDate, {
+          outcome: 'skipped',
+          reasonCode: 'already_processed',
+          processedDay: processedRowMatch.log?.uploadDay,
+          processedDate: processedRowMatch.log?.uploadDate,
+        });
+        skipped.push({
+          transaction: txWithDate,
+          reason: 'already_processed',
+          processedDate: processedRowMatch.log?.uploadDate,
+          processedDay: processedRowMatch.log?.uploadDay,
+          processedMatchType: processedRowMatch.matchType,
+          explanation: decision.explanation,
+          confidence: decision.confidence,
+          trace: decision.trace,
+        });
+        decisions.push(decision);
+        continue;
+      }
+    }
+
+    if (
+      txWithDate.duplicateAction === 'skip' &&
+      (
+        txWithDate.duplicateMatch?.reason === 'processed_screenshot_overlap' ||
+        txWithDate.duplicateMatch?.reason === 'processed_ordered_subsequence_overlap'
+      )
+    ) {
+      if (adminReviewApproved) {
+        markManualOverride('already_processed', {
+          processedDay: txWithDate.duplicateMatch.processedDay || null,
+          processedDate: txWithDate.duplicateMatch.processedDate || null,
+          duplicateMatch: txWithDate.duplicateMatch || null,
+        });
+      } else {
+        const decision = buildDecision(txWithDate, {
+          outcome: 'skipped',
+          reasonCode: 'already_processed',
+          processedDay: txWithDate.duplicateMatch.processedDay || null,
+          processedDate: txWithDate.duplicateMatch.processedDate || null,
+          duplicateMatch: txWithDate.duplicateMatch || null,
+        });
+        skipped.push({
+          transaction: txWithDate,
+          reason: 'already_processed',
+          processedDate: txWithDate.duplicateMatch.processedDate || null,
+          processedDay: txWithDate.duplicateMatch.processedDay || null,
+          processedMatchType: 'processed_screenshot_overlap',
+          explanation: decision.explanation,
+          confidence: decision.confidence,
+          trace: decision.trace,
+        });
+        decisions.push(decision);
+        continue;
+      }
+    }
+
+    if (txWithDate.duplicateAction === 'skip') {
       if (adminReviewApproved) {
         markManualOverride('duplicate_in_upload', {
           duplicateMatch: tx.duplicateMatch || null,
@@ -508,5 +587,19 @@ export function prepareForFirebase(transactions, source = 'image') {
     isRefund: Boolean(tx.isRefund) || Number(tx.amount) < 0,
     source: source,
     imageHash: tx.imageHash || null,
+    imageFingerprint: tx.imageFingerprint || null,
+    orderedImageFingerprint: tx.orderedImageFingerprint || null,
+    imageName: tx.imageName || null,
+    rowFingerprint: tx.rowFingerprint || null,
+    sequenceIndex:
+      tx.sequenceIndex !== null && tx.sequenceIndex !== undefined && Number.isFinite(Number(tx.sequenceIndex))
+        ? Number(tx.sequenceIndex)
+        : null,
+    lineIndex:
+      tx.lineIndex !== null && tx.lineIndex !== undefined && Number.isFinite(Number(tx.lineIndex))
+        ? Number(tx.lineIndex)
+        : null,
+    lineBbox: tx.lineBbox || null,
+    dedupeNeighbors: tx.dedupeNeighbors || null,
   }));
 }

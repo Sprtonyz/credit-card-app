@@ -6,6 +6,7 @@ import {
   DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
   DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
 } from '../config/emailNotifications';
+import { normalizeScheduleWindowMinutes } from '../utils/emailSchedule';
 
 function getDatabaseUrl() {
   return String(process.env.FIREBASE_DATABASE_URL || firebaseConfig.databaseURL || '').replace(/\/$/, '');
@@ -115,8 +116,9 @@ export async function getAutomationSettings(authToken) {
   return {
     time: settings?.time || DEFAULT_AUTOMATED_EMAIL_TIME,
     timeZone: settings?.timeZone || DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
-    windowMinutes:
-      Number(settings?.windowMinutes) || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+    windowMinutes: normalizeScheduleWindowMinutes(
+      settings?.windowMinutes || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES
+    ),
     updatedAt: settings?.updatedAt || null,
   };
 }
@@ -128,8 +130,9 @@ export async function saveAutomationSettings(settings, authToken) {
     body: {
       time: settings.time || DEFAULT_AUTOMATED_EMAIL_TIME,
       timeZone: settings.timeZone || DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
-      windowMinutes:
-        Number(settings.windowMinutes) || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+      windowMinutes: normalizeScheduleWindowMinutes(
+        settings.windowMinutes || DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES
+      ),
       updatedAt: settings.updatedAt || new Date().toISOString(),
     },
   });

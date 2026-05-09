@@ -1,5 +1,10 @@
 import Tesseract from 'tesseract.js';
-import { buildImageImportFingerprint } from './importFingerprint';
+import {
+  buildImageImportFingerprint,
+  buildImageRowContexts,
+  buildOrderedImageImportFingerprint,
+  enrichTransactionsWithImportContext,
+} from './importFingerprint';
 import { correctTransaction } from './ocrErrorCorrection';
 import { getTodayDate } from '../services/firebaseService';
 
@@ -122,6 +127,18 @@ function normalizeBbox(bbox) {
     y0,
     x1,
     y1,
+  };
+}
+
+function mergeBboxes(entries = []) {
+  const boxes = entries.map((entry) => normalizeBbox(entry?.bbox)).filter(Boolean);
+  if (boxes.length === 0) return null;
+
+  return {
+    x0: Math.min(...boxes.map((box) => box.x0)),
+    y0: Math.min(...boxes.map((box) => box.y0)),
+    x1: Math.max(...boxes.map((box) => box.x1)),
+    y1: Math.max(...boxes.map((box) => box.y1)),
   };
 }
 
@@ -277,6 +294,7 @@ function parseClassicTransactionText(text, lineEntries = [], wordEntries = []) {
       date: currentDate,
       category: currentCategory,
       lineIndex: entry.index + 1,
+      lineBbox: entry.bbox || null,
       rawLine,
       parserProfile: 'classic',
     });
@@ -386,6 +404,7 @@ function parseItemizedTransactionText(text, lineEntries = [], fallbackDate = nul
         date: dateFromGroup || currentDate || fallbackDate,
         category: null,
         lineIndex: currentGroup[0].index + 1,
+        lineBbox: mergeBboxes(currentGroup),
         rawLine: mergedText,
         lineGap: currentGroup.length > 1 ? 'wrapped' : 'single',
         parserProfile: 'itemized',
@@ -640,8 +659,12 @@ export async function processImage(imageFile, onProgress, options = {}) {
     }
 
     const bestResult = pickBestParsedResult(candidateResults);
-    const correctedTransactions = bestResult.rawTransactions.map(correctTransaction);
+    const correctedTransactions = enrichTransactionsWithImportContext(
+      bestResult.rawTransactions.map(correctTransaction)
+    );
     const imageFingerprint = buildImageImportFingerprint(correctedTransactions);
+    const orderedImageFingerprint = buildOrderedImageImportFingerprint(correctedTransactions);
+    const rowContexts = buildImageRowContexts(correctedTransactions);
     const rawLineCount = bestResult.text
       .split('\n')
       .map((line) => line.trim())
@@ -655,10 +678,16 @@ export async function processImage(imageFile, onProgress, options = {}) {
       ocrWords: bestResult.words,
       transactions: correctedTransactions,
       imageFingerprint,
+      orderedImageFingerprint,
+      rowContexts,
       originalCount: bestResult.rawTransactions.length,
       rawLineCount,
       parserProfile: bestResult.parserProfile,
       ocrMode: bestResult.ocrMode,
+      imageDimensions: {
+        width: image.naturalWidth || null,
+        height: image.naturalHeight || null,
+      },
     };
   } catch (error) {
     console.error('Error processing image:', error);

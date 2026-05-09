@@ -232,9 +232,11 @@ export function buildDecisionTrace(transaction, decision = {}) {
     },
     duplicateEvaluation: duplicateMatch
       ? {
+          classification: duplicateMatch.classification || null,
           reason: duplicateMatch.reason || null,
           merchantSimilarity: duplicateMatch.merchantSimilarity ?? null,
           sameSource: duplicateMatch.sameSource ?? null,
+          overlapLength: duplicateMatch.overlapLength ?? null,
         }
       : null,
     existingMatch: existingMatch
@@ -264,6 +266,20 @@ export function formatDecisionExplanation(decision = {}) {
   const imageName = tx.imageName || tx.imageSource?.imageName || decision.imageName || null;
 
   if (reasonCode === 'already_processed') {
+    if (duplicateMatch?.reason === 'processed_ordered_subsequence_overlap') {
+      const processedDay = decision.processedDay || decision.processedDate || null;
+      return processedDay
+        ? `Unchecked because this row sequence matches a previous upload from ${processedDay}, even though rows between may have cleared.`
+        : 'Unchecked because this row sequence matches a previous upload, even though rows between may have cleared.';
+    }
+
+    if (duplicateMatch?.reason === 'processed_screenshot_overlap') {
+      const processedDay = decision.processedDay || decision.processedDate || null;
+      return processedDay
+        ? `Skipped because this row is part of an ordered overlap with a previous upload from ${processedDay}.`
+        : 'Skipped because this row is part of an ordered overlap with a previous upload.';
+    }
+
     const processedDay = decision.processedDay || decision.processedDate || null;
     return processedDay
       ? `Skipped because this screenshot appears to have already been imported on ${processedDay}.`
@@ -271,6 +287,10 @@ export function formatDecisionExplanation(decision = {}) {
   }
 
   if (reasonCode === 'duplicate_in_upload') {
+    if (duplicateMatch?.classification === 'screenshot_overlap') {
+      return 'Skipped because this row is part of an overlapping screenshot region already represented in this upload.';
+    }
+
     return duplicateMatch?.merchantSimilarity && duplicateMatch.merchantSimilarity < 98
       ? 'Flagged because another item in this upload looks very similar, but the match is fuzzy.'
       : 'Skipped because another item in this upload appears to be the same transaction.';

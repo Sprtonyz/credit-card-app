@@ -2,6 +2,7 @@ import {
   DEFAULT_AUTOMATED_EMAIL_TIME,
   DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
   DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+  MAX_AUTOMATED_EMAIL_WINDOW_MINUTES,
 } from '../config/emailNotifications';
 
 function parseMeridiemTime(value) {
@@ -83,6 +84,21 @@ export function getZonedDateKey(date = new Date(), timeZone = DEFAULT_AUTOMATED_
   ).padStart(2, '0')}`;
 }
 
+export function normalizeScheduleWindowMinutes(
+  value = DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES
+) {
+  const parsedWindow = Number(value);
+
+  if (!Number.isFinite(parsedWindow) || parsedWindow <= 0) {
+    return DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES;
+  }
+
+  return Math.min(
+    Math.max(Math.floor(parsedWindow), 1),
+    MAX_AUTOMATED_EMAIL_WINDOW_MINUTES
+  );
+}
+
 export function getAutomatedEmailSchedule({
   time = DEFAULT_AUTOMATED_EMAIL_TIME,
   timeZone = DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
@@ -90,18 +106,13 @@ export function getAutomatedEmailSchedule({
 } = {}) {
   const normalizedTime = formatScheduledTime(time);
   const parsedTime = parseScheduledTime(normalizedTime);
-  const parsedWindow = Number(windowMinutes);
-  const minimumWindow = DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES;
 
   return {
     time: normalizedTime,
     timeZone,
     hour: parsedTime.hour,
     minute: parsedTime.minute,
-    windowMinutes:
-      Number.isFinite(parsedWindow) && parsedWindow > 0
-        ? Math.max(parsedWindow, minimumWindow)
-        : minimumWindow,
+    windowMinutes: normalizeScheduleWindowMinutes(windowMinutes),
   };
 }
 

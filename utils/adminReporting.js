@@ -9,6 +9,7 @@ import { formatLocalDateTime } from './simulationDate';
 
 export const PRESENCE_TTL_MS = 12000;
 export const ADMIN_ACTIVITY_WINDOW_MS = 12 * 60 * 60 * 1000;
+export const MACQUARIE_EXCESS_THRESHOLD = 800;
 
 function dateToMs(dateKey) {
   if (!dateKey) return null;
@@ -43,18 +44,31 @@ function getLatestSubmissionEntryForUser(submissions = {}, user, cutoffTs = 0) {
   }, null);
 }
 
+function getAssigneeTotal(transactions, submissions, assignee, todayKey) {
+  return Object.entries(submissions).reduce((acc, [transactionId, submission]) => {
+    const transaction = transactions.find((item) => item.id === transactionId);
+    const contributionRatio = getAssigneeContributionRatio(submission, assignee, todayKey);
+    if (!transaction || contributionRatio <= 0) return acc;
+    return acc + Number(transaction.amount || 0) * contributionRatio;
+  }, 0);
+}
+
+function getMacquarieExcessShare(profileName, excessAmount) {
+  if (profileName === 'Tony') return excessAmount * (2 / 3);
+  if (profileName === 'Nugs') return excessAmount * (1 / 3);
+  return 0;
+}
+
 export function buildProfileEmailReports(transactions, submissions, todayKey) {
+  const macquarieTotal = getAssigneeTotal(transactions, submissions, 'Macquarie', todayKey);
+  const macquarieExcessAmount = Math.max(0, macquarieTotal - MACQUARIE_EXCESS_THRESHOLD);
+
   return PROFILE_NAMES.map((profileName) => {
     const visibleTransactions = transactions.filter((transaction) =>
       isVisibleForUser(transaction, submissions, profileName, todayKey)
     );
 
-    const totalSpend = Object.entries(submissions).reduce((acc, [transactionId, submission]) => {
-      const transaction = transactions.find((item) => item.id === transactionId);
-      const contributionRatio = getAssigneeContributionRatio(submission, profileName, todayKey);
-      if (!transaction || contributionRatio <= 0) return acc;
-      return acc + Number(transaction.amount || 0) * contributionRatio;
-    }, 0);
+    const totalSpend = getAssigneeTotal(transactions, submissions, profileName, todayKey);
 
     const pendingTransactions = visibleTransactions.filter((transaction) => {
       if (!(transaction.isPending || !transaction.date)) return false;
@@ -90,6 +104,9 @@ export function buildProfileEmailReports(transactions, submissions, todayKey) {
         outstandingCount: outstandingTransactions.length,
         conflictsCount,
         unsuresCount,
+        macquarieTotal,
+        macquarieExcessAmount,
+        macquarieExcessShare: getMacquarieExcessShare(profileName, macquarieExcessAmount),
       },
     };
   });

@@ -72,6 +72,7 @@ export function buildEmailContent(report) {
     minute: '2-digit',
   });
   const actionRequiredCount = getActionRequiredCount(stats);
+  const macquarieExcessShare = Number(stats.macquarieExcessShare || 0);
 
   const breakdownRows = [
     {
@@ -105,6 +106,9 @@ export function buildEmailContent(report) {
     '',
     `Action required: ${formatCount(actionRequiredCount)} items`,
     `Spending: ${formatCurrency(stats.totalSpend)}`,
+    macquarieExcessShare > 0
+      ? `+ ${formatCurrency(macquarieExcessShare)} (Macquarie's excess)`
+      : '',
     '',
     `New pending: ${formatCount(stats.pendingCount)}`,
     `Outstanding: ${formatCount(stats.outstandingCount)}`,
@@ -143,6 +147,16 @@ export function buildEmailContent(report) {
                   <div style="font-size:12px;line-height:16px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:900">Spending</div>
                   <div style="margin-top:10px;font-size:32px;line-height:36px;color:#111827;font-weight:900;font-family:${EMAIL_FONT_STACK}">${escapeHtml(formatCurrency(stats.totalSpend))}</div>
                   <div style="margin-top:4px;font-size:13px;line-height:18px;color:#64748b">assigned so far</div>
+                  ${
+                    macquarieExcessShare > 0
+                      ? `
+                        <div style="margin-top:10px;border-radius:10px;background:#f8fafc;border:1px solid #e5e7eb;padding:9px 10px">
+                          <div style="font-size:15px;line-height:19px;color:#111827;font-weight:900">+ ${escapeHtml(formatCurrency(macquarieExcessShare))}</div>
+                          <div style="margin-top:2px;font-size:11px;line-height:15px;color:#64748b;font-weight:700">(Macquarie's excess)</div>
+                        </div>
+                      `
+                      : ''
+                  }
                 </td>
               </tr>
             </table>

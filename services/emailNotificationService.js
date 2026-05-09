@@ -38,6 +38,18 @@ function formatCurrency(value) {
   }).format(Number(value || 0));
 }
 
+function getActionRequiredCount(stats = {}) {
+  return [
+    stats.pendingCount,
+    stats.outstandingCount,
+    stats.conflictsCount,
+    stats.unsuresCount,
+  ].reduce((total, value) => total + Number(value || 0), 0);
+}
+
+const EMAIL_FONT_STACK =
+  "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,Helvetica,sans-serif";
+
 export function getLandingUrl(appUrl) {
   try {
     const url = new URL(appUrl || DEFAULT_APP_URL);
@@ -59,11 +71,41 @@ export function buildEmailContent(report) {
     hour: 'numeric',
     minute: '2-digit',
   });
+  const actionRequiredCount = getActionRequiredCount(stats);
+
+  const breakdownRows = [
+    {
+      label: 'New pending',
+      value: formatCount(stats.pendingCount),
+      detail: 'Fresh items from the latest upload',
+      color: '#2563eb',
+    },
+    {
+      label: 'Outstanding',
+      value: formatCount(stats.outstandingCount),
+      detail: 'Older items still waiting',
+      color: '#d97706',
+    },
+    {
+      label: 'Conflicts',
+      value: formatCount(stats.conflictsCount),
+      detail: 'Different choices to resolve',
+      color: '#dc2626',
+    },
+    {
+      label: 'Unsures',
+      value: formatCount(stats.unsuresCount),
+      detail: 'Marked unsure',
+      color: '#7c3aed',
+    },
+  ];
 
   const text = [
     `${profileName} update`,
     '',
-    `Spend: ${formatCurrency(stats.totalSpend)}`,
+    `Action required: ${formatCount(actionRequiredCount)} items`,
+    `Spending: ${formatCurrency(stats.totalSpend)}`,
+    '',
     `New pending: ${formatCount(stats.pendingCount)}`,
     `Outstanding: ${formatCount(stats.outstandingCount)}`,
     `Conflicts: ${formatCount(stats.conflictsCount)}`,
@@ -76,49 +118,60 @@ export function buildEmailContent(report) {
     .join('\n');
 
   const html = `
-    <div style="font-family:Arial,Helvetica,sans-serif;background:#eef2f7;padding:32px;color:#0f172a">
-      <div style="max-width:680px;margin:0 auto">
-        <div style="background:#10223a;color:#ffffff;border-radius:18px 18px 0 0;padding:22px 28px">
-          <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8">Westpac CC Tracker</div>
-          <div style="margin-top:8px;font-size:26px;font-weight:700">${escapeHtml(profileName)} update</div>
-          <div style="margin-top:6px;font-size:14px;opacity:.85">Snapshot from the latest upload.</div>
-        </div>
+    <div style="font-family:${EMAIL_FONT_STACK};background:#dce7f3;padding:28px 12px;color:#111827">
+      <div style="max-width:640px;margin:0 auto">
+        <div style="background:#0f172a;border-radius:18px;padding:22px;color:#ffffff">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;font-family:${EMAIL_FONT_STACK}">
+            <tr>
+              <td>
+                <div style="font-size:12px;line-height:16px;text-transform:uppercase;letter-spacing:.12em;color:#93c5fd;font-weight:900">Westpac CC Tracker</div>
+                <div style="margin-top:8px;font-size:25px;line-height:31px;font-weight:900">${escapeHtml(profileName)} summary</div>
+              </td>
+              <td align="right" valign="top" style="font-size:12px;line-height:17px;color:#cbd5e1">${escapeHtml(updatedAt)}</td>
+            </tr>
+          </table>
 
-        <div style="background:#ffffff;border:1px solid #dbe3ee;border-top:none;border-radius:0 0 18px 18px;padding:28px">
-          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
-            <div style="padding:14px 16px;border:1px solid #e5ebf3;border-radius:14px;background:#f8fbfe">
-              <div style="color:#6b7a90;font-size:12px;text-transform:uppercase;letter-spacing:.08em">Spend</div>
-              <div style="margin-top:8px;font-size:22px;font-weight:700">${escapeHtml(formatCurrency(stats.totalSpend))}</div>
-            </div>
-            <div style="padding:14px 16px;border:1px solid #e5ebf3;border-radius:14px;background:#f8fbfe">
-              <div style="color:#6b7a90;font-size:12px;text-transform:uppercase;letter-spacing:.08em">New pending</div>
-              <div style="margin-top:8px;font-size:22px;font-weight:700">${escapeHtml(formatCount(stats.pendingCount))}</div>
-            </div>
-            <div style="padding:14px 16px;border:1px solid #e5ebf3;border-radius:14px;background:#f8fbfe">
-              <div style="color:#6b7a90;font-size:12px;text-transform:uppercase;letter-spacing:.08em">Outstanding</div>
-              <div style="margin-top:8px;font-size:22px;font-weight:700">${escapeHtml(formatCount(stats.outstandingCount))}</div>
-            </div>
-            <div style="padding:14px 16px;border:1px solid #e5ebf3;border-radius:14px;background:#f8fbfe">
-              <div style="color:#6b7a90;font-size:12px;text-transform:uppercase;letter-spacing:.08em">Conflicts</div>
-              <div style="margin-top:8px;font-size:22px;font-weight:700">${escapeHtml(formatCount(stats.conflictsCount))}</div>
-            </div>
-            <div style="padding:14px 16px;border:1px solid #e5ebf3;border-radius:14px;background:#f8fbfe">
-              <div style="color:#6b7a90;font-size:12px;text-transform:uppercase;letter-spacing:.08em">Unsures</div>
-              <div style="margin-top:8px;font-size:22px;font-weight:700">${escapeHtml(formatCount(stats.unsuresCount))}</div>
-            </div>
-            <div style="padding:14px 16px;border:1px solid #e5ebf3;border-radius:14px;background:#f8fbfe">
-              <div style="color:#6b7a90;font-size:12px;text-transform:uppercase;letter-spacing:.08em">Updated</div>
-              <div style="margin-top:8px;font-size:18px;font-weight:700">${escapeHtml(updatedAt)}</div>
-            </div>
-          </div>
+          <div style="margin-top:20px;border-radius:14px;background:#ffffff;color:#111827;padding:20px">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;font-family:${EMAIL_FONT_STACK}">
+              <tr>
+                <td valign="top" width="50%" style="padding-right:12px">
+                  <div style="font-size:12px;line-height:16px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:900">Action required</div>
+                  <div style="margin-top:5px;font-size:46px;line-height:50px;color:#111827;font-weight:900;font-family:${EMAIL_FONT_STACK}">${escapeHtml(formatCount(actionRequiredCount))}</div>
+                  <div style="margin-top:3px;font-size:13px;line-height:18px;color:#64748b">items to review</div>
+                </td>
+                <td valign="top" width="50%" style="padding-left:12px">
+                  <div style="font-size:12px;line-height:16px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:900">Spending</div>
+                  <div style="margin-top:10px;font-size:32px;line-height:36px;color:#111827;font-weight:900;font-family:${EMAIL_FONT_STACK}">${escapeHtml(formatCurrency(stats.totalSpend))}</div>
+                  <div style="margin-top:4px;font-size:13px;line-height:18px;color:#64748b">assigned so far</div>
+                </td>
+              </tr>
+            </table>
 
-          <div style="margin-top:24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
-            <a
-              href="${escapeHtml(appUrl)}"
-              style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700"
-            >
-              Open Westpac CC Tracker
-            </a>
+            <div style="margin-top:18px;height:1px;line-height:1px;background:#e5e7eb">&nbsp;</div>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;font-family:${EMAIL_FONT_STACK}">
+              ${breakdownRows
+                .map(
+                  (row, index) => `
+                    <tr>
+                      <td style="padding:${index === 0 ? '16px 0 13px 0' : '13px 0'};border-bottom:${index === breakdownRows.length - 1 ? '0' : '1px solid #e5e7eb'}">
+                        <div style="font-size:15px;line-height:20px;color:#111827;font-weight:800">${escapeHtml(row.label)}</div>
+                        <div style="margin-top:2px;font-size:12px;line-height:17px;color:#6b7280">${escapeHtml(row.detail)}</div>
+                      </td>
+                      <td align="right" style="padding:${index === 0 ? '16px 0 13px 0' : '13px 0'};border-bottom:${index === breakdownRows.length - 1 ? '0' : '1px solid #e5e7eb'};color:${row.color};font-size:24px;line-height:28px;font-weight:900;font-family:${EMAIL_FONT_STACK}">${escapeHtml(row.value)}</td>
+                    </tr>
+                  `
+                )
+                .join('')}
+            </table>
+
+            <div style="margin-top:20px">
+              <a
+                href="${escapeHtml(appUrl)}"
+                style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:999px;padding:12px 18px;font-size:14px;line-height:18px;font-weight:800;font-family:${EMAIL_FONT_STACK}"
+              >
+                Open Westpac Tracker
+              </a>
+            </div>
           </div>
         </div>
       </div>

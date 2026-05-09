@@ -1534,7 +1534,7 @@ export default function AdminUploadPage() {
                 const reviewStats = getReviewSummaryStats(manualReview, duplicateDetection);
 
                 return (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className={`grid grid-cols-2 ${reviewStats.flagged > 0 ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
                 <div className="bg-slate-900 rounded p-3 text-center">
                   <p className="text-2xl font-bold text-blue-400">{reviewStats.total}</p>
                   <p className="text-xs text-slate-400">Total Extracted</p>
@@ -1551,12 +1551,14 @@ export default function AdminUploadPage() {
                   </p>
                   <p className="text-xs text-slate-400">Duplicates</p>
                 </div>
-                <div className="bg-slate-900 rounded p-3 text-center">
-                  <p className="text-2xl font-bold text-yellow-400">
-                    {reviewStats.flagged}
-                  </p>
-                  <p className="text-xs text-slate-400">Flagged</p>
-                </div>
+                {reviewStats.flagged > 0 ? (
+                  <div className="bg-slate-900 rounded p-3 text-center">
+                    <p className="text-2xl font-bold text-yellow-400">
+                      {reviewStats.flagged}
+                    </p>
+                    <p className="text-xs text-slate-400">Flagged</p>
+                  </div>
+                ) : null}
               </div>
                 );
               })()}
@@ -1600,7 +1602,7 @@ export default function AdminUploadPage() {
             </div>
 
             {duplicateDetection && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
                 <div className="bg-slate-900 rounded p-3 text-center">
                   <p className="text-2xl font-bold text-blue-400">{duplicateDetection.summary.total}</p>
                   <p className="text-xs text-slate-400">Total Extracted</p>
@@ -1616,12 +1618,6 @@ export default function AdminUploadPage() {
                     {duplicateDetection.summary.duplicateGroups}
                   </p>
                   <p className="text-xs text-slate-400">Duplicates</p>
-                </div>
-                <div className="bg-slate-900 rounded p-3 text-center">
-                  <p className="text-2xl font-bold text-yellow-400">
-                    0
-                  </p>
-                  <p className="text-xs text-slate-400">Flagged</p>
                 </div>
               </div>
             )}

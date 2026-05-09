@@ -36,14 +36,15 @@ function getConfidenceClass(level) {
 }
 
 function getReviewPriority(item) {
-  if (item?.reason === 'flagged_for_review') return 0;
+  if (item?.reason === 'ready_to_import') return 0;
+  if (item?.reason === 'flagged_for_review') return 1;
   if (
     item?.reason === 'already_exists_overlap' ||
     item?.reason === 'already_exists_pending_carry_forward' ||
     item?.reason === 'already_processed'
-  ) return 1;
-  if (item?.reason === 'duplicate_in_upload') return 2;
-  return 3;
+  ) return 2;
+  if (item?.reason === 'duplicate_in_upload') return 3;
+  return 4;
 }
 
 export default function TransactionSelectionReview({

@@ -1,5 +1,6 @@
 ﻿import React, {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -22,10 +23,7 @@ import {
 } from '../utils/simulationDate';
 import { ensureAnonymousAuth } from '../utils/firebaseAuth';
 import {
-  buildAssigneeTotal,
-  buildTransactionSections,
-  buildUserTallies,
-  countVisibleTransactions,
+  buildDashboardMetrics,
   formatShortDate,
   normalizeFirebaseTransaction,
 } from '../utils/creditCardAppData';
@@ -73,12 +71,26 @@ const APP_VERSION = '5.7';
 const VERSION_KEY = 'cc_version';
 const ASSIGNMENT_COMMENT_MAX_LENGTH = 180;
 const ASSIGNMENT_NOTE_DRAFTS_KEY = 'cc_v5_assignment_note_drafts';
+const COMMENTS_FIREBASE_DELAY_MS = 3500;
+const PRESENCE_FIREBASE_DELAY_MS = 6500;
+const PET_FIREBASE_DELAY_MS = 12000;
+const STARTUP_STORAGE_WRITE_DELAY_MS = 12000;
+const NON_CRITICAL_IDLE_TIMEOUT_MS = 6000;
 const SPRITE_PET = {
   width: 208,
   height: 229,
   frameDuration: 500,
   frames: ['/sprite/1.png', '/sprite/2.png', '/sprite/3.png'],
 };
+const DASHBOARD_ASSIGNEES = ['Macquarie', 'Macqbill'];
+const EMPTY_RECORD = Object.freeze({});
+const EMPTY_DASHBOARD_METRICS = Object.freeze({
+  sections: Object.freeze([]),
+  anyVisible: false,
+  remainingByUser: Object.freeze({}),
+  userTallies: Object.freeze({}),
+  assigneeTotals: Object.freeze({}),
+});
 
 const DEMO_DAYS = {
   '0': [
@@ -248,6 +260,100 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function getNextMinuteRefreshDelay(nowMs = Date.now()) {
+  return Math.max(1000, 60000 - (nowMs % 60000) + 50);
+}
+
+function getNextDateRefreshDelay(now = new Date()) {
+  const nextDate = new Date(now);
+  nextDate.setHours(24, 0, 1, 0);
+  return Math.max(1000, nextDate.getTime() - now.getTime());
+}
+
+function useMinuteNow() {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    let timer = null;
+
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        setNowMs(Date.now());
+        schedule();
+      }, getNextMinuteRefreshDelay());
+    };
+
+    schedule();
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return useMemo(() => new Date(nowMs), [nowMs]);
+}
+
+function useDateAnchorNow() {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    let timer = null;
+
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        setNowMs(Date.now());
+        schedule();
+      }, getNextDateRefreshDelay());
+    };
+
+    schedule();
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return useMemo(() => new Date(nowMs), [nowMs]);
+}
+
+function scheduleIdleTask(callback, timeoutMs = NON_CRITICAL_IDLE_TIMEOUT_MS) {
+  if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+    const taskId = window.requestIdleCallback(callback, { timeout: timeoutMs });
+    return () => window.cancelIdleCallback?.(taskId);
+  }
+
+  const timer = window.setTimeout(callback, 0);
+  return () => window.clearTimeout(timer);
+}
+
+function useIdleDelayedReady(
+  enabled,
+  delayMs,
+  resetToken = '',
+  idleTimeoutMs = NON_CRITICAL_IDLE_TIMEOUT_MS
+) {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) {
+      setReady(false);
+      return undefined;
+    }
+
+    setReady(false);
+    let cancelled = false;
+    let cancelIdleTask = null;
+
+    const timer = window.setTimeout(() => {
+      cancelIdleTask = scheduleIdleTask(() => {
+        if (!cancelled) setReady(true);
+      }, idleTimeoutMs);
+    }, delayMs);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      cancelIdleTask?.();
+    };
+  }, [delayMs, enabled, idleTimeoutMs, resetToken]);
+
+  return ready;
+}
+
 function normalizePetProfilesMap(rawProfiles, dateKey) {
   if (!rawProfiles || typeof rawProfiles !== 'object') return {};
   return Object.fromEntries(
@@ -262,6 +368,44 @@ function getMissionProgressTotal(profile) {
     (total, mission) => total + Math.max(0, Number(mission?.progress || 0)),
     0
   );
+}
+
+function getPetMissionSignature(mission) {
+  if (!mission || typeof mission !== 'object') return '';
+  return [
+    mission.id || '',
+    mission.type || '',
+    Number(mission.progress || 0),
+    Number(mission.target || 0),
+    mission.completed ? 1 : 0,
+    mission.resetKey || '',
+  ].join(':');
+}
+
+function getPetProfileSignature(rawProfile, dateKey) {
+  if (!rawProfile || typeof rawProfile !== 'object') return '';
+  const profile = normalizePetState(rawProfile, dateKey);
+  return [
+    Number(profile.coins || 0),
+    Number(profile.food || 0),
+    Number(profile.hp || 0),
+    Number(profile.xp || 0),
+    profile.petType || '',
+    Number(profile.streak || 0),
+    profile.lastStreakDate || '',
+    profile.mood || '',
+    profile.lastFedDate || '',
+    profile.lastHpDecayDate || '',
+    (profile.missions || []).map(getPetMissionSignature).join(','),
+  ].join('|');
+}
+
+function getPetProfilesMapSignature(rawProfiles, dateKey) {
+  return Object.entries(rawProfiles || {})
+    .filter(([user]) => USERS.includes(user))
+    .sort(([leftUser], [rightUser]) => leftUser.localeCompare(rightUser))
+    .map(([user, profile]) => `${user}=${getPetProfileSignature(profile, dateKey)}`)
+    .join(';');
 }
 
 function comparePetProfiles(leftRaw, rightRaw, dateKey) {
@@ -339,6 +483,51 @@ function SwitchOverlay({ currentUser, onSelect, onClose }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function LiveClockMeta({ day, dayLabel }) {
+  const now = useMinuteNow();
+  const simulatedNow = useMemo(() => getSimulatedNow(now, day), [now, day]);
+  const visibleNowLabel = useMemo(
+    () =>
+      simulatedNow.toLocaleTimeString('en-AU', {
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
+    [simulatedNow]
+  );
+  const visibleDateLabel = useMemo(
+    () =>
+      simulatedNow.toLocaleDateString('en-AU', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+    [simulatedNow]
+  );
+
+  return (
+    <div className="top-meta-main">
+      <span className="meta-chip">
+        <strong>{visibleNowLabel}</strong>
+      </span>
+      <span className="meta-chip">{visibleDateLabel}</span>
+      <span className="meta-chip">Melbourne {dayLabel}</span>
+    </div>
+  );
+}
+
+function DevClockPanel({ day, dayLabel }) {
+  const now = useMinuteNow();
+  const liveDateTimeLabel = useMemo(() => formatLocalDateTime(getSimulatedNow(now, day)), [now, day]);
+
+  return (
+    <div className="clock-panel">
+      <span className="day-display">{liveDateTimeLabel}</span>
+      <span className="clock-note">Melbourne {dayLabel}</span>
     </div>
   );
 }
@@ -648,7 +837,15 @@ function AssignmentNotePopover({
   );
 }
 
-function TransactionCard({ tx, sub, comments, currentUser, referenceDateKey, onAssign, onSaveComment }) {
+const TransactionCard = React.memo(function TransactionCard({
+  tx,
+  sub,
+  comments,
+  currentUser,
+  referenceDateKey,
+  onAssign,
+  onSaveComment,
+}) {
   const otherUser = getOtherUser(currentUser);
   const mySub = getSurfacedSubmissionValue(sub, currentUser, referenceDateKey);
   const otherSub = getSurfacedSubmissionValue(sub, otherUser, referenceDateKey);
@@ -917,9 +1114,9 @@ function TransactionCard({ tx, sub, comments, currentUser, referenceDateKey, onA
       />
     </AssignmentSwipeActions>
   );
-}
+});
 
-function PetBar({
+const PetBar = React.memo(function PetBar({
   hp,
   coins,
   food,
@@ -1020,7 +1217,7 @@ function PetBar({
       </div>
     </>
   );
-}
+});
 
 const PET_THEMES = {
   classic: {
@@ -1403,7 +1600,7 @@ function PetCanvas({ petType = 'classic', scalePercent = 25, spriteMetrics }) {
   return <canvas ref={ref} />;
 }
 
-function TxGroup({
+const TxGroup = React.memo(function TxGroup({
   title,
   date,
   dayKey,
@@ -1429,8 +1626,8 @@ function TxGroup({
         <TransactionCard
           key={tx.id}
           tx={tx}
-          sub={submissions[tx.id] || {}}
-          comments={assignmentComments[tx.id] || {}}
+          sub={submissions[tx.id] || EMPTY_RECORD}
+          comments={assignmentComments[tx.id] || EMPTY_RECORD}
           currentUser={currentUser}
           referenceDateKey={referenceDateKey}
           onAssign={onAssign}
@@ -1439,7 +1636,7 @@ function TxGroup({
       ))}
     </div>
   );
-}
+});
 
 function AllDone({ msg }) {
   return (
@@ -1583,7 +1780,6 @@ export default function CreditCardApp() {
   const [coinPops, setCoinPops] = useState([]);
   const [levelUpMsg, setLevelUpMsg] = useState(null);
   const [day, setDay] = useState(() => getSavedSimulatedDay());
-  const [clockTick, setClockTick] = useState(() => Date.now());
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState({});
@@ -1602,6 +1798,33 @@ export default function CreditCardApp() {
   const remotePetProfilesRef = useRef({});
   const petProfilesRemoteReadyRef = useRef(false);
   const petBootstrapCompleteRef = useRef(false);
+  const lastStoredSubmissionsRef = useRef(null);
+  const lastStoredPetProfilesRef = useRef(null);
+  const commentsFirebaseReady = useIdleDelayedReady(
+    authReady && Boolean(currentUser),
+    COMMENTS_FIREBASE_DELAY_MS,
+    currentUser || ''
+  );
+  const presenceFirebaseReady = useIdleDelayedReady(
+    authReady && Boolean(currentUser),
+    PRESENCE_FIREBASE_DELAY_MS,
+    currentUser || ''
+  );
+  const petFirebaseReady = useIdleDelayedReady(
+    authReady && Boolean(currentUser),
+    PET_FIREBASE_DELAY_MS,
+    currentUser || ''
+  );
+  const submissionsStorageWriteReady = useIdleDelayedReady(
+    submissionsHydrated,
+    STARTUP_STORAGE_WRITE_DELAY_MS,
+    currentUser || ''
+  );
+  const petStorageWriteReady = useIdleDelayedReady(
+    petProfilesHydrated,
+    STARTUP_STORAGE_WRITE_DELAY_MS,
+    currentUser || ''
+  );
 
   const requestProtectedAdminAction = (request) => {
     if (hasStoredAdminAccess()) {
@@ -1639,11 +1862,11 @@ export default function CreditCardApp() {
     });
   };
 
-  const appendQuestDebugLog = (label, details = {}) => {
+  const appendQuestDebugLog = useCallback((label, details = {}) => {
     const timestamp = new Date().toISOString();
     const entry = `${timestamp} | ${label} | ${JSON.stringify(details)}`;
     setQuestDebugLog((prev) => [...prev.slice(-79), entry]);
-  };
+  }, []);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -1666,6 +1889,7 @@ export default function CreditCardApp() {
     if (!forceLanding && savedUser) setCurrentUser(savedUser);
     if (savedSubs) {
       try {
+        lastStoredSubmissionsRef.current = savedSubs;
         setSubmissions(JSON.parse(savedSubs));
       } catch {
         setSubmissions({});
@@ -1675,9 +1899,17 @@ export default function CreditCardApp() {
   }, []);
 
   useEffect(() => {
-    if (!submissionsHydrated) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions));
-  }, [submissions, submissionsHydrated]);
+    if (!submissionsHydrated || !submissionsStorageWriteReady) return;
+
+    try {
+      const serialized = JSON.stringify(submissions);
+      if (serialized === lastStoredSubmissionsRef.current) return;
+      localStorage.setItem(STORAGE_KEY, serialized);
+      lastStoredSubmissionsRef.current = serialized;
+    } catch (error) {
+      console.warn('Failed to persist submissions to localStorage:', error);
+    }
+  }, [submissions, submissionsHydrated, submissionsStorageWriteReady]);
 
   useEffect(() => {
     setSavedSimulatedDay(day);
@@ -1744,12 +1976,8 @@ export default function CreditCardApp() {
     return () => unsubscribe();
   }, [authReady]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setClockTick(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const simulatedNow = useMemo(() => getSimulatedNow(new Date(clockTick), day), [clockTick, day]);
+  const dateAnchorNow = useDateAnchorNow();
+  const simulatedNow = useMemo(() => getSimulatedNow(dateAnchorNow, day), [dateAnchorNow, day]);
   const referenceDateKey = useMemo(() => formatLocalDate(simulatedNow), [simulatedNow]);
 
   useEffect(() => {
@@ -1760,6 +1988,7 @@ export default function CreditCardApp() {
     try {
       const raw = localStorage.getItem(PET_STORAGE_KEY);
       if (!raw) return;
+      lastStoredPetProfilesRef.current = raw;
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
         const todayKey = formatLocalDate(getSimulatedNow());
@@ -1777,11 +2006,23 @@ export default function CreditCardApp() {
   useEffect(() => {
     if (!petProfilesHydrated) return;
     localPetProfilesRef.current = petProfiles;
-    localStorage.setItem(PET_STORAGE_KEY, JSON.stringify(petProfiles));
   }, [petProfiles, petProfilesHydrated]);
 
   useEffect(() => {
-    if (!authReady) {
+    if (!petProfilesHydrated || !petStorageWriteReady) return;
+
+    try {
+      const serialized = JSON.stringify(petProfiles);
+      if (serialized === lastStoredPetProfilesRef.current) return;
+      localStorage.setItem(PET_STORAGE_KEY, serialized);
+      lastStoredPetProfilesRef.current = serialized;
+    } catch (error) {
+      console.warn('Failed to persist pet state to localStorage:', error);
+    }
+  }, [petProfiles, petProfilesHydrated, petStorageWriteReady]);
+
+  useEffect(() => {
+    if (!petFirebaseReady) {
       petProfilesRemoteReadyRef.current = false;
       setPetProfilesRemoteReady(false);
       return undefined;
@@ -1842,13 +2083,17 @@ export default function CreditCardApp() {
             petBootstrapCompleteRef.current = true;
           }
 
-          setPetProfiles((prev) => {
-            const prevJson = JSON.stringify(prev);
-            const nextJson = JSON.stringify(mergedProfiles);
-            return prevJson === nextJson ? prev : mergedProfiles;
-          });
+          setPetProfiles((prev) =>
+            getPetProfilesMapSignature(prev, referenceDateKey) ===
+            getPetProfilesMapSignature(mergedProfiles, referenceDateKey)
+              ? prev
+              : mergedProfiles
+          );
 
-          if (JSON.stringify(remoteProfiles) !== JSON.stringify(mergedProfiles)) {
+          if (
+            getPetProfilesMapSignature(remoteProfiles, referenceDateKey) !==
+            getPetProfilesMapSignature(mergedProfiles, referenceDateKey)
+          ) {
             remotePetProfilesRef.current = mergedProfiles;
             set(petProfilesRef, mergedProfiles).catch((error) => {
               console.error('Failed to sync pet profiles to Firebase:', error);
@@ -1868,10 +2113,15 @@ export default function CreditCardApp() {
     );
 
     return () => unsubscribe();
-  }, [authReady, referenceDateKey]);
+  }, [petFirebaseReady, referenceDateKey]);
 
   useEffect(() => {
-    if (!authReady || !petProfilesHydrated || !petProfilesRemoteReady || !petProfilesRemoteReadyRef.current) return;
+    if (
+      !petFirebaseReady ||
+      !petProfilesHydrated ||
+      !petProfilesRemoteReady ||
+      !petProfilesRemoteReadyRef.current
+    ) return;
 
     const normalizedProfiles = normalizePetProfilesMap(petProfiles, referenceDateKey);
     const updates = {};
@@ -1881,7 +2131,10 @@ export default function CreditCardApp() {
       if (!profile) return;
 
       const remoteProfile = remotePetProfilesRef.current?.[user];
-      if (JSON.stringify(profile) !== JSON.stringify(remoteProfile)) {
+      if (
+        getPetProfileSignature(profile, referenceDateKey) !==
+        getPetProfileSignature(remoteProfile, referenceDateKey)
+      ) {
         updates[user] = profile;
       }
     });
@@ -1899,7 +2152,7 @@ export default function CreditCardApp() {
       console.error('Failed to persist pet profile changes to Firebase:', error);
       remotePetProfilesRef.current = previousRemoteProfiles;
     });
-  }, [authReady, petProfiles, petProfilesHydrated, petProfilesRemoteReady, referenceDateKey]);
+  }, [petFirebaseReady, petProfiles, petProfilesHydrated, petProfilesRemoteReady, referenceDateKey]);
 
   const usingFirebaseTransactions = Array.isArray(firebaseTransactions);
   const sourceTransactions = useMemo(
@@ -1910,29 +2163,10 @@ export default function CreditCardApp() {
     () => Object.fromEntries((sourceTransactions || []).map((tx) => [tx.id, tx])),
     [sourceTransactions]
   );
-  const liveDateTimeLabel = useMemo(() => formatLocalDateTime(simulatedNow), [simulatedNow]);
   const otherUser = currentUser ? getOtherUser(currentUser) : USERS[0];
   const dayLabel = day === 0 ? 'live' : `+${day} day${day === 1 ? '' : 's'}`;
-  const visibleNowLabel = useMemo(
-    () =>
-      simulatedNow.toLocaleTimeString('en-AU', {
-        hour: 'numeric',
-        minute: '2-digit',
-      }),
-    [simulatedNow]
-  );
-  const visibleDateLabel = useMemo(
-    () =>
-      simulatedNow.toLocaleDateString('en-AU', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }),
-    [simulatedNow]
-  );
 
-  const syncPetProfilesForDate = (dateKey, reason = 'sync_pet_profiles') => {
+  const syncPetProfilesForDate = useCallback((dateKey, reason = 'sync_pet_profiles') => {
     if (!currentUser) return;
     setPetProfiles((prev) => {
       const next = { ...prev };
@@ -1940,7 +2174,7 @@ export default function CreditCardApp() {
 
       Object.entries(prev).forEach(([user, state]) => {
         const normalized = normalizePetState(state, dateKey);
-        if (JSON.stringify(state) !== JSON.stringify(normalized)) {
+        if (getPetProfileSignature(state, dateKey) !== getPetProfileSignature(normalized, dateKey)) {
           next[user] = normalized;
           changed = true;
         }
@@ -1963,11 +2197,11 @@ export default function CreditCardApp() {
     });
     setLevelUpMsg(null);
     petLevelReadyRef.current = false;
-  };
+  }, [appendQuestDebugLog, currentUser]);
 
   useEffect(() => {
     syncPetProfilesForDate(referenceDateKey, 'reference_date_changed');
-  }, [currentUser, referenceDateKey]);
+  }, [referenceDateKey, syncPetProfilesForDate]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -2013,18 +2247,8 @@ export default function CreditCardApp() {
   const appBottomPadding = Math.max(112, petFooterHeight + 64);
 
   useEffect(() => {
-    const missionSummary = missions.map((mission) => ({
-      id: mission.id,
-      resetKey: mission.resetKey,
-      progress: mission.progress,
-      target: mission.target,
-    }));
-    const snapshot = JSON.stringify({
-      day,
-      currentUser,
-      referenceDateKey,
-      missionSummary,
-    });
+    const missionSummary = missions.map((mission) => getPetMissionSignature(mission));
+    const snapshot = [day, currentUser || '', referenceDateKey, missionSummary.join(',')].join('|');
 
     if (snapshot === lastQuestSnapshotRef.current) return;
     lastQuestSnapshotRef.current = snapshot;
@@ -2032,7 +2256,12 @@ export default function CreditCardApp() {
       day,
       currentUser,
       referenceDateKey,
-      missionSummary,
+      missionSummary: missions.map((mission) => ({
+        id: mission.id,
+        resetKey: mission.resetKey,
+        progress: mission.progress,
+        target: mission.target,
+      })),
     });
   }, [day, currentUser, referenceDateKey, missions]);
 
@@ -2055,7 +2284,7 @@ export default function CreditCardApp() {
     return () => window.clearTimeout(timer);
   }, [petLevel]);
 
-  const updateActivePet = (updater) => {
+  const updateActivePet = useCallback((updater) => {
     if (!currentUser) return;
     setPetProfiles((prev) => {
       const current = normalizePetState(prev[currentUser] || null, referenceDateKey);
@@ -2065,9 +2294,9 @@ export default function CreditCardApp() {
         [currentUser]: normalizePetState(nextPet, referenceDateKey),
       };
     });
-  };
+  }, [currentUser, referenceDateKey]);
 
-  const addCoinPop = (event) => {
+  const addCoinPop = useCallback((event) => {
     if (!event?.currentTarget) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const id = `${Date.now()}-${Math.random()}`;
@@ -2082,7 +2311,7 @@ export default function CreditCardApp() {
     window.setTimeout(() => {
       setCoinPops((prev) => prev.filter((pop) => pop.id !== id));
     }, 850);
-  };
+  }, []);
 
   const { assignmentError, handleAssign, undo, undoStack, setUndoStack } = useTransactionAssignments({
     currentUser,
@@ -2096,7 +2325,7 @@ export default function CreditCardApp() {
     addCoinPop,
   });
 
-  const saveAssignmentComment = async (txId, user, comment, currentSubmission = null) => {
+  const saveAssignmentComment = useCallback(async (txId, user, comment, currentSubmission = null) => {
     if (!txId || !user) return;
 
     const payload = buildSharedAssignmentCommentPayload({
@@ -2153,9 +2382,9 @@ export default function CreditCardApp() {
     } catch (error) {
       console.error('Failed to sync assignment note:', error);
     }
-  };
+  }, [referenceDateKey]);
 
-  const buyFood = () => {
+  const buyFood = useCallback(() => {
     updateActivePet((pet) => {
       if (pet.coins < 1) return pet;
       return applyPetActionProgress(
@@ -2170,9 +2399,9 @@ export default function CreditCardApp() {
         }
       ).pet;
     });
-  };
+  }, [referenceDateKey, updateActivePet]);
 
-  const feedPet = () => {
+  const feedPet = useCallback(() => {
     updateActivePet((pet) => {
       if (pet.food < 1) return pet;
       const feedMood = derivePetMood(pet, referenceDateKey);
@@ -2184,9 +2413,9 @@ export default function CreditCardApp() {
         xpGain: feedGain.xp,
       }).pet;
     });
-  };
+  }, [referenceDateKey, updateActivePet]);
 
-  const resetActivePetQuests = () => {
+  const resetActivePetQuests = useCallback(() => {
     if (!currentUser) return;
     updateActivePet((pet) => {
       const fresh = normalizePetState(null, referenceDateKey);
@@ -2201,7 +2430,9 @@ export default function CreditCardApp() {
         missions: fresh.missions,
       };
     });
-  };
+  }, [appendQuestDebugLog, currentUser, day, referenceDateKey, updateActivePet]);
+
+  const togglePetMissions = useCallback(() => setShowPetMissions((value) => !value), []);
 
   useEffect(() => {
     if (!authReady) return;
@@ -2220,7 +2451,7 @@ export default function CreditCardApp() {
   }, [authReady]);
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!commentsFirebaseReady) return;
     const commentsRef = ref(db, ASSIGNMENT_COMMENTS_ROOT);
     const unsubscribe = onValue(
       commentsRef,
@@ -2233,10 +2464,10 @@ export default function CreditCardApp() {
     );
 
     return () => unsubscribe();
-  }, [authReady]);
+  }, [commentsFirebaseReady]);
 
   useEffect(() => {
-    if (!authReady) return undefined;
+    if (!presenceFirebaseReady) return undefined;
 
     const presenceRootRef = ref(db, PRESENCE_ROOT);
     const refreshOnlineUsers = (snapshot) => {
@@ -2266,10 +2497,10 @@ export default function CreditCardApp() {
     );
 
     return () => unsubscribe();
-  }, [authReady]);
+  }, [presenceFirebaseReady]);
 
   useEffect(() => {
-    if (!authReady) return undefined;
+    if (!presenceFirebaseReady) return undefined;
 
     if (!presenceTabIdRef.current) {
       const savedTabId = sessionStorage.getItem('cc_v5_presence_tab');
@@ -2315,27 +2546,28 @@ export default function CreditCardApp() {
         // ignore cleanup errors
       });
     };
-  }, [authReady, currentUser]);
+  }, [presenceFirebaseReady, currentUser]);
 
-  const firebaseSections = useMemo(
+  const dashboardMetrics = useMemo(
     () =>
       usingFirebaseTransactions
-        ? buildTransactionSections({
+        ? buildDashboardMetrics({
             transactions: firebaseTransactions,
             submissions,
             currentUser,
+            users: USERS,
             referenceDateKey,
             simulatedNow,
+            assignees: DASHBOARD_ASSIGNEES,
           })
-        : [],
+        : EMPTY_DASHBOARD_METRICS,
     [usingFirebaseTransactions, firebaseTransactions, submissions, currentUser, referenceDateKey, simulatedNow]
   );
 
   const authLoading = currentUser && !authReady && !authError;
 
-  const sections = firebaseSections;
-  const visibleTxs = sections.flatMap((section) => section.txs);
-  const anyVisible = visibleTxs.length > 0;
+  const sections = dashboardMetrics.sections;
+  const anyVisible = dashboardMetrics.anyVisible;
 
   useEffect(() => {
     if (!currentUser) return;
@@ -2349,64 +2581,46 @@ export default function CreditCardApp() {
     }
   }, [anyVisible, currentUser]);
 
-  const myRemaining = useMemo(
-    () => countVisibleTransactions(sourceTransactions, submissions, currentUser, referenceDateKey),
-    [sourceTransactions, submissions, currentUser, referenceDateKey]
-  );
-  const otherRemaining = useMemo(
-    () => countVisibleTransactions(sourceTransactions, submissions, otherUser, referenceDateKey),
-    [sourceTransactions, submissions, otherUser, referenceDateKey]
-  );
-
-  const userTallies = useMemo(
-    () => buildUserTallies(USERS, submissions, transactionsById, referenceDateKey),
-    [submissions, transactionsById, referenceDateKey]
-  );
-
-  const tallyBreakdowns = useMemo(
-    () =>
-      Object.fromEntries(
-        USERS.map((user) => [user, getTallyBreakdownEntries(submissions, transactionsById, user, referenceDateKey)])
-      ),
-    [submissions, transactionsById, referenceDateKey]
-  );
-
-  const macTally = useMemo(
-    () => buildAssigneeTotal(submissions, transactionsById, 'Macquarie', referenceDateKey),
-    [submissions, transactionsById, referenceDateKey]
-  );
+  const myRemaining = dashboardMetrics.remainingByUser[currentUser] || 0;
+  const otherRemaining = dashboardMetrics.remainingByUser[otherUser] || 0;
+  const userTallies = dashboardMetrics.userTallies;
+  const macTally = dashboardMetrics.assigneeTotals.Macquarie || 0;
   const macquarieExcessShares = useMemo(
     () => buildMacquarieExcessShares(USERS, macTally),
     [macTally]
   );
-  const macqbillTally = useMemo(
-    () => buildAssigneeTotal(submissions, transactionsById, 'Macqbill', referenceDateKey),
-    [submissions, transactionsById, referenceDateKey]
+  const macqbillTally = dashboardMetrics.assigneeTotals.Macqbill || 0;
+  const activeTallyBreakdownItems = useMemo(
+    () =>
+      breakdownUser
+        ? getTallyBreakdownEntries(submissions, transactionsById, breakdownUser, referenceDateKey, USERS)
+        : [],
+    [breakdownUser, submissions, transactionsById, referenceDateKey]
   );
 
-  const stepDay = () =>
-    {
-      const nextDay = day + 1;
-      const nextDateKey = formatLocalDate(getSimulatedNow(new Date(clockTick), nextDay));
-      appendQuestDebugLog('step_day_clicked', {
-        previousDay: day,
+  const stepDay = useCallback(() => {
+    const nextDay = day + 1;
+    const nextDateKey = formatLocalDate(getSimulatedNow(new Date(), nextDay));
+    appendQuestDebugLog('step_day_clicked', {
+      previousDay: day,
+      nextDay,
+      referenceDateKey,
+      nextDateKey,
+    });
+    syncPetProfilesForDate(nextDateKey, 'step_day_sync_pet_profiles');
+    setSavedSimulatedDay(nextDay);
+    setDay(nextDay);
+    set(ref(db, SHARED_DAY_OFFSET_KEY), nextDay).catch((err) => {
+      console.error('Failed to update shared simulated day:', err);
+      appendQuestDebugLog('step_day_write_failed', {
         nextDay,
-        referenceDateKey,
-        nextDateKey,
+        message: err?.message || String(err),
       });
-      syncPetProfilesForDate(nextDateKey, 'step_day_sync_pet_profiles');
-      setSavedSimulatedDay(nextDay);
-      setDay(nextDay);
-      set(ref(db, SHARED_DAY_OFFSET_KEY), nextDay).catch((err) => {
-        console.error('Failed to update shared simulated day:', err);
-        appendQuestDebugLog('step_day_write_failed', {
-          nextDay,
-          message: err?.message || String(err),
-        });
-      });
-    };
-  const resetDay = () => {
-    const resetDateKey = formatLocalDate(getSimulatedNow(new Date(clockTick), 0));
+    });
+  }, [appendQuestDebugLog, day, referenceDateKey, syncPetProfilesForDate]);
+
+  const resetDay = useCallback(() => {
+    const resetDateKey = formatLocalDate(getSimulatedNow(new Date(), 0));
     appendQuestDebugLog('reset_day_clicked', {
       previousDay: day,
       referenceDateKey,
@@ -2421,7 +2635,7 @@ export default function CreditCardApp() {
         message: err?.message || String(err),
       });
     });
-  };
+  }, [appendQuestDebugLog, day, referenceDateKey, syncPetProfilesForDate]);
 
   const copyQuestDebugLog = async () => {
     const payload = [
@@ -2470,6 +2684,8 @@ export default function CreditCardApp() {
     setBreakdownUser(null);
     localPetProfilesRef.current = {};
     remotePetProfilesRef.current = {};
+    lastStoredSubmissionsRef.current = null;
+    lastStoredPetProfilesRef.current = null;
     petProfilesRemoteReadyRef.current = false;
     setPetProfiles({});
     setPetProfilesRemoteReady(false);
@@ -2555,13 +2771,7 @@ export default function CreditCardApp() {
       )}
 
       <div className="top-meta-bar">
-        <div className="top-meta-main">
-          <span className="meta-chip">
-            <strong>{visibleNowLabel}</strong>
-          </span>
-          <span className="meta-chip">{visibleDateLabel}</span>
-          <span className="meta-chip">Melbourne {dayLabel}</span>
-        </div>
+        <LiveClockMeta day={day} dayLabel={dayLabel} />
         <button className="debug-toggle" onClick={handleToolsToggle}>
           tools {showDevTools ? '\u25B2' : '\u25BC'}
         </button>
@@ -2571,10 +2781,7 @@ export default function CreditCardApp() {
         <div className="debug-tray">
           <div className="dev-banner">
             <span className="dev-label">dev</span>
-            <div className="clock-panel">
-              <span className="day-display">{liveDateTimeLabel}</span>
-              <span className="clock-note">Melbourne {dayLabel}</span>
-            </div>
+            <DevClockPanel day={day} dayLabel={dayLabel} />
             <button className="day-btn" onClick={stepDay}>
               next day +24h {'\u25B6'}
             </button>
@@ -2801,7 +3008,7 @@ export default function CreditCardApp() {
         <TallyBreakdownModal
           assignee={breakdownUser}
           total={userTallies[breakdownUser] || 0}
-          items={tallyBreakdowns[breakdownUser] || []}
+          items={activeTallyBreakdownItems}
           onClose={() => setBreakdownUser(null)}
         />
       )}
@@ -2819,7 +3026,7 @@ export default function CreditCardApp() {
         mood={mood}
         missions={missions}
         showMissions={showPetMissions}
-        onToggleMissions={() => setShowPetMissions((v) => !v)}
+        onToggleMissions={togglePetMissions}
         onBuyFood={buyFood}
         onFeedPet={feedPet}
         petType={petType}

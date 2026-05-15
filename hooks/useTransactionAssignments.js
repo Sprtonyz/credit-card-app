@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ref, set } from 'firebase/database';
 import { db } from '../config/firebase';
 import { applyPetActionProgress, normalizePetState } from '../utils/petProgression';
@@ -106,7 +106,7 @@ export function useTransactionAssignments({
   const [undoStack, setUndoStack] = useState([]);
   const [assignmentError, setAssignmentError] = useState(null);
 
-  const handleAssign = async (txId, value, event, comment) => {
+  const handleAssign = useCallback(async (txId, value, event, comment) => {
     if (!currentUser) return;
     setAssignmentError(null);
     const txSubmissions = submissions[txId] || {};
@@ -221,9 +221,18 @@ export function useTransactionAssignments({
         console.error('Assignment saved, but reward UI failed:', error);
       }
     }
-  };
+  }, [
+    addCoinPop,
+    currentUser,
+    day,
+    petProfiles,
+    referenceDateKey,
+    setSubmissions,
+    submissions,
+    updateActivePet,
+  ]);
 
-  const undo = async () => {
+  const undo = useCallback(async () => {
     const last = undoStack[undoStack.length - 1];
     if (!last) return;
     setUndoStack((prev) => prev.slice(0, -1));
@@ -260,7 +269,7 @@ export function useTransactionAssignments({
     } catch (error) {
       console.error('Failed to undo submission in Firebase:', error);
     }
-  };
+  }, [day, referenceDateKey, setPetProfiles, setSubmissions, undoStack]);
 
   return {
     assignmentError,

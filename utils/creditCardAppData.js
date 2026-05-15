@@ -132,9 +132,7 @@ export function buildTransactionSections({
   });
 
   datedKeys.forEach((dateKey) => {
-    const txs = (datedGroups[dateKey] || []).filter((transaction) =>
-      isVisibleForUser(transaction, submissions, currentUser, referenceDateKey)
-    );
+    const txs = datedGroups[dateKey] || [];
     if (txs.length === 0) return;
     sections.push({
       key: dateKey,
@@ -144,6 +142,113 @@ export function buildTransactionSections({
   });
 
   return sections;
+}
+
+export function buildDashboardMetrics({
+  transactions = [],
+  submissions = {},
+  currentUser,
+  users = [],
+  referenceDateKey,
+  simulatedNow,
+  assignees = [],
+}) {
+  const activeUsers = users.length ? users : [];
+  const remainingByUser = Object.fromEntries(activeUsers.map((user) => [user, 0]));
+  const pending = [];
+  const agedPendingGroups = {};
+  const datedGroups = {};
+
+  transactions.forEach((transaction) => {
+    activeUsers.forEach((user) => {
+      if (isVisibleForUser(transaction, submissions, user, referenceDateKey, activeUsers)) {
+        remainingByUser[user] += 1;
+      }
+    });
+
+    if (!isVisibleForUser(transaction, submissions, currentUser, referenceDateKey, activeUsers)) {
+      return;
+    }
+
+    const isPending = transaction.isPending || !transaction.date;
+    if (isPending) {
+      const pendingKey = getTransactionReferenceDateKey(transaction, referenceDateKey);
+      if (pendingKey === referenceDateKey) {
+        pending.push(transaction);
+      } else {
+        if (!agedPendingGroups[pendingKey]) agedPendingGroups[pendingKey] = [];
+        agedPendingGroups[pendingKey].push(transaction);
+      }
+      return;
+    }
+
+    const dateKey = transaction.date || 'undated';
+    if (!datedGroups[dateKey]) datedGroups[dateKey] = [];
+    datedGroups[dateKey].push(transaction);
+  });
+
+  const datedKeys = sortDateKeys(Object.keys(datedGroups));
+  const agedPendingKeys = sortDateKeys(Object.keys(agedPendingGroups));
+  const sections = [];
+
+  if (pending.length > 0) {
+    sections.push({
+      key: 'pending',
+      title: 'Pending',
+      date: '',
+      txs: pending,
+    });
+  }
+
+  agedPendingKeys.forEach((dateKey) => {
+    const txs = agedPendingGroups[dateKey] || [];
+    if (txs.length === 0) return;
+    sections.push({
+      key: `pending-${dateKey}`,
+      title: formatRelativeDayLabel(dateKey, simulatedNow),
+      txs,
+    });
+  });
+
+  datedKeys.forEach((dateKey) => {
+    const txs = datedGroups[dateKey] || [];
+    if (txs.length === 0) return;
+    sections.push({
+      key: dateKey,
+      title: formatRelativeDayLabel(dateKey, simulatedNow),
+      txs,
+    });
+  });
+
+  const transactionsById = Object.fromEntries((transactions || []).map((tx) => [tx.id, tx]));
+  const userTallies = Object.fromEntries(activeUsers.map((user) => [user, 0]));
+  const assigneeTotals = Object.fromEntries((assignees || []).map((assignee) => [assignee, 0]));
+  const tallyTargets = [...new Set([...activeUsers, ...(assignees || [])])];
+
+  Object.entries(submissions || {}).forEach(([transactionId, submission]) => {
+    const transaction = transactionsById[transactionId];
+    if (!transaction) return;
+
+    tallyTargets.forEach((target) => {
+      const contributionRatio = getAssigneeContributionRatio(submission, target, referenceDateKey, activeUsers);
+      if (contributionRatio <= 0) return;
+
+      const amount = Number(transaction.amount || 0) * contributionRatio;
+      if (activeUsers.includes(target)) {
+        userTallies[target] = (userTallies[target] || 0) + amount;
+      } else {
+        assigneeTotals[target] = (assigneeTotals[target] || 0) + amount;
+      }
+    });
+  });
+
+  return {
+    sections,
+    anyVisible: sections.some((section) => section.txs.length > 0),
+    remainingByUser,
+    userTallies,
+    assigneeTotals,
+  };
 }
 
 export function countVisibleTransactions(transactions, submissions, user, referenceDateKey) {

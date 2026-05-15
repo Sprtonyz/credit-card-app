@@ -1178,6 +1178,13 @@ export default function AdminUploadPage() {
           <div className="mt-3 inline-flex items-center rounded-full bg-slate-800/80 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-slate-300 border border-slate-700">
             synced import {ADMIN_UPLOAD_VERSION}
           </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link href="/admin/performance">
+              <a className="inline-flex items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/20">
+                App speed check
+              </a>
+            </Link>
+          </div>
         </div>
 
         {error && (

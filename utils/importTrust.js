@@ -23,6 +23,7 @@ function formatReasonCodeLabel(reasonCode) {
     already_processed: 'the already-imported screenshot check',
     duplicate_in_upload: 'the duplicate-in-upload check',
     already_exists_overlap: 'the existing-transaction check',
+    already_exists_recent: 'the recent-duplicate check',
     already_exists_pending_carry_forward: 'the pending carry-forward check',
     already_exists_yesterday: 'the pending-from-yesterday check',
   };
@@ -304,6 +305,16 @@ export function formatDecisionExplanation(decision = {}) {
       return `Skipped because a matching transaction already exists for ${date} (${merchant}, $${Number(existingMatch.amount || 0).toFixed(2)}).`;
     }
     return 'Skipped because a matching transaction already exists.';
+  }
+
+  if (reasonCode === 'already_exists_recent') {
+    if (existingMatch) {
+      const merchant = existingMatch.merchant ? toTitleCase(existingMatch.merchant) : 'an existing transaction';
+      const date = existingMatch.date || existingMatch.uploadedDay || 'a recent date';
+      return `Unchecked because a matching transaction occurred within the last 5 days of this row (${merchant}, $${Number(existingMatch.amount || 0).toFixed(2)} on ${date}).`;
+    }
+
+    return 'Unchecked because a matching transaction occurred within the last 5 days.';
   }
 
   if (reasonCode === 'already_exists_pending_carry_forward') {

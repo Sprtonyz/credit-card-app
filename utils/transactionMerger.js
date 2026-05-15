@@ -5,6 +5,7 @@ import {
   scoreTransactionConfidence,
   summarizeDecisionCounts,
 } from './importTrust';
+import { isCommonReoccurrenceTransaction } from './commonReoccurrence';
 import { findProcessedLogMatch, findProcessedRowMatch } from './importFingerprint';
 import { shiftDateKey } from './simulationDate';
 
@@ -18,7 +19,8 @@ const MERCHANT_STOP_WORDS = new Set([
   'in',
   'progress',
 ]);
-const RECENT_PENDING_DUPLICATE_DAYS = 3;
+const RECENT_DUPLICATE_DAYS = 5;
+const RECENT_PENDING_DUPLICATE_DAYS = 5;
 
 function normalizeText(value) {
   return String(value || '')
@@ -280,6 +282,41 @@ function findExistingMatch(newTx, existingTxs) {
   return bestMatch;
 }
 
+function findRecentDuplicateMatch(newTx, existingTxs, duplicateWindowDays = RECENT_DUPLICATE_DAYS) {
+  const newAmountKey = normalizeAmountKey(newTx.amount);
+  const newReferenceDate = getReferenceDateKey(newTx);
+  if (!newAmountKey || !newReferenceDate) return null;
+
+  let bestMatch = null;
+
+  existingTxs.forEach((existing) => {
+    const existingAmountKey = normalizeAmountKey(existing.amount);
+    if (!existingAmountKey || existingAmountKey !== newAmountKey) return;
+    if (!merchantLooksSame(newTx, existing)) return;
+
+    const existingReferenceDate = getReferenceDateKey(existing);
+    const dayDistance = getDateKeyDistance(newReferenceDate, existingReferenceDate);
+    if (dayDistance === null || dayDistance > duplicateWindowDays) return;
+
+    const exactMerchant = normalizeMerchantKey(newTx.merchant) === normalizeMerchantKey(existing.merchant);
+    const merchantSimilarity = calculateMerchantSimilarity(newTx.merchant, existing.merchant);
+    const score = merchantSimilarity + (exactMerchant ? 5 : 0) + Math.max(0, duplicateWindowDays - dayDistance);
+    const candidate = buildExistingMatch(existing, {
+      matchType: exactMerchant ? 'recent_duplicate' : 'recent_fuzzy_duplicate',
+      merchantSimilarity,
+      score,
+    });
+
+    candidate.dayDistance = dayDistance;
+
+    if (!bestMatch || candidate.score > bestMatch.score) {
+      bestMatch = candidate;
+    }
+  });
+
+  return bestMatch;
+}
+
 function findPendingCarryForwardMatch(newTx, existingTxs, usedPendingMatches) {
   if (!newTx?.isPending) return null;
 
@@ -339,7 +376,8 @@ function buildDecision(transaction, partialDecision) {
 export function mergeTransactions(
   newTransactions,
   existingTransactions = [],
-  processedLog = {}
+  processedLog = {},
+  options = {}
 ) {
   const toAdd = [];
   const skipped = [];
@@ -348,6 +386,7 @@ export function mergeTransactions(
   const today = getTodayDate();
   const batchKeys = new Set();
   const usedPendingMatches = new Map();
+  const commonReoccurrenceRules = options.commonReoccurrenceRules || [];
 
   for (const tx of newTransactions) {
     const txWithDate = {
@@ -368,6 +407,7 @@ export function mergeTransactions(
       };
     };
     const txKey = buildTransactionKey(txWithDate);
+    const isCommonReoccurrence = isCommonReoccurrenceTransaction(txWithDate, commonReoccurrenceRules);
 
     const processedMatch = findProcessedLogMatch(txWithDate, processedLog);
     if (processedMatch) {
@@ -486,117 +526,144 @@ export function mergeTransactions(
       }
     }
 
-    const pendingCarryForwardMatch = findPendingCarryForwardMatch(
-      txWithDate,
-      existingTransactions,
-      usedPendingMatches
-    );
-    if (pendingCarryForwardMatch) {
-      if (adminReviewApproved) {
-        markManualOverride('already_exists_pending_carry_forward', {
-          existingMatch: pendingCarryForwardMatch,
-        });
-      } else {
-        const decision = buildDecision(txWithDate, {
-          outcome: 'skipped',
-          reasonCode: 'already_exists_pending_carry_forward',
-          existingMatch: pendingCarryForwardMatch,
-        });
-        skipped.push({
-          transaction: txWithDate,
-          reason: 'already_exists_pending_carry_forward',
-          existingMatch: pendingCarryForwardMatch,
-          explanation: decision.explanation,
-          confidence: decision.confidence,
-          trace: decision.trace,
-        });
-        decisions.push(decision);
-        continue;
-      }
-    }
-
-    const existingMatch = findExistingMatch(txWithDate, existingTransactions);
-    if (existingMatch && isAmbiguousExistingMatch(txWithDate, existingMatch)) {
-      const decision = buildDecision(txWithDate, {
-        outcome: 'flagged',
-        reasonCode: 'flagged_for_review',
-        existingMatch,
-      });
-      flagged.push({
-        transaction: txWithDate,
-        reason: 'flagged_for_review',
-        existingMatch,
-        explanation: decision.explanation,
-        confidence: decision.confidence,
-        trace: decision.trace,
-      });
-      decisions.push(decision);
-      continue;
-    }
-
-    if (existingMatch) {
-      if (adminReviewApproved) {
-        markManualOverride('already_exists_overlap', {
-          existingMatch,
-        });
-      } else {
-        const decision = buildDecision(txWithDate, {
-          outcome: 'skipped',
-          reasonCode: 'already_exists_overlap',
-          existingMatch,
-        });
-        skipped.push({
-          transaction: txWithDate,
-          reason: 'already_exists_overlap',
-          existingMatch,
-          explanation: decision.explanation,
-          confidence: decision.confidence,
-          trace: decision.trace,
-        });
-        decisions.push(decision);
-        continue;
-      }
-    }
-
-    if (txWithDate.isPending) {
-      const yesterdayStr = shiftDateKey(today, -1);
-
-      const existsYesterday = existingTransactions.find(
-        (existing) =>
-          existing.date === yesterdayStr &&
-          Math.abs(parseFloat(txWithDate.amount) - parseFloat(existing.amount)) < 0.01 &&
-          (existing.merchant || '').toUpperCase() === (txWithDate.merchant || '').toUpperCase()
+    if (!isCommonReoccurrence) {
+      const pendingCarryForwardMatch = findPendingCarryForwardMatch(
+        txWithDate,
+        existingTransactions,
+        usedPendingMatches
       );
-
-      if (existsYesterday) {
-        const yesterdayMatch = {
-          merchant: existsYesterday.merchant || null,
-          date: existsYesterday.date || yesterdayStr,
-          uploadedDay: existsYesterday.uploadedDay || null,
-          amount: Number(existsYesterday.amount || 0),
-          matchType: 'exact',
-          merchantSimilarity: 100,
-        };
-
+      if (pendingCarryForwardMatch) {
         if (adminReviewApproved) {
-          markManualOverride('already_exists_yesterday', {
-            existingMatch: yesterdayMatch,
+          markManualOverride('already_exists_pending_carry_forward', {
+            existingMatch: pendingCarryForwardMatch,
           });
         } else {
           const decision = buildDecision(txWithDate, {
             outcome: 'skipped',
-            reasonCode: 'already_exists_yesterday',
-            existingMatch: yesterdayMatch,
+            reasonCode: 'already_exists_pending_carry_forward',
+            existingMatch: pendingCarryForwardMatch,
           });
           skipped.push({
             transaction: txWithDate,
-            reason: 'already_exists_yesterday',
+            reason: 'already_exists_pending_carry_forward',
+            existingMatch: pendingCarryForwardMatch,
             explanation: decision.explanation,
             confidence: decision.confidence,
             trace: decision.trace,
           });
           decisions.push(decision);
           continue;
+        }
+      }
+
+      const existingMatch = findExistingMatch(txWithDate, existingTransactions);
+      if (existingMatch && isAmbiguousExistingMatch(txWithDate, existingMatch)) {
+        const decision = buildDecision(txWithDate, {
+          outcome: 'flagged',
+          reasonCode: 'flagged_for_review',
+          existingMatch,
+        });
+        flagged.push({
+          transaction: txWithDate,
+          reason: 'flagged_for_review',
+          existingMatch,
+          explanation: decision.explanation,
+          confidence: decision.confidence,
+          trace: decision.trace,
+        });
+        decisions.push(decision);
+        continue;
+      }
+
+      if (existingMatch) {
+        if (adminReviewApproved) {
+          markManualOverride('already_exists_overlap', {
+            existingMatch,
+          });
+        } else {
+          const decision = buildDecision(txWithDate, {
+            outcome: 'skipped',
+            reasonCode: 'already_exists_overlap',
+            existingMatch,
+          });
+          skipped.push({
+            transaction: txWithDate,
+            reason: 'already_exists_overlap',
+            existingMatch,
+            explanation: decision.explanation,
+            confidence: decision.confidence,
+            trace: decision.trace,
+          });
+          decisions.push(decision);
+          continue;
+        }
+      }
+
+      const recentDuplicateMatch = findRecentDuplicateMatch(txWithDate, existingTransactions);
+      if (recentDuplicateMatch) {
+        if (adminReviewApproved) {
+          markManualOverride('already_exists_recent', {
+            existingMatch: recentDuplicateMatch,
+          });
+        } else {
+          const decision = buildDecision(txWithDate, {
+            outcome: 'skipped',
+            reasonCode: 'already_exists_recent',
+            existingMatch: recentDuplicateMatch,
+          });
+          skipped.push({
+            transaction: txWithDate,
+            reason: 'already_exists_recent',
+            existingMatch: recentDuplicateMatch,
+            explanation: decision.explanation,
+            confidence: decision.confidence,
+            trace: decision.trace,
+          });
+          decisions.push(decision);
+          continue;
+        }
+      }
+
+      if (txWithDate.isPending) {
+        const yesterdayStr = shiftDateKey(today, -1);
+
+        const existsYesterday = existingTransactions.find(
+          (existing) =>
+            existing.date === yesterdayStr &&
+            Math.abs(parseFloat(txWithDate.amount) - parseFloat(existing.amount)) < 0.01 &&
+            (existing.merchant || '').toUpperCase() === (txWithDate.merchant || '').toUpperCase()
+        );
+
+        if (existsYesterday) {
+          const yesterdayMatch = {
+            merchant: existsYesterday.merchant || null,
+            date: existsYesterday.date || yesterdayStr,
+            uploadedDay: existsYesterday.uploadedDay || null,
+            amount: Number(existsYesterday.amount || 0),
+            matchType: 'exact',
+            merchantSimilarity: 100,
+          };
+
+          if (adminReviewApproved) {
+            markManualOverride('already_exists_yesterday', {
+              existingMatch: yesterdayMatch,
+            });
+          } else {
+            const decision = buildDecision(txWithDate, {
+              outcome: 'skipped',
+              reasonCode: 'already_exists_yesterday',
+              existingMatch: yesterdayMatch,
+            });
+            skipped.push({
+              transaction: txWithDate,
+              reason: 'already_exists_yesterday',
+              explanation: decision.explanation,
+              confidence: decision.confidence,
+              trace: decision.trace,
+            });
+            decisions.push(decision);
+            continue;
+          }
         }
       }
     }
@@ -632,6 +699,7 @@ export function mergeTransactions(
         already_processed: skipped.filter((s) => s.reason === 'already_processed').length,
         duplicate_in_upload: skipped.filter((s) => s.reason === 'duplicate_in_upload').length,
         already_exists_overlap: skipped.filter((s) => s.reason === 'already_exists_overlap').length,
+        already_exists_recent: skipped.filter((s) => s.reason === 'already_exists_recent').length,
         already_exists_pending_carry_forward: skipped.filter(
           (s) => s.reason === 'already_exists_pending_carry_forward'
         ).length,

@@ -23,6 +23,10 @@ import {
   DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
 } from '../config/emailNotifications';
 import { normalizeScheduleWindowMinutes } from '../utils/emailSchedule';
+import {
+  buildCommonReoccurrenceRule,
+  normalizeCommonReoccurrenceRules,
+} from '../utils/commonReoccurrence';
 
 export async function addTransactions(transactions) {
   try {
@@ -285,6 +289,51 @@ export async function clearUploadedData() {
     ]);
   } catch (error) {
     console.error('Error clearing uploaded data:', error);
+    throw error;
+  }
+}
+
+export async function getCommonReoccurrenceRules() {
+  try {
+    const snapshot = await get(ref(db, 'commonReoccurrences'));
+
+    if (!snapshot.exists()) {
+      return [];
+    }
+
+    return normalizeCommonReoccurrenceRules(snapshot.val());
+  } catch (error) {
+    console.error('Error getting common reoccurrence rules:', error);
+    throw error;
+  }
+}
+
+export async function saveCommonReoccurrenceRule(transaction) {
+  try {
+    const rule = buildCommonReoccurrenceRule(transaction);
+    if (!rule?.key) {
+      throw new Error('Could not create a common reoccurrence rule for this transaction.');
+    }
+
+    const savedRule = {
+      ...rule,
+      updatedAt: getSimulatedISOString(),
+    };
+
+    await set(ref(db, `commonReoccurrences/${rule.key}`), savedRule);
+    return savedRule;
+  } catch (error) {
+    console.error('Error saving common reoccurrence rule:', error);
+    throw error;
+  }
+}
+
+export async function deleteCommonReoccurrenceRule(ruleKey) {
+  try {
+    if (!ruleKey) return;
+    await remove(ref(db, `commonReoccurrences/${ruleKey}`));
+  } catch (error) {
+    console.error('Error deleting common reoccurrence rule:', error);
     throw error;
   }
 }

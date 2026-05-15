@@ -7,9 +7,10 @@
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { db } from '../config/firebase';
 import { get, onDisconnect, onValue, ref, remove, set, update } from 'firebase/database';
+import { AdminPasswordModal, hasStoredAdminAccess } from './AdminPasswordGate';
 import {
   clearSavedSimulatedDay,
   formatLocalDate,
@@ -1559,6 +1560,7 @@ function OcrDiagnostics({ processedImages }) {
 }
 
 export default function CreditCardApp() {
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState(() => {
     if (typeof window === 'undefined') return null;
     const searchParams = new URLSearchParams(window.location.search);
@@ -1573,6 +1575,7 @@ export default function CreditCardApp() {
   const [showPetDebug, setShowPetDebug] = useState(false);
   const [showPetMissions, setShowPetMissions] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
+  const [adminGateRequest, setAdminGateRequest] = useState(null);
   const [petScalePct, setPetScalePct] = useState(25);
   const [petProfiles, setPetProfiles] = useState({});
   const [petProfilesHydrated, setPetProfilesHydrated] = useState(false);
@@ -1599,6 +1602,42 @@ export default function CreditCardApp() {
   const remotePetProfilesRef = useRef({});
   const petProfilesRemoteReadyRef = useRef(false);
   const petBootstrapCompleteRef = useRef(false);
+
+  const requestProtectedAdminAction = (request) => {
+    if (hasStoredAdminAccess()) {
+      request.action?.();
+      return;
+    }
+
+    setAdminGateRequest(request);
+  };
+
+  const handleAdminGateAuthorized = () => {
+    const action = adminGateRequest?.action;
+    setAdminGateRequest(null);
+    action?.();
+  };
+
+  const handleToolsToggle = () => {
+    if (showDevTools) {
+      setShowDevTools(false);
+      return;
+    }
+
+    requestProtectedAdminAction({
+      title: 'Tools locked',
+      description: 'Enter the admin tools password to open debug controls.',
+      action: () => setShowDevTools(true),
+    });
+  };
+
+  const handleUploadClick = () => {
+    requestProtectedAdminAction({
+      title: 'Upload locked',
+      description: 'Enter the admin tools password to upload and manage imported transactions.',
+      action: () => router.push('/admin/upload'),
+    });
+  };
 
   const appendQuestDebugLog = (label, details = {}) => {
     const timestamp = new Date().toISOString();
@@ -2481,6 +2520,13 @@ export default function CreditCardApp() {
           onClose={() => setShowSwitch(false)}
         />
       )}
+      <AdminPasswordModal
+        open={Boolean(adminGateRequest)}
+        title={adminGateRequest?.title || 'Protected tools'}
+        description={adminGateRequest?.description || 'Enter the admin tools password to continue.'}
+        onAuthorized={handleAdminGateAuthorized}
+        onCancel={() => setAdminGateRequest(null)}
+      />
 
       <div className={`sync-bar ${currentUser ? 'connected' : ''}`}>
         <div className={`sync-status connected`}>
@@ -2516,7 +2562,7 @@ export default function CreditCardApp() {
           <span className="meta-chip">{visibleDateLabel}</span>
           <span className="meta-chip">Melbourne {dayLabel}</span>
         </div>
-        <button className="debug-toggle" onClick={() => setShowDevTools((v) => !v)}>
+        <button className="debug-toggle" onClick={handleToolsToggle}>
           tools {showDevTools ? '\u25B2' : '\u25BC'}
         </button>
       </div>
@@ -2699,9 +2745,9 @@ export default function CreditCardApp() {
         <div className="app-header">
           <h1 className="app-title">Transactions</h1>
           <div className="header-right">
-            <Link href="/admin/upload">
-              <a className="day-btn header-upload-btn">upload</a>
-            </Link>
+            <button type="button" className="day-btn header-upload-btn" onClick={handleUploadClick}>
+              upload
+            </button>
             <button className="undo-btn" disabled={!undoStack.length} onClick={undo}>
               {'\u21A9'} undo
             </button>

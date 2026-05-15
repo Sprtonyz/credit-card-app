@@ -98,6 +98,7 @@ EMAIL_RECIPIENT_NUGS=nguyet_anh_le@hotmail.com
 AUTOMATED_EMAIL_TIME=23:00
 AUTOMATED_EMAIL_TIME_ZONE=Australia/Melbourne
 CRON_SECRET=choose_a_long_random_value
+ADMIN_TOOLS_PASSWORD=choose_a_private_upload_tools_password
 ```
 
 This setup uses Gmail SMTP, so you do not need a custom domain. Create a Gmail app password for `westpactracker@gmail.com` and store it in `GMAIL_APP_PASSWORD`. The app will send from `westpactracker@gmail.com`, which can be used for both Tony and Nugs recipients.
@@ -125,6 +126,8 @@ To test the full backend send path immediately, use the admin page's `Send now` 
 The admin page also shows the latest scheduler events from `notificationAutomation/events`, which helps confirm whether Vercel or GitHub Actions has actually invoked the cron endpoint.
 
 Set `CRON_SECRET` in Vercel to protect the cron endpoint. Vercel will include it in the cron request automatically.
+
+Set `ADMIN_TOOLS_PASSWORD` in Vercel and local `.env.local` to protect the upload and tools areas. The app checks this password through `/api/admin-auth` and remembers access for the current browser tab session.
 
 The email includes:
 

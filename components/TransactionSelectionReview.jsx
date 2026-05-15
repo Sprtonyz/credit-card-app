@@ -5,6 +5,7 @@ function formatReason(reason) {
     ready_to_import: 'ready',
     duplicate_in_upload: 'screenshot overlap',
     already_exists_overlap: 'matched existing',
+    already_exists_recent: 'recent duplicate',
     already_exists_pending_carry_forward: 'pending carry-forward',
     already_exists_yesterday: 'matched yesterday pending',
     already_processed: 'already imported screenshot',
@@ -20,6 +21,7 @@ function getBadgeClass(reason, selected) {
   if (reason === 'flagged_for_review') return 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30';
   if (
     reason === 'already_exists_overlap' ||
+    reason === 'already_exists_recent' ||
     reason === 'already_exists_pending_carry_forward' ||
     reason === 'already_processed'
   ) {
@@ -40,6 +42,7 @@ function getReviewPriority(item) {
   if (item?.reason === 'flagged_for_review') return 1;
   if (
     item?.reason === 'already_exists_overlap' ||
+    item?.reason === 'already_exists_recent' ||
     item?.reason === 'already_exists_pending_carry_forward' ||
     item?.reason === 'already_processed'
   ) return 2;
@@ -52,6 +55,8 @@ export default function TransactionSelectionReview({
   summary = null,
   onConfirm,
   onCancel,
+  onToggleCommonReoccurrence = null,
+  isSavingCommonReoccurrence = false,
   isLoading = false,
 }) {
   const [selectedIndices, setSelectedIndices] = useState(() =>
@@ -89,6 +94,30 @@ export default function TransactionSelectionReview({
     });
   };
 
+  const handleCardKeyDown = (event, index) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    handleToggle(index);
+  };
+
+  const handleToggleCommonReoccurrence = async (event, item) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!onToggleCommonReoccurrence || !item?.commonReoccurrenceKey) return;
+
+    const shouldMark = !item.isCommonReoccurrence;
+    if (shouldMark) {
+      setSelectedIndices((prev) => {
+        const next = new Set(prev);
+        next.add(item.index);
+        return next;
+      });
+    }
+
+    await onToggleCommonReoccurrence(item, shouldMark);
+  };
+
   const handleConfirm = () => {
     onConfirm(Array.from(selectedIndices).sort((a, b) => a - b));
   };
@@ -112,8 +141,12 @@ export default function TransactionSelectionReview({
         {orderedItems.map((item) => {
           const selected = selectedIndices.has(item.index);
           return (
-            <label
+            <div
               key={`${item.index}-${item.transaction.merchant}-${item.transaction.amount}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => handleToggle(item.index)}
+              onKeyDown={(event) => handleCardKeyDown(event, item.index)}
               className={`block rounded-lg border p-4 transition cursor-pointer ${
                 selected ? 'border-blue-500 bg-slate-900/90' : 'border-slate-700 bg-slate-900/50'
               }`}
@@ -122,6 +155,7 @@ export default function TransactionSelectionReview({
                 <input
                   type="checkbox"
                   checked={selected}
+                  onClick={(event) => event.stopPropagation()}
                   onChange={() => handleToggle(item.index)}
                   className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500"
                 />
@@ -142,6 +176,22 @@ export default function TransactionSelectionReview({
                       )}
                       {item.explanation ? (
                         <p className="text-xs text-slate-300 mt-2">{item.explanation}</p>
+                      ) : null}
+                      {item.commonReoccurrenceKey ? (
+                        <button
+                          type="button"
+                          onClick={(event) => handleToggleCommonReoccurrence(event, item)}
+                          disabled={isSavingCommonReoccurrence}
+                          className={`mt-3 rounded-md border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
+                            item.isCommonReoccurrence
+                              ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
+                              : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20'
+                          }`}
+                        >
+                          {item.isCommonReoccurrence
+                            ? 'Common reoccurrence'
+                            : 'Mark common reoccurrence'}
+                        </button>
                       ) : null}
                     </div>
                     <div className="flex flex-col items-end gap-2">
@@ -196,7 +246,7 @@ export default function TransactionSelectionReview({
                   ) : null}
                 </div>
               </div>
-            </label>
+            </div>
           );
         })}
       </div>

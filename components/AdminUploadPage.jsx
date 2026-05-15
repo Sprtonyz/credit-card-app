@@ -25,6 +25,9 @@ import {
   getAllTransactions,
   saveProcessedLog,
   getAllProcessedLogs,
+  getCommonReoccurrenceRules,
+  saveCommonReoccurrenceRule,
+  deleteCommonReoccurrenceRule,
   deleteTransactionsByIds,
   deleteProcessedLogs,
   clearUploadedData,
@@ -40,6 +43,11 @@ import {
   DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
   DEFAULT_RECIPIENTS_BY_PROFILE,
 } from '../config/emailNotifications';
+import {
+  getCommonReoccurrenceKey,
+  isCommonReoccurrenceTransaction,
+  normalizeCommonReoccurrenceRules,
+} from '../utils/commonReoccurrence';
 
 
 function buildAllTransactions(processedImages) {
@@ -62,9 +70,16 @@ function buildAllTransactions(processedImages) {
   return allTransactions;
 }
 
-function buildManualReviewItems(processedImages, duplicateDetection, existingTransactions, processedLogs = {}) {
+function buildManualReviewItems(
+  processedImages,
+  duplicateDetection,
+  existingTransactions,
+  processedLogs = {},
+  commonReoccurrenceRules = []
+) {
   const allTransactions = buildAllTransactions(processedImages);
   const duplicateMap = new Map();
+  const normalizedCommonRules = normalizeCommonReoccurrenceRules(commonReoccurrenceRules);
 
   (duplicateDetection?.duplicates || []).forEach((group) => {
     const items = Array.isArray(group) ? group : group?.group || [];
@@ -92,7 +107,11 @@ function buildManualReviewItems(processedImages, duplicateDetection, existingTra
       : tx;
     const processedMatch = findProcessedLogMatch(txForReview, processedLogs || {});
     const processedEntry = processedMatch?.log || null;
-    const singleMergeResult = mergeTransactions([txForReview], existingTransactions, processedLogs);
+    const isCommonReoccurrence = isCommonReoccurrenceTransaction(txForReview, normalizedCommonRules);
+    const commonReoccurrenceKey = getCommonReoccurrenceKey(txForReview);
+    const singleMergeResult = mergeTransactions([txForReview], existingTransactions, processedLogs, {
+      commonReoccurrenceRules: normalizedCommonRules,
+    });
     const flaggedDecision = singleMergeResult.flagged?.[0] || null;
     const skippedDecision = singleMergeResult.skipped?.[0] || null;
     const readyDecision = singleMergeResult.decisions?.find((decision) => decision.outcome === 'import_ready') || null;
@@ -160,6 +179,8 @@ function buildManualReviewItems(processedImages, duplicateDetection, existingTra
       confidence,
       trace,
       existingMatch,
+      commonReoccurrenceKey,
+      isCommonReoccurrence,
     };
   });
 
@@ -173,6 +194,7 @@ function buildManualReviewItems(processedImages, duplicateDetection, existingTra
       skippedExisting: reviewItems.filter(
         (item) =>
           item.reason === 'already_exists_overlap' ||
+          item.reason === 'already_exists_recent' ||
           item.reason === 'already_exists_pending_carry_forward' ||
           item.reason === 'already_exists_yesterday' ||
           item.reason === 'already_processed'
@@ -318,7 +340,7 @@ function getAutomationEventLabel(event) {
   return event.type || 'Scheduler event';
 }
 
-const ADMIN_UPLOAD_VERSION = '1.0.9';
+const ADMIN_UPLOAD_VERSION = '1.1.0';
 
 export default function AdminUploadPage() {
   const [step, setStep] = useState('upload');
@@ -343,6 +365,12 @@ export default function AdminUploadPage() {
   const [isSavingAutomationSchedule, setIsSavingAutomationSchedule] = useState(false);
   const [isSendingAutomationNow, setIsSendingAutomationNow] = useState(false);
   const [isRefreshingAutomationStatus, setIsRefreshingAutomationStatus] = useState(false);
+  const [commonReoccurrenceRules, setCommonReoccurrenceRules] = useState([]);
+  const [isSavingCommonReoccurrence, setIsSavingCommonReoccurrence] = useState(false);
+  const [reviewContext, setReviewContext] = useState({
+    existingTransactions: [],
+    processedLogs: {},
+  });
   const {
     adminActivityLog,
     authReady,
@@ -379,6 +407,32 @@ export default function AdminUploadPage() {
       setIsRefreshingAutomationStatus(false);
     }
   };
+
+  const refreshCommonReoccurrenceRules = async () => {
+    const rules = await getCommonReoccurrenceRules();
+    setCommonReoccurrenceRules(rules);
+    return rules;
+  };
+
+  useEffect(() => {
+    if (!authReady) return undefined;
+
+    let cancelled = false;
+
+    getCommonReoccurrenceRules()
+      .then((rules) => {
+        if (!cancelled) {
+          setCommonReoccurrenceRules(rules);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load common reoccurrence rules:', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady]);
 
   useEffect(() => {
     if (!authReady) return undefined;
@@ -487,14 +541,21 @@ export default function AdminUploadPage() {
           });
       }
 
-      const existingTransactions = await getAllTransactions();
-      const rawProcessedLogs = await getAllProcessedLogs();
+      const [existingTransactions, rawProcessedLogs, latestCommonRules] = await Promise.all([
+        getAllTransactions(),
+        getAllProcessedLogs(),
+        refreshCommonReoccurrenceRules(),
+      ]);
       const processedLogs = enrichProcessedLogsWithFingerprints(rawProcessedLogs || {}, existingTransactions);
+      setReviewContext({ existingTransactions, processedLogs });
 
       const mergeResult = mergeTransactions(
         allTransactions,
         existingTransactions,
-        processedLogs
+        processedLogs,
+        {
+          commonReoccurrenceRules: latestCommonRules,
+        }
       );
       setLastMergeReport({
         skipped: mergeResult.skipped,
@@ -505,8 +566,13 @@ export default function AdminUploadPage() {
 
       if (mergeResult.flagged.length > 0) {
         setManualReview(
-          buildManualReviewItems(processedOverride, duplicateDetection, existingTransactions, processedLogs || {})
-        
+          buildManualReviewItems(
+            processedOverride,
+            duplicateDetection,
+            existingTransactions,
+            processedLogs || {},
+            latestCommonRules
+          )
         );
         setSuccessMessage({
           added: 0,
@@ -616,19 +682,25 @@ export default function AdminUploadPage() {
 
     try {
       const { results, detection } = await runOcrPipeline();
-      const [existingTransactions, processedLogs] = await Promise.all([
+      const [existingTransactions, processedLogs, latestCommonRules] = await Promise.all([
         getAllTransactions(),
         getAllProcessedLogs(),
+        refreshCommonReoccurrenceRules(),
       ]);
       const enrichedProcessedLogs = enrichProcessedLogsWithFingerprints(processedLogs || {}, existingTransactions);
       const reviewResults = annotateProcessedImagesWithProcessedLogOverlaps(results, enrichedProcessedLogs);
       setProcessedImages(reviewResults);
+      setReviewContext({
+        existingTransactions,
+        processedLogs: enrichedProcessedLogs,
+      });
       setManualReview(
         buildManualReviewItems(
           reviewResults,
           detection,
           existingTransactions,
-          enrichedProcessedLogs
+          enrichedProcessedLogs,
+          latestCommonRules
         )
       );
       setStep('review');
@@ -665,6 +737,70 @@ export default function AdminUploadPage() {
     }
   };
 
+  const rebuildManualReviewWithRules = (rules) => {
+    if (!manualReview || !duplicateDetection) return;
+
+    setManualReview(
+      buildManualReviewItems(
+        processedImages,
+        duplicateDetection,
+        reviewContext.existingTransactions,
+        reviewContext.processedLogs,
+        rules
+      )
+    );
+  };
+
+  const handleToggleCommonReoccurrence = async (item, shouldMark) => {
+    if (!authReady || !item?.transaction) return;
+
+    setIsSavingCommonReoccurrence(true);
+    setError(null);
+
+    try {
+      const ruleKey = item.commonReoccurrenceKey || getCommonReoccurrenceKey(item.transaction);
+      let nextRules = commonReoccurrenceRules;
+
+      if (shouldMark) {
+        const savedRule = await saveCommonReoccurrenceRule(item.transaction);
+        nextRules = normalizeCommonReoccurrenceRules([
+          ...commonReoccurrenceRules.filter((rule) => rule.key !== savedRule.key),
+          savedRule,
+        ]);
+      } else if (ruleKey) {
+        await deleteCommonReoccurrenceRule(ruleKey);
+        nextRules = commonReoccurrenceRules.filter((rule) => rule.key !== ruleKey);
+      }
+
+      setCommonReoccurrenceRules(nextRules);
+      rebuildManualReviewWithRules(nextRules);
+    } catch (err) {
+      console.error('Failed to update common reoccurrence rule:', err);
+      setError(err.message || 'Failed to update the common reoccurrence rule.');
+    } finally {
+      setIsSavingCommonReoccurrence(false);
+    }
+  };
+
+  const handleDeleteCommonReoccurrenceRule = async (rule) => {
+    if (!authReady || !rule?.key) return;
+
+    setIsSavingCommonReoccurrence(true);
+    setError(null);
+
+    try {
+      await deleteCommonReoccurrenceRule(rule.key);
+      const nextRules = commonReoccurrenceRules.filter((item) => item.key !== rule.key);
+      setCommonReoccurrenceRules(nextRules);
+      rebuildManualReviewWithRules(nextRules);
+    } catch (err) {
+      console.error('Failed to delete common reoccurrence rule:', err);
+      setError(err.message || 'Failed to delete the common reoccurrence rule.');
+    } finally {
+      setIsSavingCommonReoccurrence(false);
+    }
+  };
+
   const handleStartOver = () => {
     setStep('upload');
     setUploadedFiles([]);
@@ -672,6 +808,7 @@ export default function AdminUploadPage() {
     setDuplicateDetection(null);
     setManualReview(null);
     setLastMergeReport(null);
+    setReviewContext({ existingTransactions: [], processedLogs: {} });
     setProgress(0);
     setError(null);
     setSuccessMessage(null);
@@ -1065,6 +1202,40 @@ export default function AdminUploadPage() {
                 </a>
               </Link>
             </div>
+
+            {commonReoccurrenceRules.length > 0 ? (
+              <div className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-emerald-100">Common reoccurrences</p>
+                  <span className="text-xs text-emerald-200">
+                    {commonReoccurrenceRules.length} active
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {commonReoccurrenceRules.slice(0, 6).map((rule) => (
+                    <div
+                      key={rule.key}
+                      className="flex items-center justify-between gap-3 rounded-md border border-emerald-500/20 bg-slate-950/60 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-white">{rule.merchant || rule.normalizedMerchant}</p>
+                        <p className="text-xs text-emerald-200">
+                          ${Number(rule.amount || rule.normalizedAmount || 0).toFixed(2)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCommonReoccurrenceRule(rule)}
+                        disabled={isSavingCommonReoccurrence}
+                        className="shrink-0 rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <button
               onClick={handleProcessImages}
@@ -1561,6 +1732,8 @@ export default function AdminUploadPage() {
                 summary={manualReview.summary}
                 onConfirm={(selectedIndices) => handleConfirmTransactions(selectedIndices, processedImages)}
                 onCancel={() => setStep('upload')}
+                onToggleCommonReoccurrence={handleToggleCommonReoccurrence}
+                isSavingCommonReoccurrence={isSavingCommonReoccurrence}
                 isLoading={isLoading}
               />
             ) : (

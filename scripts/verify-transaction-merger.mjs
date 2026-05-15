@@ -37,6 +37,25 @@ const source = fs
     );`
   )
   .replace(
+    /import \{[\s\S]*?\} from '\.\/commonReoccurrence';/,
+    `const getCommonKey = (transaction = {}) => {
+      const amount = Number.parseFloat(transaction.amount);
+      if (!Number.isFinite(amount)) return null;
+      const merchant = String(transaction.merchant || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+        .split(/\\s+/)
+        .filter((token) => token && !['au', 'notau', 'australia', 'pending', 'posted', 'category', 'in', 'progress'].includes(token))
+        .join('_');
+      return merchant ? \`\${Math.abs(amount).toFixed(2).replace('.', '')}_\${merchant}\` : null;
+    };
+    const isCommonReoccurrenceTransaction = (transaction = {}, rules = []) => {
+      const key = getCommonKey(transaction);
+      return Boolean(key && rules.some((rule) => rule.enabled !== false && rule.key === key));
+    };`
+  )
+  .replace(
     /import \{[\s\S]*?findProcessedLogMatch[\s\S]*?\} from '\.\/importFingerprint';/,
     `const findProcessedLogMatch = (transaction = {}, processedLogs = {}) => {
       if (transaction.imageHash && processedLogs[transaction.imageHash]) {
@@ -111,6 +130,70 @@ run('keeps legacy existing-match skip when not approved', () => {
   assertEqual(result.toAdd.length, 0, 'added count');
   assertEqual(result.skipped.length, 1, 'skipped count');
   assertEqual(result.skipped[0].reason, 'already_exists_overlap', 'skip reason');
+});
+
+run('skips matching transactions that occurred within the last five days', () => {
+  const result = mergeTransactions(
+    [transaction()],
+    [
+      {
+        id: 'recent-coffee',
+        merchant: 'Coffee House',
+        amount: 12.5,
+        date: '2026-05-06',
+      },
+    ],
+    {}
+  );
+
+  assertEqual(result.toAdd.length, 0, 'added count');
+  assertEqual(result.skipped.length, 1, 'skipped count');
+  assertEqual(result.skipped[0].reason, 'already_exists_recent', 'skip reason');
+});
+
+run('imports recent matching transactions marked as common reoccurrences', () => {
+  const result = mergeTransactions(
+    [transaction()],
+    [
+      {
+        id: 'recent-coffee',
+        merchant: 'Coffee House',
+        amount: 12.5,
+        date: '2026-05-06',
+      },
+    ],
+    {},
+    {
+      commonReoccurrenceRules: [
+        {
+          key: '1250_coffee_house',
+          enabled: true,
+        },
+      ],
+    }
+  );
+
+  assertEqual(result.toAdd.length, 1, 'added count');
+  assertEqual(result.skipped.length, 0, 'skipped count');
+  assertEqual(result.decisions[0].reasonCode, 'ready_to_import', 'decision reason');
+});
+
+run('keeps recent matching transactions outside the five-day window', () => {
+  const result = mergeTransactions(
+    [transaction()],
+    [
+      {
+        id: 'older-coffee',
+        merchant: 'Coffee House',
+        amount: 12.5,
+        date: '2026-05-03',
+      },
+    ],
+    {}
+  );
+
+  assertEqual(result.toAdd.length, 1, 'added count');
+  assertEqual(result.skipped.length, 0, 'skipped count');
 });
 
 run('imports an existing-match row after admin review approval', () => {

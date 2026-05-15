@@ -359,14 +359,14 @@ body {
   margin-left: 0.3rem;
   font-family: 'DM Mono', monospace;
   font-size: 0.52rem;
-  font-weight: 700;
+  font-weight: 400;
   color: #a78bfa;
   white-space: nowrap;
 }
 
 .tally-excess-label {
   color: #64748b;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .tally-amount.mac {

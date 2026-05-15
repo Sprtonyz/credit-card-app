@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { ref, set } from 'firebase/database';
 import { db } from '../config/firebase';
-import { applyPetActionProgress, normalizePetState } from '../utils/petProgression';
+import { applyPetActionProgress, markPetStateUpdated, normalizePetState } from '../utils/petProgression';
 import {
   getSubmissionDateKeyEntry,
   getSubmissionStatus,
@@ -253,10 +253,18 @@ export function useTransactionAssignments({
     });
 
     if (last.petPrev && last.petUser) {
-      setPetProfiles((prev) => ({
-        ...prev,
-        [last.petUser]: normalizePetState(last.petPrev, referenceDateKey),
-      }));
+      setPetProfiles((prev) => {
+        const currentUpdatedAt = Number(prev[last.petUser]?.updatedAt || 0);
+        const restoredPet = {
+          ...last.petPrev,
+          updatedAt: Math.max(Number(last.petPrev.updatedAt || 0), currentUpdatedAt),
+        };
+
+        return {
+          ...prev,
+          [last.petUser]: markPetStateUpdated(restoredPet, referenceDateKey),
+        };
+      });
     }
 
     try {

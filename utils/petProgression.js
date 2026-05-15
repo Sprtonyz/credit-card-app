@@ -237,6 +237,7 @@ export function normalizePetState(rawState, dateKey) {
     food: Math.max(0, toFiniteNumber(rawState?.food, 0)),
     hp: decayedHp.hp,
     xp: Math.max(0, toFiniteNumber(rawState?.xp, 0)),
+    updatedAt: Math.max(0, Math.floor(toFiniteNumber(rawState?.updatedAt, 0))),
     petType: normalizePetType(rawState?.petType),
     streak: Math.max(0, Math.floor(toFiniteNumber(rawState?.streak, 0))),
     lastStreakDate: isDateKey(rawState?.lastStreakDate) ? rawState.lastStreakDate : null,
@@ -244,6 +245,20 @@ export function normalizePetState(rawState, dateKey) {
     lastFedDate: isDateKey(rawState?.lastFedDate) ? rawState.lastFedDate : null,
     lastHpDecayDate: decayedHp.lastHpDecayDate,
     missions,
+  };
+}
+
+export function markPetStateUpdated(rawState, dateKey, updatedAt = Date.now()) {
+  const normalized = normalizePetState(rawState, dateKey);
+  const previousUpdatedAt = Math.max(0, Math.floor(toFiniteNumber(normalized.updatedAt, 0)));
+  const nextUpdatedAt = Math.max(
+    previousUpdatedAt + 1,
+    Math.max(0, Math.floor(toFiniteNumber(updatedAt, Date.now())))
+  );
+
+  return {
+    ...normalized,
+    updatedAt: nextUpdatedAt,
   };
 }
 

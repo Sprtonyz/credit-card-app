@@ -43,9 +43,18 @@ import {
   derivePetMood,
   getPetLevel,
   getXpForLevel,
+  markPetStateUpdated,
   normalizePetState,
   resolvePetType,
 } from '../utils/petProgression';
+import {
+  comparePetProfiles,
+  getPetMissionSignature,
+  getPetProfileSignature,
+  getPetProfilesMapSignature,
+  mergePetProfileMaps,
+  normalizePetProfilesMap,
+} from '../utils/petProfileSync';
 
 const USERS = ['Tony', 'Nugs'];
 const ASSIGN_OPTS = ['Unsure', 'Macquarie', 'Tony', 'Nugs'];
@@ -353,94 +362,6 @@ function useIdleDelayedReady(
   }, [delayMs, enabled, idleTimeoutMs, resetToken]);
 
   return ready;
-}
-
-function normalizePetProfilesMap(rawProfiles, dateKey) {
-  if (!rawProfiles || typeof rawProfiles !== 'object') return {};
-  return Object.fromEntries(
-    Object.entries(rawProfiles)
-      .filter(([user]) => USERS.includes(user))
-      .map(([user, state]) => [user, normalizePetState(state, dateKey)])
-  );
-}
-
-function getMissionProgressTotal(profile) {
-  return (profile?.missions || []).reduce(
-    (total, mission) => total + Math.max(0, Number(mission?.progress || 0)),
-    0
-  );
-}
-
-function getPetMissionSignature(mission) {
-  if (!mission || typeof mission !== 'object') return '';
-  return [
-    mission.id || '',
-    mission.type || '',
-    Number(mission.progress || 0),
-    Number(mission.target || 0),
-    mission.completed ? 1 : 0,
-    mission.resetKey || '',
-  ].join(':');
-}
-
-function getPetProfileSignature(rawProfile, dateKey) {
-  if (!rawProfile || typeof rawProfile !== 'object') return '';
-  const profile = normalizePetState(rawProfile, dateKey);
-  return [
-    Number(profile.coins || 0),
-    Number(profile.food || 0),
-    Number(profile.hp || 0),
-    Number(profile.xp || 0),
-    profile.petType || '',
-    Number(profile.streak || 0),
-    profile.lastStreakDate || '',
-    profile.mood || '',
-    profile.lastFedDate || '',
-    profile.lastHpDecayDate || '',
-    (profile.missions || []).map(getPetMissionSignature).join(','),
-  ].join('|');
-}
-
-function getPetProfilesMapSignature(rawProfiles, dateKey) {
-  return Object.entries(rawProfiles || {})
-    .filter(([user]) => USERS.includes(user))
-    .sort(([leftUser], [rightUser]) => leftUser.localeCompare(rightUser))
-    .map(([user, profile]) => `${user}=${getPetProfileSignature(profile, dateKey)}`)
-    .join(';');
-}
-
-function comparePetProfiles(leftRaw, rightRaw, dateKey) {
-  const left = normalizePetState(leftRaw, dateKey);
-  const right = normalizePetState(rightRaw, dateKey);
-  const checks = [
-    [left.xp, right.xp],
-    [left.coins, right.coins],
-    [left.food, right.food],
-    [left.streak, right.streak],
-    [getMissionProgressTotal(left), getMissionProgressTotal(right)],
-    [left.hp, right.hp],
-  ];
-
-  for (const [leftValue, rightValue] of checks) {
-    if (leftValue > rightValue) return 1;
-    if (leftValue < rightValue) return -1;
-  }
-
-  return 0;
-}
-
-function mergePetProfileMaps(baseProfiles, candidateProfiles, dateKey) {
-  const next = { ...normalizePetProfilesMap(baseProfiles, dateKey) };
-  const incoming = normalizePetProfilesMap(candidateProfiles, dateKey);
-
-  Object.entries(incoming).forEach(([user, profile]) => {
-    const current = next[user];
-    if (!current || comparePetProfiles(profile, current, dateKey) > 0) {
-      next[user] = profile;
-    }
-  });
-
-  return next;
 }
 
 function Landing({ onSelect }) {
@@ -1827,6 +1748,14 @@ export default function CreditCardApp() {
     currentUser || ''
   );
 
+  const commitPetProfiles = useCallback((updater) => {
+    setPetProfiles((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      localPetProfilesRef.current = next;
+      return next;
+    });
+  }, []);
+
   const requestProtectedAdminAction = (request) => {
     if (hasStoredAdminAccess()) {
       request.action?.();
@@ -1993,16 +1922,16 @@ export default function CreditCardApp() {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
         const todayKey = formatLocalDate(getSimulatedNow());
-        const normalized = normalizePetProfilesMap(parsed, todayKey);
+        const normalized = normalizePetProfilesMap(parsed, todayKey, USERS);
         localPetProfilesRef.current = normalized;
-        setPetProfiles(normalized);
+        commitPetProfiles(normalized);
       }
     } catch (error) {
       console.warn('Failed to load pet state from localStorage:', error);
     } finally {
       setPetProfilesHydrated(true);
     }
-  }, []);
+  }, [commitPetProfiles]);
 
   useEffect(() => {
     if (!petProfilesHydrated) return;
@@ -2073,27 +2002,27 @@ export default function CreditCardApp() {
     const unsubscribe = onValue(
       petProfilesRef,
       (snapshot) => {
-        const remoteProfiles = normalizePetProfilesMap(snapshot.val(), referenceDateKey);
+        const remoteProfiles = normalizePetProfilesMap(snapshot.val(), referenceDateKey, USERS);
         remotePetProfilesRef.current = remoteProfiles;
 
         void (async () => {
-          let mergedProfiles = mergePetProfileMaps(remoteProfiles, localPetProfilesRef.current, referenceDateKey);
+          let mergedProfiles = mergePetProfileMaps(remoteProfiles, localPetProfilesRef.current, referenceDateKey, USERS);
 
           if (!petBootstrapCompleteRef.current) {
             mergedProfiles = await hydrateLegacyPetProfiles(mergedProfiles, referenceDateKey);
             petBootstrapCompleteRef.current = true;
           }
 
-          setPetProfiles((prev) =>
-            getPetProfilesMapSignature(prev, referenceDateKey) ===
-            getPetProfilesMapSignature(mergedProfiles, referenceDateKey)
+          commitPetProfiles((prev) =>
+            getPetProfilesMapSignature(prev, referenceDateKey, USERS) ===
+            getPetProfilesMapSignature(mergedProfiles, referenceDateKey, USERS)
               ? prev
               : mergedProfiles
           );
 
           if (
-            getPetProfilesMapSignature(remoteProfiles, referenceDateKey) !==
-            getPetProfilesMapSignature(mergedProfiles, referenceDateKey)
+            getPetProfilesMapSignature(remoteProfiles, referenceDateKey, USERS) !==
+            getPetProfilesMapSignature(mergedProfiles, referenceDateKey, USERS)
           ) {
             remotePetProfilesRef.current = mergedProfiles;
             set(petProfilesRef, mergedProfiles).catch((error) => {
@@ -2114,7 +2043,7 @@ export default function CreditCardApp() {
     );
 
     return () => unsubscribe();
-  }, [petFirebaseReady, referenceDateKey]);
+  }, [commitPetProfiles, petFirebaseReady, referenceDateKey]);
 
   useEffect(() => {
     if (
@@ -2124,7 +2053,7 @@ export default function CreditCardApp() {
       !petProfilesRemoteReadyRef.current
     ) return;
 
-    const normalizedProfiles = normalizePetProfilesMap(petProfiles, referenceDateKey);
+    const normalizedProfiles = normalizePetProfilesMap(petProfiles, referenceDateKey, USERS);
     const updates = {};
 
     USERS.forEach((user) => {
@@ -2169,14 +2098,16 @@ export default function CreditCardApp() {
 
   const syncPetProfilesForDate = useCallback((dateKey, reason = 'sync_pet_profiles') => {
     if (!currentUser) return;
-    setPetProfiles((prev) => {
+    commitPetProfiles((prev) => {
       const next = { ...prev };
       let changed = false;
+      const now = Date.now();
 
       Object.entries(prev).forEach(([user, state]) => {
         const normalized = normalizePetState(state, dateKey);
         if (getPetProfileSignature(state, dateKey) !== getPetProfileSignature(normalized, dateKey)) {
-          next[user] = normalized;
+          const shouldStampDateSync = petProfilesRemoteReadyRef.current || Number(state?.updatedAt || 0) > 0;
+          next[user] = shouldStampDateSync ? markPetStateUpdated(normalized, dateKey, now) : normalized;
           changed = true;
         }
       });
@@ -2198,7 +2129,7 @@ export default function CreditCardApp() {
     });
     setLevelUpMsg(null);
     petLevelReadyRef.current = false;
-  }, [appendQuestDebugLog, currentUser]);
+  }, [appendQuestDebugLog, commitPetProfiles, currentUser]);
 
   useEffect(() => {
     syncPetProfilesForDate(referenceDateKey, 'reference_date_changed');
@@ -2287,15 +2218,24 @@ export default function CreditCardApp() {
 
   const updateActivePet = useCallback((updater) => {
     if (!currentUser) return;
-    setPetProfiles((prev) => {
+    commitPetProfiles((prev) => {
       const current = normalizePetState(prev[currentUser] || null, referenceDateKey);
       const nextPet = typeof updater === 'function' ? updater(current) : updater;
+      const normalizedNextPet = normalizePetState(nextPet, referenceDateKey);
+
+      if (
+        getPetProfileSignature(current, referenceDateKey) ===
+        getPetProfileSignature(normalizedNextPet, referenceDateKey)
+      ) {
+        return prev;
+      }
+
       return {
         ...prev,
-        [currentUser]: normalizePetState(nextPet, referenceDateKey),
+        [currentUser]: markPetStateUpdated(normalizedNextPet, referenceDateKey),
       };
     });
-  }, [currentUser, referenceDateKey]);
+  }, [commitPetProfiles, currentUser, referenceDateKey]);
 
   const addCoinPop = useCallback((event) => {
     if (!event?.currentTarget) return;
@@ -2321,7 +2261,7 @@ export default function CreditCardApp() {
     submissions,
     setSubmissions,
     petProfiles,
-    setPetProfiles,
+    setPetProfiles: commitPetProfiles,
     updateActivePet,
     addCoinPop,
   });
@@ -2700,7 +2640,7 @@ export default function CreditCardApp() {
     lastStoredSubmissionsRef.current = null;
     lastStoredPetProfilesRef.current = null;
     petProfilesRemoteReadyRef.current = false;
-    setPetProfiles({});
+    commitPetProfiles({});
     setPetProfilesRemoteReady(false);
     setLevelUpMsg(null);
     setCoinPops([]);

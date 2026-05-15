@@ -10,9 +10,9 @@ const source = fs
   .replace(/export function /g, 'function ');
 
 const loadPetProgression = new Function(
-  `${source}\nreturn { normalizePetState, applyPetActionProgress, derivePetMood };`
+  `${source}\nreturn { normalizePetState, markPetStateUpdated, applyPetActionProgress, derivePetMood };`
 );
-const { normalizePetState, applyPetActionProgress, derivePetMood } = loadPetProgression();
+const { normalizePetState, markPetStateUpdated, applyPetActionProgress, derivePetMood } = loadPetProgression();
 
 function run(name, fn) {
   fn();
@@ -51,6 +51,20 @@ run('does not double decay after state has been normalized for the day', () => {
 
   assertEqual(second.hp, 64, 'hp');
   assertEqual(second.lastHpDecayDate, '2026-05-01', 'lastHpDecayDate');
+});
+
+run('marks pet state updates with a monotonic timestamp', () => {
+  const pet = markPetStateUpdated(
+    {
+      coins: 25,
+      food: 0,
+      updatedAt: 1000,
+    },
+    '2026-05-01',
+    1000
+  );
+
+  assertEqual(pet.updatedAt, 1001, 'updatedAt');
 });
 
 run('feeding applies decay first, then restores hp and resets decay date', () => {

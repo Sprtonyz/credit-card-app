@@ -5,11 +5,16 @@ import {
   getTransactionReferenceDateKey,
   isVisibleForUser,
 } from './reconciliation';
+import {
+  MACQUARIE_EXCESS_THRESHOLD,
+  getMacquarieExcessAmount,
+  getMacquarieExcessShare,
+} from './macquarieExcess';
 import { formatLocalDateTime } from './simulationDate';
 
 export const PRESENCE_TTL_MS = 12000;
 export const ADMIN_ACTIVITY_WINDOW_MS = 12 * 60 * 60 * 1000;
-export const MACQUARIE_EXCESS_THRESHOLD = 800;
+export { MACQUARIE_EXCESS_THRESHOLD };
 
 function dateToMs(dateKey) {
   if (!dateKey) return null;
@@ -53,15 +58,9 @@ function getAssigneeTotal(transactions, submissions, assignee, todayKey) {
   }, 0);
 }
 
-function getMacquarieExcessShare(profileName, excessAmount) {
-  if (profileName === 'Tony') return excessAmount * (2 / 3);
-  if (profileName === 'Nugs') return excessAmount * (1 / 3);
-  return 0;
-}
-
 export function buildProfileEmailReports(transactions, submissions, todayKey) {
   const macquarieTotal = getAssigneeTotal(transactions, submissions, 'Macquarie', todayKey);
-  const macquarieExcessAmount = Math.max(0, macquarieTotal - MACQUARIE_EXCESS_THRESHOLD);
+  const macquarieExcessAmount = getMacquarieExcessAmount(macquarieTotal);
 
   return PROFILE_NAMES.map((profileName) => {
     const visibleTransactions = transactions.filter((transaction) =>
@@ -106,7 +105,7 @@ export function buildProfileEmailReports(transactions, submissions, todayKey) {
         unsuresCount,
         macquarieTotal,
         macquarieExcessAmount,
-        macquarieExcessShare: getMacquarieExcessShare(profileName, macquarieExcessAmount),
+        macquarieExcessShare: getMacquarieExcessShare(profileName, macquarieTotal),
       },
     };
   });

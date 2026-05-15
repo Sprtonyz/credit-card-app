@@ -332,12 +332,41 @@ body {
   color: #93c5fd;
 }
 
+.tally-amount-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: baseline;
+  min-height: 1.15rem;
+}
+
+.tally-amount-row .tally-amount {
+  grid-column: 2;
+  justify-self: center;
+}
+
 .tally-item.tony .tally-amount {
   color: #4ade80;
 }
 
 .tally-item.nugs .tally-amount {
   color: #f9a8d4;
+}
+
+.tally-excess {
+  grid-column: 3;
+  justify-self: start;
+  margin-left: 0.3rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: #a78bfa;
+  white-space: nowrap;
+}
+
+.tally-excess-label {
+  color: #64748b;
+  font-weight: 500;
 }
 
 .tally-amount.mac {
@@ -1645,9 +1674,9 @@ body {
 }
 
 .pet-mood.mood-neglected {
-  color: #cbd5e1;
-  border-color: rgba(148,163,184,0.22);
-  background: rgba(148,163,184,0.04);
+  color: #fb7185;
+  border-color: rgba(244,63,94,0.28);
+  background: rgba(244,63,94,0.08);
 }
 
 .pet-quests-btn {

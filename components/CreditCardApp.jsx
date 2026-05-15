@@ -28,6 +28,7 @@ import {
   formatShortDate,
   normalizeFirebaseTransaction,
 } from '../utils/creditCardAppData';
+import { buildMacquarieExcessShares } from '../utils/macquarieExcess';
 import {
   getSubmissionDateKeyEntry,
   getOtherUser,
@@ -2335,6 +2336,10 @@ export default function CreditCardApp() {
     () => buildAssigneeTotal(submissions, transactionsById, 'Macquarie', referenceDateKey),
     [submissions, transactionsById, referenceDateKey]
   );
+  const macquarieExcessShares = useMemo(
+    () => buildMacquarieExcessShares(USERS, macTally),
+    [macTally]
+  );
   const macqbillTally = useMemo(
     () => buildAssigneeTotal(submissions, transactionsById, 'Macqbill', referenceDateKey),
     [submissions, transactionsById, referenceDateKey]
@@ -2645,20 +2650,31 @@ export default function CreditCardApp() {
 
       <div className="tally-bar">
         <div className="tally-main">
-          {USERS.map((u, i) => (
-            <React.Fragment key={u}>
-              {i > 0 && <div style={{ width: '1px', background: 'rgba(255,255,255,0.05)' }} />}
-              <button
-                type="button"
-                className={`tally-item tally-trigger ${u === currentUser ? 'me' : ''} ${u.toLowerCase()}`}
-                onClick={() => setBreakdownUser(u)}
-              >
-                <div className="tally-name">{u}{u === currentUser ? ' (you)' : ''}</div>
-                <div className="tally-amount">${(userTallies[u] || 0).toFixed(2)}</div>
-                <div className="tally-note">own assignments</div>
-              </button>
-            </React.Fragment>
-          ))}
+          {USERS.map((u, i) => {
+            const macquarieExcessShare = macquarieExcessShares[u] || 0;
+
+            return (
+              <React.Fragment key={u}>
+                {i > 0 && <div style={{ width: '1px', background: 'rgba(255,255,255,0.05)' }} />}
+                <button
+                  type="button"
+                  className={`tally-item tally-trigger ${u === currentUser ? 'me' : ''} ${u.toLowerCase()}`}
+                  onClick={() => setBreakdownUser(u)}
+                >
+                  <div className="tally-name">{u}{u === currentUser ? ' (you)' : ''}</div>
+                  <div className="tally-amount-row">
+                    <span className="tally-amount">${(userTallies[u] || 0).toFixed(2)}</span>
+                    {macquarieExcessShare > 0 && (
+                      <span className="tally-excess">
+                        +${macquarieExcessShare.toFixed(2)} <span className="tally-excess-label">(macq)</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="tally-note">own assignments</div>
+                </button>
+              </React.Fragment>
+            );
+          })}
         </div>
         {showMac && (
           <>

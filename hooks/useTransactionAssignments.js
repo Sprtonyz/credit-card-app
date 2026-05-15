@@ -10,6 +10,7 @@ import {
 
 const ASSIGNMENT_COMMENT_MAX_LENGTH = 180;
 const ASSIGNMENT_COMMENTS_ROOT = 'cc_v5_app_state/assignmentComments';
+const USER_ACTIVITY_ROOT = 'cc_v5_app_state/userActivity';
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -198,6 +199,13 @@ export function useTransactionAssignments({
       return;
     }
 
+    set(ref(db, `${USER_ACTIVITY_ROOT}/${currentUser}`), {
+      user: currentUser,
+      lastSeen: ts,
+    }).catch((error) => {
+      console.error('Assignment saved, but user activity sync failed:', error);
+    });
+
     try {
       await persistSubmissionWithRetry(
         ref(db, `${ASSIGNMENT_COMMENTS_ROOT}/${txId}/${currentUser}`),
@@ -266,6 +274,10 @@ export function useTransactionAssignments({
         await set(ref(db, `submissions/${last.txId}/${last.user}`), null);
         await set(ref(db, `${ASSIGNMENT_COMMENTS_ROOT}/${last.txId}/${last.user}`), null);
       }
+      await set(ref(db, `${USER_ACTIVITY_ROOT}/${last.user}`), {
+        user: last.user,
+        lastSeen: Date.now(),
+      });
     } catch (error) {
       console.error('Failed to undo submission in Firebase:', error);
     }

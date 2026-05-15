@@ -31,7 +31,6 @@ import {
   deleteTransactionsByIds,
   deleteProcessedLogs,
   clearUploadedData,
-  getNotificationAutomationEvents,
   getNotificationAutomationSettings,
   getTodayDate,
   saveNotificationAutomationSettings,
@@ -328,18 +327,6 @@ function getReviewSummaryStats(manualReview, duplicateDetection) {
   };
 }
 
-function getAutomationEventLabel(event) {
-  if (!event) return 'No scheduler checks yet';
-  if (event.type === 'cron_result') {
-    if (event.skipped) return `Skipped: ${event.reason || 'not due'}`;
-    return `Sent: ${(event.sentProfiles || []).join(' and ') || 'automatic emails'}`;
-  }
-  if (event.type === 'cron_invoked') return 'Scheduler checked in';
-  if (event.type === 'cron_unauthorized') return 'Scheduler authorization failed';
-  if (event.type === 'cron_error') return `Scheduler error: ${event.error || 'unknown error'}`;
-  return event.type || 'Scheduler event';
-}
-
 const ADMIN_UPLOAD_VERSION = '1.1.0';
 
 export default function AdminUploadPage() {
@@ -361,10 +348,8 @@ export default function AdminUploadPage() {
   const [automatedEmailTime, setAutomatedEmailTime] = useState(DEFAULT_AUTOMATED_EMAIL_TIME);
   const [automationSettingsUpdatedAt, setAutomationSettingsUpdatedAt] = useState(null);
   const [automationScheduleStatus, setAutomationScheduleStatus] = useState(null);
-  const [automationEvents, setAutomationEvents] = useState([]);
   const [isSavingAutomationSchedule, setIsSavingAutomationSchedule] = useState(false);
   const [isSendingAutomationNow, setIsSendingAutomationNow] = useState(false);
-  const [isRefreshingAutomationStatus, setIsRefreshingAutomationStatus] = useState(false);
   const [commonReoccurrenceRules, setCommonReoccurrenceRules] = useState([]);
   const [isSavingCommonReoccurrence, setIsSavingCommonReoccurrence] = useState(false);
   const [reviewContext, setReviewContext] = useState({
@@ -389,24 +374,6 @@ export default function AdminUploadPage() {
     setNotificationReports,
     uploadedBatches,
   } = useAdminDashboardData(step, successMessage, setError);
-
-  const refreshAutomationEvents = async () => {
-    setIsRefreshingAutomationStatus(true);
-    try {
-      const events = await getNotificationAutomationEvents();
-      setAutomationEvents(events.slice(0, 8));
-      return events;
-    } catch (err) {
-      console.error('Failed to load automatic email event log:', err);
-      setAutomationScheduleStatus({
-        type: 'error',
-        message: err.message || 'Failed to load automatic email status.',
-      });
-      return [];
-    } finally {
-      setIsRefreshingAutomationStatus(false);
-    }
-  };
 
   const refreshCommonReoccurrenceRules = async () => {
     const rules = await getCommonReoccurrenceRules();
@@ -457,27 +424,6 @@ export default function AdminUploadPage() {
     };
 
     loadAutomationSchedule();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authReady]);
-
-  useEffect(() => {
-    if (!authReady) return undefined;
-
-    let cancelled = false;
-
-    const loadEvents = async () => {
-      const events = await getNotificationAutomationEvents();
-      if (!cancelled) {
-        setAutomationEvents(events.slice(0, 8));
-      }
-    };
-
-    loadEvents().catch((err) => {
-      console.error('Failed to load automatic email event log:', err);
-    });
 
     return () => {
       cancelled = true;
@@ -959,7 +905,6 @@ export default function AdminUploadPage() {
         type: 'success',
         message: `Automatic emails now send at ${savedSettings.time} Melbourne time.`,
       });
-      await refreshAutomationEvents();
     } catch (err) {
       console.error('Failed to save automatic email schedule:', err);
       setAutomationScheduleStatus({
@@ -989,7 +934,6 @@ export default function AdminUploadPage() {
         type: 'success',
         message: `Sent automatic emails now to ${data.sent?.map((item) => item.profileName).join(' and ') || 'Tony and Nugs'}.`,
       });
-      await refreshAutomationEvents();
     } catch (err) {
       console.error('Failed to send automatic emails now:', err);
       setAutomationScheduleStatus({
@@ -1178,10 +1122,15 @@ export default function AdminUploadPage() {
           <div className="mt-3 inline-flex items-center rounded-full bg-slate-800/80 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-slate-300 border border-slate-700">
             synced import {ADMIN_UPLOAD_VERSION}
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-4 flex flex-col items-start gap-3">
             <Link href="/admin/performance">
               <a className="inline-flex items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/20">
                 App speed check
+              </a>
+            </Link>
+            <Link href="/admin/statement-import">
+              <a className="inline-flex items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/20">
+                Open PDF statement importer
               </a>
             </Link>
           </div>
@@ -1202,24 +1151,16 @@ export default function AdminUploadPage() {
               Using classic OCR screenshots.
             </p>
 
-            <div className="mt-4">
-              <Link href="/admin/statement-import">
-                <a className="inline-flex w-full items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/20">
-                  Open PDF statement importer
-                </a>
-              </Link>
-            </div>
-
             {commonReoccurrenceRules.length > 0 ? (
-              <div className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-emerald-100">Common reoccurrences</p>
-                  <span className="text-xs text-emerald-200">
+              <details className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
+                <summary className="cursor-pointer text-sm font-medium text-emerald-100">
+                  Common reoccurrences
+                  <span className="ml-2 text-xs font-normal text-emerald-200">
                     {commonReoccurrenceRules.length} active
                   </span>
-                </div>
-                <div className="space-y-2">
-                  {commonReoccurrenceRules.slice(0, 6).map((rule) => (
+                </summary>
+                <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {commonReoccurrenceRules.map((rule) => (
                     <div
                       key={rule.key}
                       className="flex items-center justify-between gap-3 rounded-md border border-emerald-500/20 bg-slate-950/60 px-3 py-2"
@@ -1241,7 +1182,7 @@ export default function AdminUploadPage() {
                     </div>
                   ))}
                 </div>
-              </div>
+              </details>
             ) : null}
 
             <button
@@ -1361,61 +1302,6 @@ export default function AdminUploadPage() {
                     {automationScheduleStatus.message}
                   </p>
                 ) : null}
-                <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950/70 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs uppercase tracking-wider text-slate-400">Scheduler status</p>
-                    <button
-                      type="button"
-                      onClick={refreshAutomationEvents}
-                      disabled={isRefreshingAutomationStatus || !authReady}
-                      className="rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
-                    >
-                      {isRefreshingAutomationStatus ? 'Refreshing...' : 'Refresh'}
-                    </button>
-                  </div>
-                  {automationEvents.length === 0 ? (
-                    <p className="mt-2 text-sm text-slate-400">No scheduler check has been recorded yet.</p>
-                  ) : (
-                    <div className="mt-2 space-y-2">
-                      {automationEvents.slice(0, 3).map((event) => (
-                        <div key={event.id} className="rounded-md bg-slate-900/90 px-2 py-2">
-                          <p className="text-sm text-slate-200">{getAutomationEventLabel(event)}</p>
-                          <p className="mt-0.5 text-xs text-slate-500">
-                            {event.createdAt ? formatLocalDateTime(new Date(event.createdAt)) : 'Unknown time'}
-                            {event.localTime ? ` | app time ${event.localTime}` : ''}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">Tony spend</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[0] ? `$${Number(notificationReports[0].stats.totalSpend || 0).toFixed(2)}` : '...'}
-                  </p>
-                </div>
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">Nugs spend</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[1] ? `$${Number(notificationReports[1].stats.totalSpend || 0).toFixed(2)}` : '...'}
-                  </p>
-                </div>
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">Tony pending</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[0] ? notificationReports[0].stats.pendingCount : '...'}
-                  </p>
-                </div>
-                <div className="bg-slate-950 rounded-lg p-3 border border-slate-700">
-                  <p className="text-xs text-slate-400">Nugs pending</p>
-                  <p className="text-xl font-bold text-white">
-                    {notificationReports[1] ? notificationReports[1].stats.pendingCount : '...'}
-                  </p>
-                </div>
               </div>
 
               {emailStatus && (
@@ -1487,7 +1373,7 @@ export default function AdminUploadPage() {
                   User activity log
                 </p>
                 <span className="text-xs text-slate-500">
-                  Last 12 hrs | refreshes every 10s
+                  All time | refreshes every 10s
                 </span>
               </div>
               <div className="space-y-2">
@@ -1515,7 +1401,7 @@ export default function AdminUploadPage() {
                       Last assignment:{' '}
                       {entry.latestSubmission
                         ? `${formatActivityTimestamp(entry.latestSubmission.ts)}${entry.latestSubmission.value ? ` (${entry.latestSubmission.value})` : ''}`
-                        : 'No assignments in the last 12 hrs'}
+                        : 'No assignments recorded'}
                     </p>
                     {entry.latestSubmission?.dateKey ? (
                       <p className="mt-1 text-[11px] text-slate-500">
@@ -1661,13 +1547,8 @@ export default function AdminUploadPage() {
             </p>
 
             <div className="space-y-2 mt-4">
-              <Link href="/admin/statement-import">
-                <a className="block w-full px-6 py-3 bg-cyan-600 hover:bg-cyan-700 rounded-lg text-white font-medium transition">
-                  PDF statement importer
-                </a>
-              </Link>
               <Link href="/">
-                <a className="block w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition">
+                <a className="block w-full px-6 py-3 text-center bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition">
                   Return to Main App
                 </a>
               </Link>
@@ -1904,7 +1785,7 @@ export default function AdminUploadPage() {
 
             <div className="space-y-2">
               <Link href="/">
-                <a className="block w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition">
+                <a className="block w-full px-6 py-3 text-center bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition">
                   Return to Main App
                 </a>
               </Link>

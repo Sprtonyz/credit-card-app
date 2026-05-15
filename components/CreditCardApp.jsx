@@ -65,6 +65,7 @@ const APP_STATE_ROOT = 'cc_v5_app_state';
 const PET_PROFILES_ROOT = `${APP_STATE_ROOT}/petProfiles`;
 const SHARED_DAY_OFFSET_KEY = `${APP_STATE_ROOT}/simulatedDayOffset`;
 const ASSIGNMENT_COMMENTS_ROOT = `${APP_STATE_ROOT}/assignmentComments`;
+const USER_ACTIVITY_ROOT = `${APP_STATE_ROOT}/userActivity`;
 const LEGACY_PET_ROOT = 'pet';
 const LEGACY_FOOD_ROOT = 'food';
 const APP_VERSION = '5.7';
@@ -2517,11 +2518,16 @@ export default function CreditCardApp() {
         return;
       }
 
+      const now = Date.now();
       const payload = {
         user: currentUser,
-        ts: Date.now(),
+        ts: now,
       };
       await set(userPresenceRef, payload);
+      await set(ref(db, `${USER_ACTIVITY_ROOT}/${currentUser}`), {
+        user: currentUser,
+        lastSeen: now,
+      });
       const disconnect = onDisconnect(userPresenceRef);
       await disconnect.remove();
     };
@@ -2532,11 +2538,18 @@ export default function CreditCardApp() {
 
     const interval = window.setInterval(() => {
       if (!currentUser) return;
+      const now = Date.now();
       set(userPresenceRef, {
         user: currentUser,
-        ts: Date.now(),
+        ts: now,
       }).catch((error) => {
         console.error('Failed to refresh presence:', error);
+      });
+      set(ref(db, `${USER_ACTIVITY_ROOT}/${currentUser}`), {
+        user: currentUser,
+        lastSeen: now,
+      }).catch((error) => {
+        console.error('Failed to refresh user activity:', error);
       });
     }, 4000);
 
@@ -2917,9 +2930,9 @@ export default function CreditCardApp() {
                   <div className="tally-name">{u}{u === currentUser ? ' (you)' : ''}</div>
                   <div className="tally-amount-row">
                     <span className="tally-amount">${(userTallies[u] || 0).toFixed(2)}</span>
-                    {macquarieExcessShare > 0 && (
+                    {macquarieExcessShare > 0 && !showMac && (
                       <span className="tally-excess">
-                        +${macquarieExcessShare.toFixed(2)} <span className="tally-excess-label">(macq)</span>
+                        +${macquarieExcessShare.toFixed(2)} <span className="tally-excess-label">(mac)</span>
                       </span>
                     )}
                   </div>

@@ -13,6 +13,7 @@ import {
   getImportAuditEntries,
   getPresenceEntries,
   getTodayDate,
+  getUserActivityEntries,
 } from '../services/firebaseService';
 
 const LAST_UPLOAD_UNDO_KEY = 'cc_last_upload_undo';
@@ -168,12 +169,15 @@ export function useAdminDashboardData(step, successMessage, onAuthError) {
 
     const loadAdminActivity = async () => {
       try {
-        const [presenceEntries, submissions] = await Promise.all([
+        const [presenceEntries, submissions, userActivityEntries] = await Promise.all([
           getPresenceEntries(),
           getAllSubmissions(),
+          getUserActivityEntries(),
         ]);
         if (cancelled) return;
-        setAdminActivityLog(buildAdminActivityLog(presenceEntries || {}, submissions || {}));
+        setAdminActivityLog(
+          buildAdminActivityLog(presenceEntries || {}, submissions || {}, userActivityEntries || {})
+        );
       } catch (error) {
         console.error('Failed to load admin activity log:', error);
       }

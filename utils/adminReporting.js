@@ -10,10 +10,9 @@ import {
   getMacquarieExcessAmount,
   getMacquarieExcessShare,
 } from './macquarieExcess';
-import { formatLocalDateTime } from './simulationDate';
+import { SIMULATED_TIME_ZONE } from './simulationDate';
 
 export const PRESENCE_TTL_MS = 12000;
-export const ADMIN_ACTIVITY_WINDOW_MS = 12 * 60 * 60 * 1000;
 export { MACQUARIE_EXCESS_THRESHOLD };
 
 function dateToMs(dateKey) {
@@ -29,13 +28,12 @@ function daysBetween(olderKey, newerKey) {
   return Math.floor((newerMs - olderMs) / 86400000);
 }
 
-function getLatestSubmissionEntryForUser(submissions = {}, user, cutoffTs = 0) {
+function getLatestSubmissionEntryForUser(submissions = {}, user) {
   return Object.entries(submissions).reduce((latest, [txId, submission]) => {
     const entry = submission?.[user];
     const ts = Number(entry?.ts);
 
     if (!Number.isFinite(ts)) return latest;
-    if (cutoffTs && ts < cutoffTs) return latest;
     if (!latest || ts > latest.ts) {
       return {
         txId,
@@ -161,26 +159,58 @@ export function formatDateKeyForDisplay(dateKey) {
 export function formatActivityTimestamp(ts) {
   const value = Number(ts);
   if (!Number.isFinite(value) || value <= 0) return 'No activity yet';
-  return formatLocalDateTime(new Date(value));
+  return new Intl.DateTimeFormat('en-AU', {
+    timeZone: SIMULATED_TIME_ZONE,
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(new Date(value));
 }
 
-export function buildAdminActivityLog(presenceEntries = {}, submissions = {}, now = Date.now()) {
-  const cutoffTs = now - ADMIN_ACTIVITY_WINDOW_MS;
+function getUserActivityTimestamp(userActivityEntries = {}, user) {
+  const directEntry = userActivityEntries?.[user];
+  const matchingEntries = Object.values(userActivityEntries || {}).filter(
+    (entry) => entry && typeof entry === 'object' && entry.user === user
+  );
+  const candidates = [directEntry, ...matchingEntries].filter(Boolean);
 
+  return candidates.reduce((latest, entry) => {
+    const ts = Number(entry?.lastSeen || entry?.lastLogin || entry?.ts);
+    if (!Number.isFinite(ts)) return latest;
+    return ts > latest ? ts : latest;
+  }, 0);
+}
+
+export function buildAdminActivityLog(
+  presenceEntries = {},
+  submissions = {},
+  userActivityEntries = {},
+  now = Date.now()
+) {
   return PROFILE_NAMES.map((user) => {
     const userPresenceEntries = Object.values(presenceEntries || {}).filter(
       (entry) => entry && typeof entry === 'object' && entry.user === user
     );
-    const latestPresenceTs = userPresenceEntries.reduce((latest, entry) => {
+    const latestLivePresenceTs = userPresenceEntries.reduce((latest, entry) => {
       const ts = Number(entry?.ts);
-      if (!Number.isFinite(ts) || ts < cutoffTs) return latest;
+      if (!Number.isFinite(ts)) return latest;
       return Number.isFinite(ts) && ts > latest ? ts : latest;
     }, 0);
+    const latestSubmission = getLatestSubmissionEntryForUser(submissions, user);
+    const latestPresenceTs = Math.max(
+      latestLivePresenceTs,
+      getUserActivityTimestamp(userActivityEntries, user),
+      Number(latestSubmission?.ts) || 0
+    );
     const hasActivePresence = userPresenceEntries.some((entry) => {
       const ts = Number(entry?.ts);
       return Number.isFinite(ts) && now - ts <= PRESENCE_TTL_MS;
     });
-    const latestSubmission = getLatestSubmissionEntryForUser(submissions, user, cutoffTs);
 
     return {
       user,

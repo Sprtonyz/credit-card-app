@@ -170,6 +170,21 @@ export async function getPresenceEntries() {
   }
 }
 
+export async function getUserActivityEntries() {
+  try {
+    const snapshot = await get(ref(db, 'cc_v5_app_state/userActivity'));
+
+    if (!snapshot.exists()) {
+      return {};
+    }
+
+    return snapshot.val();
+  } catch (error) {
+    console.error('Error getting user activity entries:', error);
+    throw error;
+  }
+}
+
 export async function checkIfProcessed(imageHash) {
   try {
     const processedRef = ref(db, `processedTransactions/${imageHash}`);

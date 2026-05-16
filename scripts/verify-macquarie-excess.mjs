@@ -11,13 +11,14 @@ const source = fs
   .replace(/export function /g, 'function ');
 
 const loadMacquarieExcess = new Function(
-  `${source}\nreturn { MACQUARIE_EXCESS_THRESHOLD, getMacquarieExcessAmount, getMacquarieExcessShare, buildMacquarieExcessShares };`
+  `${source}\nreturn { MACQUARIE_EXCESS_THRESHOLD, getMacquarieExcessAmount, getMacquarieExcessShare, buildMacquarieExcessShares, buildMacquarieExcessEntryShares };`
 );
 const {
   MACQUARIE_EXCESS_THRESHOLD,
   getMacquarieExcessAmount,
   getMacquarieExcessShare,
   buildMacquarieExcessShares,
+  buildMacquarieExcessEntryShares,
 } = loadMacquarieExcess();
 
 function run(name, fn) {
@@ -54,6 +55,26 @@ run('builds display shares for the profiles', () => {
 
   assertNear(shares.Tony, 100, 'Tony display share');
   assertNear(shares.Nugs, 50, 'Nugs display share');
+});
+
+run('builds item-level shares from only the Macquarie excess', () => {
+  const shares = buildMacquarieExcessEntryShares(
+    [
+      { id: 'small', desc: 'Small Mac item', countedAmount: 50 },
+      { id: 'large', desc: 'Large Mac item', countedAmount: 150 },
+      { id: 'refund', desc: 'Refund', countedAmount: -20 },
+    ],
+    'Tony',
+    1000
+  );
+
+  assertEqual(shares.length, 2, 'share item count');
+  assertEqual(shares[0].id, 'large', 'highest Macquarie item first');
+  assertNear(shares[0].macquarieExcessAmount, 150, 'first excess amount');
+  assertNear(shares[0].countedAmount, 100, 'first Tony share');
+  assertEqual(shares[1].id, 'small', 'remaining item second');
+  assertNear(shares[1].macquarieExcessAmount, 50, 'second excess amount');
+  assertNear(shares[1].countedAmount, 100 / 3, 'second Tony share');
 });
 
 console.log('macquarie excess verification passed');

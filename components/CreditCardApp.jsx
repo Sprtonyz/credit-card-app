@@ -27,13 +27,15 @@ import {
   formatShortDate,
   normalizeFirebaseTransaction,
 } from '../utils/creditCardAppData';
-import { buildMacquarieExcessShares } from '../utils/macquarieExcess';
+import { buildMacquarieExcessEntryShares, buildMacquarieExcessShares } from '../utils/macquarieExcess';
 import {
   getSubmissionDateKeyEntry,
   getOtherUser,
   getSurfacedSubmissionStatus,
   getSurfacedSubmissionValue,
+  getGroupedTallyBreakdownEntries,
   getTallyBreakdownEntries,
+  groupTallyBreakdownEntries,
 } from '../utils/reconciliation';
 import { useTransactionAssignments } from '../hooks/useTransactionAssignments';
 import {
@@ -65,6 +67,8 @@ const SWIPE_ASSIGNMENTS = {
 const SWIPE_TRIGGER_PX = 86;
 const SWIPE_MAX_PX = 124;
 const SWIPE_INTENT_PX = 8;
+const TALLY_UNGROUP_SWIPE_TRIGGER_PX = 68;
+const TALLY_UNGROUP_SWIPE_MAX_PX = 104;
 const STORAGE_KEY = 'cc_v5_subs';
 const USER_KEY = 'cc_v5_user';
 const PET_STORAGE_KEY = 'cc_v5_pet_state';
@@ -74,6 +78,7 @@ const APP_STATE_ROOT = 'cc_v5_app_state';
 const PET_PROFILES_ROOT = `${APP_STATE_ROOT}/petProfiles`;
 const SHARED_DAY_OFFSET_KEY = `${APP_STATE_ROOT}/simulatedDayOffset`;
 const ASSIGNMENT_COMMENTS_ROOT = `${APP_STATE_ROOT}/assignmentComments`;
+const TALLY_UNGROUPS_ROOT = `${APP_STATE_ROOT}/tallyUngroups`;
 const USER_ACTIVITY_ROOT = `${APP_STATE_ROOT}/userActivity`;
 const LEGACY_PET_ROOT = 'pet';
 const LEGACY_FOOD_ROOT = 'food';
@@ -81,6 +86,7 @@ const APP_VERSION = '5.7';
 const VERSION_KEY = 'cc_version';
 const ASSIGNMENT_COMMENT_MAX_LENGTH = 180;
 const ASSIGNMENT_NOTE_DRAFTS_KEY = 'cc_v5_assignment_note_drafts';
+const TALLY_UNGROUP_UNDO_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 const COMMENTS_FIREBASE_DELAY_MS = 3500;
 const PRESENCE_FIREBASE_DELAY_MS = 6500;
 const PET_FIREBASE_DELAY_MS = 12000;
@@ -255,6 +261,34 @@ function buildSharedAssignmentCommentPayload({ comment, submission, value, dateK
   if (assignmentDateKey) payload.dateKey = assignmentDateKey;
 
   return payload;
+}
+
+function sanitizeFirebaseKeyPart(value) {
+  return String(value || 'unknown').replace(/[.#$\[\]\/]/g, '_');
+}
+
+function getTallyUngroupKey(assignee, txId) {
+  return `${sanitizeFirebaseKeyPart(assignee)}__${sanitizeFirebaseKeyPart(txId)}`;
+}
+
+function getTallyUngroupRecords(ungroups = {}, assignee = null) {
+  return Object.entries(ungroups || {})
+    .map(([id, record]) => ({
+      id,
+      ...(record || {}),
+    }))
+    .filter((record) => {
+      if (!record.txId || record.deletedAt) return false;
+      if (assignee && record.assignee !== assignee) return false;
+      return true;
+    });
+}
+
+function getUndoableTallyUngroupRecords(ungroups = {}, assignee = null, now = Date.now()) {
+  const cutoff = now - TALLY_UNGROUP_UNDO_WINDOW_MS;
+  return getTallyUngroupRecords(ungroups, assignee)
+    .filter((record) => Number(record.createdAt || 0) >= cutoff)
+    .sort((left, right) => Number(right.createdAt || 0) - Number(left.createdAt || 0));
 }
 
 function sortAssignmentCommentEntries(entries) {
@@ -655,6 +689,122 @@ function AssignmentSwipeActions({ txId, onAssign, children, className = '', cont
       </div>
       <div
         className={`assign-swipe-content ${contentClassName}`}
+        style={{
+          transform: `translateX(${offset}px)`,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function BreakdownUngroupSwipe({ children, onUngroup }) {
+  const surfaceRef = useRef(null);
+  const startRef = useRef({ x: 0, y: 0 });
+  const activeRef = useRef(false);
+  const horizontalRef = useRef(false);
+  const suppressClickRef = useRef(false);
+  const [offset, setOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+
+  const resetSwipe = () => {
+    activeRef.current = false;
+    horizontalRef.current = false;
+    setOffset(0);
+    setDragging(false);
+  };
+
+  const releasePointerCapture = (event) => {
+    const surface = surfaceRef.current;
+    if (surface?.hasPointerCapture?.(event.pointerId)) {
+      surface.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const handlePointerDown = (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    activeRef.current = true;
+    horizontalRef.current = false;
+    suppressClickRef.current = false;
+    startRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    setDragging(true);
+  };
+
+  const handlePointerMove = (event) => {
+    if (!activeRef.current) return;
+
+    const dx = event.clientX - startRef.current.x;
+    const dy = event.clientY - startRef.current.y;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (!horizontalRef.current) {
+      if (absX < SWIPE_INTENT_PX && absY < SWIPE_INTENT_PX) return;
+
+      if (absY > absX) {
+        releasePointerCapture(event);
+        resetSwipe();
+        return;
+      }
+
+      horizontalRef.current = true;
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
+
+    suppressClickRef.current = true;
+    setOffset(clamp(dx, -TALLY_UNGROUP_SWIPE_MAX_PX, 0));
+  };
+
+  const handlePointerUp = (event) => {
+    if (!activeRef.current) return;
+
+    const dx = event.clientX - startRef.current.x;
+    const shouldUngroup = horizontalRef.current && dx <= -TALLY_UNGROUP_SWIPE_TRIGGER_PX;
+
+    releasePointerCapture(event);
+    resetSwipe();
+
+    if (shouldUngroup) {
+      suppressClickRef.current = true;
+      onUngroup?.();
+    }
+  };
+
+  const handlePointerCancel = (event) => {
+    releasePointerCapture(event);
+    resetSwipe();
+  };
+
+  const handleClickCapture = (event) => {
+    if (!suppressClickRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  };
+
+  const ready = offset <= -TALLY_UNGROUP_SWIPE_TRIGGER_PX;
+
+  return (
+    <div
+      ref={surfaceRef}
+      className={`breakdown-ungroup-swipe ${dragging ? 'dragging' : ''} ${ready ? 'ready' : ''}`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onClickCapture={handleClickCapture}
+    >
+      <div className="breakdown-ungroup-action">
+        <span>ungroup</span>
+      </div>
+      <div
+        className="breakdown-ungroup-content"
         style={{
           transform: `translateX(${offset}px)`,
         }}
@@ -1573,7 +1723,138 @@ function AllDone({ msg }) {
   );
 }
 
-function TallyBreakdownModal({ assignee, total, items, onClose }) {
+function formatBreakdownAmount(amount) {
+  const value = Number(amount || 0);
+  return `${value < 0 ? '-$' : '$'}${Math.abs(value).toFixed(2)}`;
+}
+
+function getBreakdownDateLabel(item) {
+  return formatShortDate(item.date || item.uploadedDay || '') || 'Pending';
+}
+
+function getBreakdownGroupMeta(group) {
+  const states = [...new Set(group.items.map((item) => item.assignmentState).filter(Boolean))];
+  const dates = [...new Set(group.items.map(getBreakdownDateLabel).filter(Boolean))];
+
+  return {
+    state: states.length === 1 ? states[0] : 'Mixed',
+    date: dates.length === 1 ? dates[0] : `${dates.length} dates`,
+  };
+}
+
+function TallyBreakdownModal({
+  assignee,
+  total,
+  groups = [],
+  macquarieExcessGroups = [],
+  macquarieExcessTotal = 0,
+  undoableUngroups = [],
+  onUngroupItem,
+  onUndoUngroup,
+  onClose,
+}) {
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
+  const transactionCount = groups.reduce((sum, group) => sum + group.items.length, 0);
+  const macquarieTransactionCount = macquarieExcessGroups.reduce((sum, group) => sum + group.items.length, 0);
+  const hasMacquarieExcessGroups = macquarieExcessGroups.length > 0 && macquarieExcessTotal > 0;
+  const latestUngroup = undoableUngroups[0] || null;
+
+  const toggleGroup = (groupKey) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  };
+
+  const renderGroup = (group, { section = 'own', allowUngroup = false } = {}) => {
+    const groupStateKey = `${section}:${group.key}`;
+    const expandable = group.items.length > 1;
+    const expanded = expandedGroups.has(groupStateKey);
+    const meta = getBreakdownGroupMeta(group);
+
+    return (
+      <div
+        key={groupStateKey}
+        className={`breakdown-group ${expanded ? 'expanded' : ''} ${
+          section === 'macquarie' ? 'macquarie' : ''
+        }`}
+      >
+        <button
+          type="button"
+          className={`breakdown-row breakdown-group-row ${expandable ? 'expandable' : ''}`}
+          onClick={() => {
+            if (expandable) toggleGroup(groupStateKey);
+          }}
+          aria-expanded={expandable ? expanded : undefined}
+        >
+          <div className="breakdown-copy">
+            <div className="breakdown-merchant-line">
+              {expandable && (
+                <span className="breakdown-chevron" aria-hidden="true">
+                  {expanded ? '−' : '+'}
+                </span>
+              )}
+              <span className="breakdown-merchant">{group.desc}</span>
+            </div>
+            <div className="breakdown-meta">
+              <span>
+                {group.items.length} transaction{group.items.length === 1 ? '' : 's'}
+              </span>
+              <span>{meta.state}</span>
+              <span>{meta.date}</span>
+            </div>
+          </div>
+          <div className={`breakdown-amount ${group.countedAmount < 0 ? 'refund' : ''}`}>
+            {formatBreakdownAmount(group.countedAmount)}
+          </div>
+        </button>
+
+        {expandable && expanded && (
+          <div className="breakdown-children">
+            {group.items.map((item) => {
+              const childRow = (
+                <div className="breakdown-child-row">
+                  <div className="breakdown-copy">
+                    <div className="breakdown-child-merchant">{item.desc}</div>
+                    <div className="breakdown-meta">
+                      <span>{item.assignmentState}</span>
+                      <span>{getBreakdownDateLabel(item)}</span>
+                    </div>
+                  </div>
+                  <div
+                    className={`breakdown-child-amount ${
+                      (item.countedAmount ?? item.amount) < 0 ? 'refund' : ''
+                    }`}
+                  >
+                    {formatBreakdownAmount(item.countedAmount ?? item.amount)}
+                  </div>
+                </div>
+              );
+
+              return allowUngroup ? (
+                <BreakdownUngroupSwipe
+                  key={item.id}
+                  onUngroup={() => onUngroupItem?.({ assignee, group, item })}
+                >
+                  {childRow}
+                </BreakdownUngroupSwipe>
+              ) : (
+                <div key={item.id} className="breakdown-child-wrap">
+                  {childRow}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === 'Escape') onClose();
@@ -1588,34 +1869,45 @@ function TallyBreakdownModal({ assignee, total, items, onClose }) {
       <div className="breakdown-modal" onClick={(event) => event.stopPropagation()}>
         <div className="breakdown-header">
           <div>
-            <p className="breakdown-eyebrow">{assignee} own assignments</p>
+            <p className="breakdown-eyebrow">{assignee} assignment total</p>
             <h3 className="breakdown-title">${total.toFixed(2)}</h3>
             <p className="breakdown-sub">
-              {items.length} transaction{items.length === 1 ? '' : 's'} currently counted
+              {transactionCount} own transaction{transactionCount === 1 ? '' : 's'} across {groups.length} group
+              {groups.length === 1 ? '' : 's'}
+              {hasMacquarieExcessGroups
+                ? ` + ${macquarieTransactionCount} Macquarie excess item${macquarieTransactionCount === 1 ? '' : 's'}`
+                : ''}
             </p>
           </div>
-          <button className="breakdown-close" onClick={onClose} aria-label="Close breakdown">
-            ×
-          </button>
+          <div className="breakdown-header-actions">
+            {latestUngroup && (
+              <button
+                type="button"
+                className="breakdown-undo"
+                onClick={() => onUndoUngroup?.(latestUngroup)}
+                aria-label={`Undo ungroup for ${latestUngroup.itemDesc || 'transaction'}`}
+                title={`Undo ${latestUngroup.itemDesc || 'latest ungroup'}`}
+              >
+                {'\u21B6'}
+              </button>
+            )}
+            <button className="breakdown-close" onClick={onClose} aria-label="Close breakdown">
+              ×
+            </button>
+          </div>
         </div>
 
-        {items.length ? (
+        {groups.length || hasMacquarieExcessGroups ? (
           <div className="breakdown-list">
-            {items.map((item) => (
-              <div key={item.id} className="breakdown-row">
-                <div className="breakdown-copy">
-                  <div className="breakdown-merchant">{item.desc}</div>
-                  <div className="breakdown-meta">
-                    <span>{item.assignmentState}</span>
-                    <span>{formatShortDate(item.date || item.uploadedDay || '') || 'Pending'}</span>
-                  </div>
-                </div>
-                <div className={`breakdown-amount ${(item.countedAmount ?? item.amount) < 0 ? 'refund' : ''}`}>
-                  {(item.countedAmount ?? item.amount) < 0 ? '-$' : '$'}
-                  {Math.abs(item.countedAmount ?? item.amount).toFixed(2)}
-                </div>
+            {groups.map((group) => renderGroup(group, { section: 'own', allowUngroup: true }))}
+            {hasMacquarieExcessGroups && (
+              <div className="breakdown-section-separator">
+                <span>Macquarie excess share</span>
+                <strong>{formatBreakdownAmount(macquarieExcessTotal)}</strong>
               </div>
-            ))}
+            )}
+            {hasMacquarieExcessGroups &&
+              macquarieExcessGroups.map((group) => renderGroup(group, { section: 'macquarie' }))}
           </div>
         ) : (
           <div className="breakdown-empty">
@@ -1689,6 +1981,7 @@ export default function CreditCardApp() {
   });
   const [submissions, setSubmissions] = useState({});
   const [assignmentComments, setAssignmentComments] = useState({});
+  const [tallyUngroups, setTallyUngroups] = useState({});
   const [showSwitch, setShowSwitch] = useState(false);
   const [showMac, setShowMac] = useState(false);
   const [showPetDebug, setShowPetDebug] = useState(false);
@@ -2334,6 +2627,45 @@ export default function CreditCardApp() {
     }
   }, [referenceDateKey]);
 
+  const handleTallyBreakdownUngroup = useCallback(({ assignee, group, item }) => {
+    if (!assignee || !item?.id || !group || group.items.length <= 1) return;
+
+    const key = getTallyUngroupKey(assignee, item.id);
+    const record = {
+      txId: item.id,
+      assignee,
+      itemDesc: item.desc || 'Untitled transaction',
+      groupKey: group.key || null,
+      groupDesc: group.desc || null,
+      createdAt: Date.now(),
+      createdBy: currentUser || assignee,
+    };
+
+    setTallyUngroups((prev) => ({
+      ...prev,
+      [key]: record,
+    }));
+
+    set(ref(db, `${TALLY_UNGROUPS_ROOT}/${key}`), record).catch((error) => {
+      console.error('Failed to save tally ungroup:', error);
+    });
+  }, [currentUser]);
+
+  const handleUndoTallyBreakdownUngroup = useCallback((record) => {
+    if (!record?.id) return;
+
+    setTallyUngroups((prev) => {
+      if (!prev[record.id]) return prev;
+      const next = { ...prev };
+      delete next[record.id];
+      return next;
+    });
+
+    remove(ref(db, `${TALLY_UNGROUPS_ROOT}/${record.id}`)).catch((error) => {
+      console.error('Failed to undo tally ungroup:', error);
+    });
+  }, []);
+
   const buyFood = useCallback(() => {
     updateActivePet((pet) => {
       if (pet.coins < 1) return pet;
@@ -2415,6 +2747,22 @@ export default function CreditCardApp() {
 
     return () => unsubscribe();
   }, [commentsFirebaseReady]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    const tallyUngroupsRef = ref(db, TALLY_UNGROUPS_ROOT);
+    const unsubscribe = onValue(
+      tallyUngroupsRef,
+      (snapshot) => {
+        setTallyUngroups(snapshot.val() || {});
+      },
+      () => {
+        // Keep optimistic local tally grouping overrides if Firebase cannot be read.
+      }
+    );
+
+    return () => unsubscribe();
+  }, [authReady]);
 
   useEffect(() => {
     if (!presenceFirebaseReady) return undefined;
@@ -2554,12 +2902,34 @@ export default function CreditCardApp() {
     [macTally]
   );
   const macqbillTally = dashboardMetrics.assigneeTotals.Macqbill || 0;
-  const activeTallyBreakdownItems = useMemo(
+  const activeTallyBreakdownGroups = useMemo(
     () =>
       breakdownUser
-        ? getTallyBreakdownEntries(submissions, transactionsById, breakdownUser, referenceDateKey, USERS)
+        ? getGroupedTallyBreakdownEntries(
+            submissions,
+            transactionsById,
+            breakdownUser,
+            referenceDateKey,
+            USERS,
+            tallyUngroups
+          )
         : [],
-    [breakdownUser, submissions, transactionsById, referenceDateKey]
+    [breakdownUser, submissions, transactionsById, referenceDateKey, tallyUngroups]
+  );
+  const activeMacquarieExcessGroups = useMemo(() => {
+    if (!breakdownUser || macTally <= 0) return [];
+
+    const macquarieExcessEntries = buildMacquarieExcessEntryShares(
+      getTallyBreakdownEntries(submissions, transactionsById, 'Macquarie', referenceDateKey, USERS),
+      breakdownUser,
+      macTally
+    );
+
+    return groupTallyBreakdownEntries(macquarieExcessEntries);
+  }, [breakdownUser, macTally, submissions, transactionsById, referenceDateKey]);
+  const activeTallyUndoRecords = useMemo(
+    () => (breakdownUser ? getUndoableTallyUngroupRecords(tallyUngroups, breakdownUser) : []),
+    [breakdownUser, tallyUngroups]
   );
 
   const stepDay = useCallback(() => {
@@ -2640,6 +3010,7 @@ export default function CreditCardApp() {
     localStorage.removeItem(PET_STORAGE_KEY);
     setSubmissions({});
     setAssignmentComments({});
+    setTallyUngroups({});
     setUndoStack([]);
     setShowMac(false);
     setShowPetDebug(false);
@@ -2662,6 +3033,7 @@ export default function CreditCardApp() {
     try {
       await set(ref(db, 'submissions'), null);
       await set(ref(db, ASSIGNMENT_COMMENTS_ROOT), null);
+      await set(ref(db, TALLY_UNGROUPS_ROOT), null);
       await set(ref(db, PET_PROFILES_ROOT), null);
     } catch (err) {
       console.error('Failed to clear Firebase app state:', err);
@@ -2972,8 +3344,13 @@ export default function CreditCardApp() {
       {breakdownUser && (
         <TallyBreakdownModal
           assignee={breakdownUser}
-          total={userTallies[breakdownUser] || 0}
-          items={activeTallyBreakdownItems}
+          total={(userTallies[breakdownUser] || 0) + (macquarieExcessShares[breakdownUser] || 0)}
+          groups={activeTallyBreakdownGroups}
+          macquarieExcessGroups={activeMacquarieExcessGroups}
+          macquarieExcessTotal={macquarieExcessShares[breakdownUser] || 0}
+          undoableUngroups={activeTallyUndoRecords}
+          onUngroupItem={handleTallyBreakdownUngroup}
+          onUndoUngroup={handleUndoTallyBreakdownUngroup}
           onClose={() => setBreakdownUser(null)}
         />
       )}

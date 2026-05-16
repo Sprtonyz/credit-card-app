@@ -128,6 +128,38 @@
           }
         }
       },
+      "tallyUngroups": {
+        ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
+        ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
+        "$ungroupId": {
+          ".write": "auth !== null && ((newData.exists() && (root.child('appAccess/users').child(auth.uid).child('admin').val() === true || root.child('appAccess/users').child(auth.uid).child('profiles').child(newData.child('assignee').val()).val() === true)) || (!newData.exists() && data.exists() && (root.child('appAccess/users').child(auth.uid).child('admin').val() === true || root.child('appAccess/users').child(auth.uid).child('profiles').child(data.child('assignee').val()).val() === true)))",
+          ".validate": "newData.hasChildren(['txId', 'assignee', 'itemDesc', 'createdAt', 'createdBy'])",
+          "txId": {
+            ".validate": "newData.isString() && newData.val().length > 0"
+          },
+          "assignee": {
+            ".validate": "newData.isString() && (newData.val() === 'Tony' || newData.val() === 'Nugs')"
+          },
+          "itemDesc": {
+            ".validate": "newData.isString() && newData.val().length <= 240"
+          },
+          "groupKey": {
+            ".validate": "newData.isString() || newData.val() === null"
+          },
+          "groupDesc": {
+            ".validate": "newData.isString() || newData.val() === null"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber() && newData.val() > 0"
+          },
+          "createdBy": {
+            ".validate": "newData.isString() && (newData.val() === 'Tony' || newData.val() === 'Nugs')"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      },
       "userActivity": {
         ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
         ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",

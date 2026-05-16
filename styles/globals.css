@@ -471,7 +471,15 @@ body {
   color: #94a3b8;
 }
 
-.breakdown-close {
+.breakdown-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  flex-shrink: 0;
+}
+
+.breakdown-close,
+.breakdown-undo {
   border: 1px solid rgba(255,255,255,0.08);
   background: rgba(255,255,255,0.03);
   color: #cbd5e1;
@@ -481,6 +489,16 @@ body {
   cursor: pointer;
   font-size: 1.1rem;
   line-height: 1;
+}
+
+.breakdown-undo {
+  color: #bfdbfe;
+  font-size: 0.92rem;
+}
+
+.breakdown-undo:hover,
+.breakdown-close:hover {
+  background: rgba(255,255,255,0.06);
 }
 
 .breakdown-list {
@@ -493,21 +511,79 @@ body {
 }
 
 .breakdown-row {
+  appearance: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.8rem;
+  width: 100%;
   padding: 0.8rem 0.85rem;
   border-radius: 16px;
   border: 1px solid rgba(255,255,255,0.06);
   background: rgba(255,255,255,0.025);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+
+.breakdown-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+
+.breakdown-group.macquarie .breakdown-group-row {
+  border-color: rgba(167,139,250,0.12);
+  background: rgba(167,139,250,0.035);
+}
+
+.breakdown-group-row {
+  cursor: default;
+}
+
+.breakdown-group-row.expandable {
+  cursor: pointer;
+}
+
+.breakdown-group-row.expandable:hover,
+.breakdown-group.expanded .breakdown-group-row {
+  border-color: rgba(96,165,250,0.16);
+  background: rgba(96,165,250,0.045);
+}
+
+.breakdown-group-row:focus-visible {
+  outline: 1px solid rgba(96,165,250,0.45);
+  outline-offset: 2px;
 }
 
 .breakdown-copy {
   min-width: 0;
 }
 
+.breakdown-merchant-line {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
+.breakdown-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: rgba(96,165,250,0.12);
+  color: #bfdbfe;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
 .breakdown-merchant {
+  display: block;
+  min-width: 0;
   font-size: 0.76rem;
   color: #f8fafc;
   line-height: 1.35;
@@ -538,6 +614,114 @@ body {
 }
 
 .breakdown-amount.refund {
+  color: #86efac;
+}
+
+.breakdown-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  margin: 0.02rem 0 0.15rem 1.02rem;
+  padding-left: 0.68rem;
+  border-left: 1px solid rgba(148,163,184,0.16);
+}
+
+.breakdown-section-separator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin: 0.22rem 0 0.04rem;
+  padding: 0.62rem 0.2rem 0.35rem;
+  border-top: 1px solid rgba(167,139,250,0.22);
+  color: #a78bfa;
+}
+
+.breakdown-section-separator span,
+.breakdown-section-separator strong {
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.breakdown-section-separator strong {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: #e9d5ff;
+}
+
+.breakdown-ungroup-swipe {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  touch-action: pan-y;
+}
+
+.breakdown-ungroup-content {
+  position: relative;
+  z-index: 1;
+  border-radius: inherit;
+  background: rgba(10,13,18,0.96);
+  transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+
+.breakdown-ungroup-swipe.dragging .breakdown-ungroup-content {
+  transition: none;
+  cursor: grabbing;
+}
+
+.breakdown-ungroup-action {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 58%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 0.72rem;
+  color: #fca5a5;
+  background: linear-gradient(270deg, rgba(239,68,68,0.32), rgba(239,68,68,0.04));
+  pointer-events: none;
+  opacity: 0.74;
+  transition: opacity 0.14s ease;
+}
+
+.breakdown-ungroup-swipe.ready .breakdown-ungroup-action {
+  opacity: 1;
+}
+
+.breakdown-ungroup-action span {
+  font-size: 0.56rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.breakdown-child-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.62rem 0.7rem;
+  border-radius: 12px;
+  background: rgba(14,19,30,0.96);
+  border: 1px solid rgba(255,255,255,0.045);
+}
+
+.breakdown-child-merchant {
+  font-size: 0.66rem;
+  line-height: 1.35;
+  color: #cbd5e1;
+}
+
+.breakdown-child-amount {
+  flex-shrink: 0;
+  font-family: 'Fraunces', serif;
+  font-size: 0.86rem;
+  color: #cbd5e1;
+}
+
+.breakdown-child-amount.refund {
   color: #86efac;
 }
 

@@ -27,32 +27,32 @@ Save the returned `refreshToken` as `FIREBASE_AUTH_REFRESH_TOKEN` in Vercel. Tre
 
 ## 2. Seed the access allowlist
 
-Before publishing the strict rules, add this shape in Realtime Database data:
+Before publishing the strict rules, add this shape in Realtime Database data. In this setup, each trusted device/browser UID is an admin device and can use either profile:
 
 ```json
 {
   "appAccess": {
     "users": {
-      "TONY_FIREBASE_UID": {
+      "TRUSTED_DEVICE_FIREBASE_UID": {
         "admin": true,
         "profiles": {
-          "Tony": true
-        }
-      },
-      "NUGS_FIREBASE_UID": {
-        "profiles": {
+          "Tony": true,
           "Nugs": true
         }
       },
       "BACKEND_CRON_FIREBASE_UID": {
-        "admin": true
+        "admin": true,
+        "profiles": {
+          "Tony": true,
+          "Nugs": true
+        }
       }
     }
   }
 }
 ```
 
-Set `admin: true` on any UID that needs the upload/tools/admin screens. A UID can have both profiles if the same browser legitimately switches between Tony and Nugs.
+Add one entry for each trusted browser/device. The UID is device/browser dependent because the app uses Firebase anonymous auth.
 
 ## 3. Publish the rules
 

@@ -1,7 +1,7 @@
 import http from 'http';
 import https from 'https';
 
-const DEFAULT_APP_URL = 'https://ccapp-nine.vercel.app';
+const DEFAULT_APP_URL = 'https://sprtony.vercel.app/';
 const DEFAULT_TIME = '23:00';
 const DEFAULT_TIME_ZONE = 'Australia/Melbourne';
 const DEFAULT_SEND_WINDOW_MINUTES = 15;

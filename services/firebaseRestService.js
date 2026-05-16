@@ -35,6 +35,26 @@ function buildDatabaseUrl(path, authToken) {
   return url.toString();
 }
 
+async function getRefreshedFirebaseAuthToken(apiKey, refreshToken) {
+  const response = await fetch(`https://securetoken.googleapis.com/v1/token?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    }).toString(),
+  });
+
+  const data = await response.json();
+  if (!response.ok || data?.error) {
+    throw new Error(data?.error?.message || 'Firebase token refresh failed.');
+  }
+
+  return data.id_token || null;
+}
+
 export async function getFirebaseRestAuthToken() {
   if (process.env.FIREBASE_DATABASE_AUTH_TOKEN) {
     return process.env.FIREBASE_DATABASE_AUTH_TOKEN;
@@ -42,6 +62,10 @@ export async function getFirebaseRestAuthToken() {
 
   const apiKey = getApiKey();
   if (!apiKey) return null;
+
+  if (process.env.FIREBASE_AUTH_REFRESH_TOKEN) {
+    return getRefreshedFirebaseAuthToken(apiKey, process.env.FIREBASE_AUTH_REFRESH_TOKEN);
+  }
 
   try {
     const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {

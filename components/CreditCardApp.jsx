@@ -1704,6 +1704,7 @@ export default function CreditCardApp() {
   const [day, setDay] = useState(() => getSavedSimulatedDay());
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [firebaseUser, setFirebaseUser] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState({});
   const [firebaseTransactions, setFirebaseTransactions] = useState(null);
   const [breakdownUser, setBreakdownUser] = useState(null);
@@ -1846,7 +1847,10 @@ export default function CreditCardApp() {
   }, [day]);
 
   useEffect(() => ensureAnonymousAuth({
-    onReady: () => setAuthReady(true),
+    onReady: (user) => {
+      setFirebaseUser(user);
+      setAuthReady(true);
+    },
     onError: (error) => {
       console.error('Anonymous Firebase sign-in failed:', error);
       setAuthError('Unable to sign in to Firebase automatically.');
@@ -2021,13 +2025,19 @@ export default function CreditCardApp() {
           );
 
           if (
-            getPetProfilesMapSignature(remoteProfiles, referenceDateKey, USERS) !==
-            getPetProfilesMapSignature(mergedProfiles, referenceDateKey, USERS)
+            currentUser &&
+            mergedProfiles[currentUser] &&
+            getPetProfileSignature(remoteProfiles[currentUser], referenceDateKey) !==
+            getPetProfileSignature(mergedProfiles[currentUser], referenceDateKey)
           ) {
-            remotePetProfilesRef.current = mergedProfiles;
-            set(petProfilesRef, mergedProfiles).catch((error) => {
+            const previousRemoteProfiles = remotePetProfilesRef.current;
+            remotePetProfilesRef.current = {
+              ...remotePetProfilesRef.current,
+              [currentUser]: mergedProfiles[currentUser],
+            };
+            update(petProfilesRef, { [currentUser]: mergedProfiles[currentUser] }).catch((error) => {
               console.error('Failed to sync pet profiles to Firebase:', error);
-              remotePetProfilesRef.current = remoteProfiles;
+              remotePetProfilesRef.current = previousRemoteProfiles;
             });
           }
 
@@ -2043,7 +2053,7 @@ export default function CreditCardApp() {
     );
 
     return () => unsubscribe();
-  }, [commitPetProfiles, petFirebaseReady, referenceDateKey]);
+  }, [commitPetProfiles, currentUser, petFirebaseReady, referenceDateKey]);
 
   useEffect(() => {
     if (
@@ -2056,18 +2066,17 @@ export default function CreditCardApp() {
     const normalizedProfiles = normalizePetProfilesMap(petProfiles, referenceDateKey, USERS);
     const updates = {};
 
-    USERS.forEach((user) => {
-      const profile = normalizedProfiles[user];
-      if (!profile) return;
+    const profile = currentUser ? normalizedProfiles[currentUser] : null;
 
-      const remoteProfile = remotePetProfilesRef.current?.[user];
-      if (
-        getPetProfileSignature(profile, referenceDateKey) !==
-        getPetProfileSignature(remoteProfile, referenceDateKey)
-      ) {
-        updates[user] = profile;
-      }
-    });
+    if (!profile) return;
+
+    const remoteProfile = remotePetProfilesRef.current?.[currentUser];
+    if (
+      getPetProfileSignature(profile, referenceDateKey) !==
+      getPetProfileSignature(remoteProfile, referenceDateKey)
+    ) {
+      updates[currentUser] = profile;
+    }
 
     const updateKeys = Object.keys(updates);
     if (!updateKeys.length) return;
@@ -2082,7 +2091,7 @@ export default function CreditCardApp() {
       console.error('Failed to persist pet profile changes to Firebase:', error);
       remotePetProfilesRef.current = previousRemoteProfiles;
     });
-  }, [petFirebaseReady, petProfiles, petProfilesHydrated, petProfilesRemoteReady, referenceDateKey]);
+  }, [currentUser, petFirebaseReady, petProfiles, petProfilesHydrated, petProfilesRemoteReady, referenceDateKey]);
 
   const usingFirebaseTransactions = Array.isArray(firebaseTransactions);
   const sourceTransactions = useMemo(
@@ -2461,6 +2470,7 @@ export default function CreditCardApp() {
       const now = Date.now();
       const payload = {
         user: currentUser,
+        uid: firebaseUser?.uid || null,
         ts: now,
       };
       await set(userPresenceRef, payload);
@@ -2481,6 +2491,7 @@ export default function CreditCardApp() {
       const now = Date.now();
       set(userPresenceRef, {
         user: currentUser,
+        uid: firebaseUser?.uid || null,
         ts: now,
       }).catch((error) => {
         console.error('Failed to refresh presence:', error);
@@ -2499,7 +2510,7 @@ export default function CreditCardApp() {
         // ignore cleanup errors
       });
     };
-  }, [presenceFirebaseReady, currentUser]);
+  }, [firebaseUser?.uid, presenceFirebaseReady, currentUser]);
 
   const dashboardMetrics = useMemo(
     () =>
@@ -2595,6 +2606,7 @@ export default function CreditCardApp() {
       `day=${day}`,
       `referenceDateKey=${referenceDateKey}`,
       `currentUser=${currentUser || ''}`,
+      `firebaseUid=${firebaseUser?.uid || ''}`,
       ...questDebugLog,
     ].join('\n');
 

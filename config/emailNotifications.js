@@ -1,4 +1,4 @@
-export const DEFAULT_APP_URL = 'https://ccapp-nine.vercel.app';
+export const DEFAULT_APP_URL = 'https://sprtony.vercel.app/';
 export const DEFAULT_GMAIL_USER = 'westpactracker@gmail.com';
 export const DEFAULT_EMAIL_FROM_NAME = 'Westpac CC Tracker';
 

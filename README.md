@@ -111,7 +111,7 @@ Vercel Hobby cron jobs only have hourly precision, so `vercel.json` keeps a best
 
 For the main scheduler, `.github/workflows/email-scheduler.yml` runs during the UTC hours that cover late evening in Melbourne. The workflow reads the saved schedule, waits until the configured local send time, then calls the cron endpoint. This keeps the daily send close to the exact configured time without requiring Vercel Pro. Because GitHub can still delay or drop scheduled runs, it is best-effort rather than a hard real-time guarantee.
 
-If you set `CRON_SECRET` in Vercel, add the same value as a GitHub Actions repository secret named `CRON_SECRET`. If the production app URL changes, add a GitHub Actions repository secret named `APP_URL`; otherwise it defaults to `https://ccapp-nine.vercel.app`.
+If you set `CRON_SECRET` in Vercel, add the same value as a GitHub Actions repository secret named `CRON_SECRET`. If the production app URL changes, add a GitHub Actions repository secret named `APP_URL`; otherwise it defaults to `https://sprtony.vercel.app/`.
 
 You can also update it from the backend with `POST /api/notification-automation-settings` and a JSON body such as:
 
@@ -129,12 +129,20 @@ Set `CRON_SECRET` in Vercel to protect the cron endpoint. Vercel will include it
 
 Set `ADMIN_TOOLS_PASSWORD` in Vercel and local `.env.local` to protect the upload and tools areas. The app checks this password through `/api/admin-auth` and remembers access for the current browser tab session.
 
+## Firebase Realtime Database rules
+
+The app now includes locked-down Realtime Database rules in `database.rules.json` and a Firebase CLI config in `firebase.json`.
+
+Before publishing those rules, seed `/appAccess/users/{firebaseAuthUid}` with the Tony/Nugs/admin UIDs that should be allowed to use the app. The scheduled email backend should use a stable `FIREBASE_AUTH_REFRESH_TOKEN` and its UID should be marked as admin.
+
+See `docs/firebase-realtime-database-security.md` for the exact allowlist shape and deployment steps.
+
 The email includes:
 
 - Current pending count
 - How many items were imported in the latest upload
 - How many items were skipped as duplicates
-- A link to the app: [https://ccapp-nine.vercel.app](https://ccapp-nine.vercel.app)
+- A link to the app: [https://sprtony.vercel.app/](https://sprtony.vercel.app/)
 
 ---
 

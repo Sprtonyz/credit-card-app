@@ -11,6 +11,7 @@ import {
   getMacquarieExcessShare,
 } from './macquarieExcess';
 import { SIMULATED_TIME_ZONE } from './simulationDate';
+import { DEFAULT_APP_URL } from '../config/emailNotifications';
 
 export const PRESENCE_TTL_MS = 12000;
 export { MACQUARIE_EXCESS_THRESHOLD };
@@ -94,7 +95,7 @@ export function buildProfileEmailReports(transactions, submissions, todayKey) {
     return {
       profileName,
       subject: `${profileName} profile summary - ${todayKey}`,
-      appUrl: 'https://ccapp-nine.vercel.app',
+      appUrl: DEFAULT_APP_URL,
       stats: {
         totalSpend,
         pendingCount: pendingTransactions.length,

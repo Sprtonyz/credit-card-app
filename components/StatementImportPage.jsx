@@ -1,13 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import Papa from 'papaparse';
-import { ensureAnonymousAuth } from '../utils/firebaseAuth';
-import { getAllSubmissions, getAllTransactions } from '../services/firebaseService';
-import { normalizeFirebaseTransaction } from '../utils/creditCardAppData';
-import {
-  buildResolvedAssignmentPool,
-  matchAssignmentsToParsedTransactions,
-} from '../utils/assignmentMatcher';
+import { matchAssignmentsToParsedTransactions } from '../utils/assignmentMatcher';
 
 const MOCK_ASSIGNMENT_POOL = [
   {
@@ -173,22 +167,9 @@ export default function StatementImportPage() {
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sheetMessage, setSheetMessage] = useState(null);
-  const [authReady, setAuthReady] = useState(false);
   const [assignmentMatches, setAssignmentMatches] = useState([]);
   const [googleSheetMessage, setGoogleSheetMessage] = useState(null);
   const [showMockPreview, setShowMockPreview] = useState(false);
-
-  React.useEffect(
-    () =>
-      ensureAnonymousAuth({
-        onReady: () => setAuthReady(true),
-        onError: (authError) => {
-          console.error('Anonymous Firebase sign-in failed:', authError);
-          setError('Could not sign in to load assignments from the main app.');
-        },
-      }),
-    []
-  );
 
   const activeParsed = showMockPreview ? MOCK_STATEMENT_PAYLOAD : parsed;
   const transactions = activeParsed?.transactions || [];
@@ -267,20 +248,23 @@ export default function StatementImportPage() {
     await navigator.clipboard.writeText(csv);
   };
 
-  const resolveLiveAssignmentMatches = async () => {
-    if (!authReady) {
-      throw new Error('Assignments are still loading from the main app. Please try again in a moment.');
+  const resolveLiveAssignmentMatches = async (statementTransactions = []) => {
+    const response = await fetch('/api/statement-assignment-matches', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        transactions: statementTransactions,
+      }),
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload?.error || 'Failed to resolve assignment matches.');
     }
 
-    const [transactions, submissions] = await Promise.all([
-      getAllTransactions(),
-      getAllSubmissions(),
-    ]);
-    const normalizedTransactions = transactions.map((transaction) =>
-      normalizeFirebaseTransaction(transaction.id, transaction)
-    );
-    const assignmentPool = buildResolvedAssignmentPool(normalizedTransactions, submissions);
-    return matchAssignmentsToParsedTransactions(parsed?.transactions || [], assignmentPool);
+    return Array.isArray(payload?.matches) ? payload.matches : [];
   };
 
   const handleBuildUpdatedSheet = async () => {
@@ -295,7 +279,7 @@ export default function StatementImportPage() {
         throw new Error('Please parse a statement PDF before building the updated sheet.');
       }
 
-      const matches = await resolveLiveAssignmentMatches();
+      const matches = await resolveLiveAssignmentMatches(parsed.transactions);
       const assignmentCodes = matches.map((match) => match.code || '');
       setAssignmentMatches(matches);
 
@@ -394,7 +378,7 @@ export default function StatementImportPage() {
         throw new Error('Please parse a statement PDF before pushing rows to Google Sheets.');
       }
 
-      const matches = await resolveLiveAssignmentMatches();
+      const matches = await resolveLiveAssignmentMatches(parsed.transactions);
       const assignmentCodes = matches.map((match) => match.code || '');
       setAssignmentMatches(matches);
 

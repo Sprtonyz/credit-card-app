@@ -11,6 +11,12 @@ const PENDING_STATEMENT_DAYS_AFTER_UPLOAD = 4;
 const EXACT_DATE_SCORE_BONUS = 0.35;
 const PENDING_WINDOW_SCORE_BONUS = 0.28;
 const AMBIGUOUS_SCORE_GAP = 0.08;
+const AMOUNT_COMPARISON_EPSILON = 0.000001;
+const MERCHANT_FALLBACK_MIN_DESCRIPTION_SCORE = 0.9;
+const MERCHANT_FALLBACK_MIN_AMOUNT_DIFFERENCE = 0.01;
+const MERCHANT_FALLBACK_MAX_AMOUNT_DIFFERENCE = 1;
+const CONSENSUS_FALLBACK_MIN_DESCRIPTION_SCORE = 0.6;
+const CONSENSUS_FALLBACK_EXACT_AMOUNT_TOLERANCE = 0.001;
 
 function tokenize(value) {
   return normalizeText(value)
@@ -241,6 +247,105 @@ function isAmbiguousCandidate(best, nextBest) {
   return best.candidate.sheetCode !== nextBest.candidate.sheetCode;
 }
 
+function pickMerchantFallback(parsedTransaction, assignmentPool, matchedCandidateIds) {
+  const parsedAmount = Math.abs(Number(parsedTransaction.amount || 0));
+  const candidates = assignmentPool
+    .filter((candidate) => !matchedCandidateIds.has(candidate.id))
+    .map((candidate) => {
+      const descriptionScore = similarityScore(
+        parsedTransaction.description,
+        candidate.description
+      );
+      const candidateAmount = Math.abs(Number(candidate.amount || 0));
+      const amountDiff = Math.abs(parsedAmount - candidateAmount);
+
+      if (descriptionScore < MERCHANT_FALLBACK_MIN_DESCRIPTION_SCORE) return null;
+      if (amountDiff <= MERCHANT_FALLBACK_MIN_AMOUNT_DIFFERENCE + AMOUNT_COMPARISON_EPSILON) {
+        return null;
+      }
+      if (amountDiff > MERCHANT_FALLBACK_MAX_AMOUNT_DIFFERENCE) return null;
+
+      return {
+        candidate,
+        descriptionScore,
+        amountDiff,
+        dateMatch: getDateMatch(parsedTransaction, candidate),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      if (right.descriptionScore !== left.descriptionScore) {
+        return right.descriptionScore - left.descriptionScore;
+      }
+      return left.amountDiff - right.amountDiff;
+    });
+
+  const best = candidates[0];
+  if (!best) return null;
+
+  const hasConflictingAssignee = candidates.some(
+    (entry) => entry.candidate.sheetCode !== best.candidate.sheetCode
+  );
+  if (hasConflictingAssignee) return null;
+
+  return best;
+}
+
+function pickConsensusFallback(parsedTransaction, assignmentPool, matchedCandidateIds) {
+  const parsedAmount = Math.abs(Number(parsedTransaction.amount || 0));
+  const candidates = assignmentPool
+    .map((candidate) => {
+      const descriptionScore = similarityScore(
+        parsedTransaction.description,
+        candidate.description
+      );
+      if (descriptionScore < CONSENSUS_FALLBACK_MIN_DESCRIPTION_SCORE) return null;
+
+      const candidateAmount = Math.abs(Number(candidate.amount || 0));
+      const amountDiff = Math.abs(parsedAmount - candidateAmount);
+      if (amountDiff > CONSENSUS_FALLBACK_EXACT_AMOUNT_TOLERANCE) return null;
+
+      const dateMatch = getDateMatch(parsedTransaction, candidate);
+      if (
+        dateMatch.type === 'outside_pending_window' &&
+        dateMatch.dayOffset !== null &&
+        dateMatch.dayOffset > PENDING_STATEMENT_DAYS_AFTER_UPLOAD
+      ) {
+        return null;
+      }
+
+      return {
+        candidate,
+        descriptionScore,
+        amountDiff,
+        isConsumed: matchedCandidateIds.has(candidate.id),
+        dateMatch,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      if (right.descriptionScore !== left.descriptionScore) {
+        return right.descriptionScore - left.descriptionScore;
+      }
+      if (left.isConsumed !== right.isConsumed) {
+        return left.isConsumed ? 1 : -1;
+      }
+      return left.amountDiff - right.amountDiff;
+    });
+
+  if (!candidates.length) return null;
+
+  const hasConflictingAssignee = candidates.some(
+    (entry) => entry.candidate.sheetCode !== candidates[0].candidate.sheetCode
+  );
+  if (hasConflictingAssignee) return null;
+
+  return {
+    ...candidates[0],
+    candidateCount: candidates.length,
+  };
+}
+
 export function matchAssignmentsToParsedTransactions(parsedTransactions = [], assignmentPool = []) {
   const matchedCandidateIds = new Set();
 
@@ -254,6 +359,48 @@ export function matchAssignmentsToParsedTransactions(parsedTransactions = [], as
     const best = candidates[0];
     const nextBest = candidates[1];
     if (!best) {
+      const consensusFallback = pickConsensusFallback(
+        transaction,
+        assignmentPool,
+        matchedCandidateIds
+      );
+      if (consensusFallback) {
+        matchedCandidateIds.add(consensusFallback.candidate.id);
+        return {
+          code: consensusFallback.candidate.sheetCode,
+          confidence: Number(consensusFallback.descriptionScore.toFixed(3)),
+          matched: consensusFallback.candidate,
+          matchType: 'consensus_fallback',
+          dateMatch: consensusFallback.dateMatch,
+          descriptionScore: Number(consensusFallback.descriptionScore.toFixed(3)),
+          amountDifference: Number(consensusFallback.amountDiff.toFixed(2)),
+          consensusCandidateCount: consensusFallback.candidateCount,
+          reusedConsumedCandidate: consensusFallback.isConsumed,
+        };
+      }
+
+      const merchantFallback = pickMerchantFallback(
+        transaction,
+        assignmentPool,
+        matchedCandidateIds
+      );
+      if (merchantFallback) {
+        matchedCandidateIds.add(merchantFallback.candidate.id);
+        return {
+          code: merchantFallback.candidate.sheetCode,
+          confidence: Number(
+            (
+              merchantFallback.descriptionScore -
+              Math.min(merchantFallback.amountDiff / 10, 0.08)
+            ).toFixed(3)
+          ),
+          matched: merchantFallback.candidate,
+          matchType: 'merchant_fallback',
+          dateMatch: merchantFallback.dateMatch,
+          descriptionScore: Number(merchantFallback.descriptionScore.toFixed(3)),
+          amountDifference: Number(merchantFallback.amountDiff.toFixed(2)),
+        };
+      }
       return {
         code: '',
         confidence: 0,
@@ -263,6 +410,48 @@ export function matchAssignmentsToParsedTransactions(parsedTransactions = [], as
     }
 
     if (!isConfidentCandidate(best)) {
+      const consensusFallback = pickConsensusFallback(
+        transaction,
+        assignmentPool,
+        matchedCandidateIds
+      );
+      if (consensusFallback) {
+        matchedCandidateIds.add(consensusFallback.candidate.id);
+        return {
+          code: consensusFallback.candidate.sheetCode,
+          confidence: Number(consensusFallback.descriptionScore.toFixed(3)),
+          matched: consensusFallback.candidate,
+          matchType: 'consensus_fallback',
+          dateMatch: consensusFallback.dateMatch,
+          descriptionScore: Number(consensusFallback.descriptionScore.toFixed(3)),
+          amountDifference: Number(consensusFallback.amountDiff.toFixed(2)),
+          consensusCandidateCount: consensusFallback.candidateCount,
+          reusedConsumedCandidate: consensusFallback.isConsumed,
+        };
+      }
+
+      const merchantFallback = pickMerchantFallback(
+        transaction,
+        assignmentPool,
+        matchedCandidateIds
+      );
+      if (merchantFallback) {
+        matchedCandidateIds.add(merchantFallback.candidate.id);
+        return {
+          code: merchantFallback.candidate.sheetCode,
+          confidence: Number(
+            (
+              merchantFallback.descriptionScore -
+              Math.min(merchantFallback.amountDiff / 10, 0.08)
+            ).toFixed(3)
+          ),
+          matched: merchantFallback.candidate,
+          matchType: 'merchant_fallback',
+          dateMatch: merchantFallback.dateMatch,
+          descriptionScore: Number(merchantFallback.descriptionScore.toFixed(3)),
+          amountDifference: Number(merchantFallback.amountDiff.toFixed(2)),
+        };
+      }
       return {
         code: '',
         confidence: Number(best.score.toFixed(3)),

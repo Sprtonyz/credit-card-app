@@ -405,6 +405,16 @@ body {
   color: #a78bfa;
 }
 
+.tally-cycle-banner {
+  padding: 0.22rem 0.85rem 0.32rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  background: rgba(255,255,255,0.01);
+}
+
 .mac-panel {
   display: flex;
   flex-direction: column;

@@ -1,5 +1,6 @@
 import { getAssigneeContributionRatio, getTransactionReferenceDateKey, isVisibleForUser } from './reconciliation';
 import { formatLocalDate } from './simulationDate';
+import { isTransactionWithinTallyDateRange } from './tallyCycle';
 
 export function normalizeFirebaseTransaction(id, tx) {
   const amount = Number(tx.amount) || 0;
@@ -152,6 +153,7 @@ export function buildDashboardMetrics({
   referenceDateKey,
   simulatedNow,
   assignees = [],
+  tallyDateRange = null,
 }) {
   const activeUsers = users.length ? users : [];
   const remainingByUser = Object.fromEntries(activeUsers.map((user) => [user, 0]));
@@ -227,7 +229,7 @@ export function buildDashboardMetrics({
 
   Object.entries(submissions || {}).forEach(([transactionId, submission]) => {
     const transaction = transactionsById[transactionId];
-    if (!transaction) return;
+    if (!transaction || !isTransactionWithinTallyDateRange(transaction, tallyDateRange)) return;
 
     tallyTargets.forEach((target) => {
       const contributionRatio = getAssigneeContributionRatio(submission, target, referenceDateKey, activeUsers);
@@ -255,21 +257,30 @@ export function countVisibleTransactions(transactions, submissions, user, refere
   return transactions.filter((transaction) => isVisibleForUser(transaction, submissions, user, referenceDateKey)).length;
 }
 
-function sumAssignedTransactions(submissions, transactionsById, assignee, referenceDateKey) {
+function sumAssignedTransactions(submissions, transactionsById, assignee, referenceDateKey, tallyDateRange = null) {
   return Object.entries(submissions).reduce((acc, [transactionId, submission]) => {
     const transaction = transactionsById[transactionId];
     const contributionRatio = getAssigneeContributionRatio(submission, assignee, referenceDateKey);
-    if (!transaction || contributionRatio <= 0) return acc;
+    if (
+      !transaction ||
+      contributionRatio <= 0 ||
+      !isTransactionWithinTallyDateRange(transaction, tallyDateRange)
+    ) {
+      return acc;
+    }
     return acc + Number(transaction.amount || 0) * contributionRatio;
   }, 0);
 }
 
-export function buildUserTallies(users, submissions, transactionsById, referenceDateKey) {
+export function buildUserTallies(users, submissions, transactionsById, referenceDateKey, tallyDateRange = null) {
   return Object.fromEntries(
-    users.map((user) => [user, sumAssignedTransactions(submissions, transactionsById, user, referenceDateKey)])
+    users.map((user) => [
+      user,
+      sumAssignedTransactions(submissions, transactionsById, user, referenceDateKey, tallyDateRange),
+    ])
   );
 }
 
-export function buildAssigneeTotal(submissions, transactionsById, assignee, referenceDateKey) {
-  return sumAssignedTransactions(submissions, transactionsById, assignee, referenceDateKey);
+export function buildAssigneeTotal(submissions, transactionsById, assignee, referenceDateKey, tallyDateRange = null) {
+  return sumAssignedTransactions(submissions, transactionsById, assignee, referenceDateKey, tallyDateRange);
 }

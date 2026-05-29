@@ -37,6 +37,13 @@ import {
   getTallyBreakdownEntries,
   groupTallyBreakdownEntries,
 } from '../utils/reconciliation';
+import {
+  DEFAULT_TALLY_CYCLE_SETTINGS,
+  TALLY_CYCLE_SETTINGS_ROOT,
+  buildTallyDateRange,
+  formatTallyDateRangeLabel,
+  normalizeTallyCycleSettings,
+} from '../utils/tallyCycle';
 import { useTransactionAssignments } from '../hooks/useTransactionAssignments';
 import {
   applyPetActionProgress,
@@ -1982,6 +1989,7 @@ export default function CreditCardApp() {
   const [submissions, setSubmissions] = useState({});
   const [assignmentComments, setAssignmentComments] = useState({});
   const [tallyUngroups, setTallyUngroups] = useState({});
+  const [tallyCycleSettings, setTallyCycleSettings] = useState(DEFAULT_TALLY_CYCLE_SETTINGS);
   const [showSwitch, setShowSwitch] = useState(false);
   const [showMac, setShowMac] = useState(false);
   const [showPetDebug, setShowPetDebug] = useState(false);
@@ -2203,9 +2211,35 @@ export default function CreditCardApp() {
     return () => unsubscribe();
   }, [authReady]);
 
+  useEffect(() => {
+    if (!authReady) return undefined;
+
+    const tallyCycleSettingsRef = ref(db, TALLY_CYCLE_SETTINGS_ROOT);
+    const unsubscribe = onValue(
+      tallyCycleSettingsRef,
+      (snapshot) => {
+        setTallyCycleSettings(
+          snapshot.exists()
+            ? normalizeTallyCycleSettings(snapshot.val())
+            : DEFAULT_TALLY_CYCLE_SETTINGS
+        );
+      },
+      (error) => {
+        console.error('Failed to subscribe to tally cycle settings:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [authReady]);
+
   const dateAnchorNow = useDateAnchorNow();
   const simulatedNow = useMemo(() => getSimulatedNow(dateAnchorNow, day), [dateAnchorNow, day]);
   const referenceDateKey = useMemo(() => formatLocalDate(simulatedNow), [simulatedNow]);
+  const tallyDateRange = useMemo(
+    () => buildTallyDateRange(referenceDateKey, tallyCycleSettings),
+    [referenceDateKey, tallyCycleSettings]
+  );
+  const tallyDateRangeLabel = useMemo(() => formatTallyDateRangeLabel(tallyDateRange), [tallyDateRange]);
 
   useEffect(() => {
     if (currentUser) localStorage.setItem(USER_KEY, currentUser);
@@ -2871,9 +2905,18 @@ export default function CreditCardApp() {
             referenceDateKey,
             simulatedNow,
             assignees: DASHBOARD_ASSIGNEES,
+            tallyDateRange,
           })
         : EMPTY_DASHBOARD_METRICS,
-    [usingFirebaseTransactions, firebaseTransactions, submissions, currentUser, referenceDateKey, simulatedNow]
+    [
+      usingFirebaseTransactions,
+      firebaseTransactions,
+      submissions,
+      currentUser,
+      referenceDateKey,
+      simulatedNow,
+      tallyDateRange,
+    ]
   );
 
   const authLoading = currentUser && !authReady && !authError;
@@ -2906,27 +2949,35 @@ export default function CreditCardApp() {
     () =>
       breakdownUser
         ? getGroupedTallyBreakdownEntries(
-            submissions,
-            transactionsById,
-            breakdownUser,
-            referenceDateKey,
-            USERS,
-            tallyUngroups
-          )
-        : [],
-    [breakdownUser, submissions, transactionsById, referenceDateKey, tallyUngroups]
+          submissions,
+          transactionsById,
+          breakdownUser,
+          referenceDateKey,
+          USERS,
+          tallyUngroups,
+          tallyDateRange
+        )
+      : [],
+    [breakdownUser, submissions, transactionsById, referenceDateKey, tallyUngroups, tallyDateRange]
   );
   const activeMacquarieExcessGroups = useMemo(() => {
     if (!breakdownUser || macTally <= 0) return [];
 
     const macquarieExcessEntries = buildMacquarieExcessEntryShares(
-      getTallyBreakdownEntries(submissions, transactionsById, 'Macquarie', referenceDateKey, USERS),
+      getTallyBreakdownEntries(
+        submissions,
+        transactionsById,
+        'Macquarie',
+        referenceDateKey,
+        USERS,
+        tallyDateRange
+      ),
       breakdownUser,
       macTally
     );
 
     return groupTallyBreakdownEntries(macquarieExcessEntries);
-  }, [breakdownUser, macTally, submissions, transactionsById, referenceDateKey]);
+  }, [breakdownUser, macTally, submissions, transactionsById, referenceDateKey, tallyDateRange]);
   const activeTallyUndoRecords = useMemo(
     () => (breakdownUser ? getUndoableTallyUngroupRecords(tallyUngroups, breakdownUser) : []),
     [breakdownUser, tallyUngroups]
@@ -3283,6 +3334,9 @@ export default function CreditCardApp() {
         <button className="mac-toggle" onClick={() => setShowMac((v) => !v)} title="Toggle Macquarie">
           {showMac ? '\u203A' : '\u2039'}
         </button>
+      </div>
+      <div className="tally-cycle-banner">
+        Statement cycle: {tallyDateRangeLabel} (starts on day {tallyCycleSettings.startDay})
       </div>
 
       <div className="app" style={{ paddingBottom: `${appBottomPadding}px` }}>

@@ -56,6 +56,7 @@ export default function TransactionSelectionReview({
   onConfirm,
   onCancel,
   onToggleCommonReoccurrence = null,
+  onRemoveManualTransaction = null,
   isSavingCommonReoccurrence = false,
   isLoading = false,
 }) {
@@ -64,7 +65,15 @@ export default function TransactionSelectionReview({
   );
 
   useEffect(() => {
-    setSelectedIndices(new Set(items.filter((item) => item.defaultSelected).map((item) => item.index)));
+    setSelectedIndices((previous) => {
+      const next = new Set();
+      items.forEach((item) => {
+        if (previous?.has(item.index) || item.defaultSelected) {
+          next.add(item.index);
+        }
+      });
+      return next;
+    });
   }, [items]);
 
   const selectedCount = selectedIndices.size;
@@ -116,6 +125,13 @@ export default function TransactionSelectionReview({
     }
 
     await onToggleCommonReoccurrence(item, shouldMark);
+  };
+
+  const handleRemoveManualTransaction = (event, manualId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!onRemoveManualTransaction || !manualId) return;
+    onRemoveManualTransaction(manualId);
   };
 
   const handleConfirm = () => {
@@ -191,6 +207,17 @@ export default function TransactionSelectionReview({
                           {item.isCommonReoccurrence
                             ? 'Common reoccurrence'
                             : 'Mark common reoccurrence'}
+                        </button>
+                      ) : null}
+                      {item.transaction.isManual ? (
+                        <button
+                          type="button"
+                          onClick={(event) =>
+                            handleRemoveManualTransaction(event, item.transaction.manualId)
+                          }
+                          className="mt-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20"
+                        >
+                          Remove manual entry
                         </button>
                       ) : null}
                     </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import ImageUploader from './ImageUploader';
 import ImageReviewModal from './ImageReviewModal';
@@ -34,6 +34,8 @@ import {
   getNotificationAutomationSettings,
   getTodayDate,
   saveNotificationAutomationSettings,
+  getTallyCycleSettings,
+  saveTallyCycleSettings,
 } from '../services/firebaseService';
 import { formatLocalDateTime } from '../utils/simulationDate';
 import { formatScheduledTime } from '../utils/emailSchedule';
@@ -47,6 +49,12 @@ import {
   isCommonReoccurrenceTransaction,
   normalizeCommonReoccurrenceRules,
 } from '../utils/commonReoccurrence';
+import {
+  DEFAULT_TALLY_CYCLE_SETTINGS,
+  buildTallyDateRange,
+  formatTallyDateRangeLabel,
+  normalizeTallyCycleSettings,
+} from '../utils/tallyCycle';
 
 
 function buildAllTransactions(processedImages) {
@@ -69,14 +77,37 @@ function buildAllTransactions(processedImages) {
   return allTransactions;
 }
 
+function parseSignedAmount(value) {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return null;
+
+  const compactValue = rawValue.replace(/[$,\s]/g, '');
+  if (!compactValue) return null;
+
+  const wrappedInBrackets =
+    compactValue.startsWith('(') && compactValue.endsWith(')') && compactValue.length > 2;
+  const normalizedValue = wrappedInBrackets
+    ? `-${compactValue.slice(1, -1)}`
+    : compactValue;
+
+  const parsed = Number(normalizedValue);
+  if (!Number.isFinite(parsed)) return null;
+
+  return Number(parsed.toFixed(2));
+}
+
 function buildManualReviewItems(
   processedImages,
   duplicateDetection,
   existingTransactions,
   processedLogs = {},
-  commonReoccurrenceRules = []
+  commonReoccurrenceRules = [],
+  manualTransactions = []
 ) {
-  const allTransactions = buildAllTransactions(processedImages);
+  const allTransactions = [
+    ...buildAllTransactions(processedImages),
+    ...(Array.isArray(manualTransactions) ? manualTransactions : []),
+  ];
   const duplicateMap = new Map();
   const normalizedCommonRules = normalizeCommonReoccurrenceRules(commonReoccurrenceRules);
 
@@ -171,7 +202,7 @@ function buildManualReviewItems(
     return {
       index,
       transaction: txForReview,
-      imageName: tx.imageName,
+      imageName: tx.imageName || (txForReview.isManual ? 'Manual entry' : null),
       reason,
       defaultSelected,
       explanation,
@@ -335,6 +366,11 @@ export default function AdminUploadPage() {
   const [processedImages, setProcessedImages] = useState([]);
   const [ocrPreviewImages, setOcrPreviewImages] = useState([]);
   const [duplicateDetection, setDuplicateDetection] = useState(null);
+  const [manualTransactions, setManualTransactions] = useState([]);
+  const [manualDescriptionInput, setManualDescriptionInput] = useState('');
+  const [manualAmountInput, setManualAmountInput] = useState('');
+  const [manualInputError, setManualInputError] = useState(null);
+  const [manualEntryCounter, setManualEntryCounter] = useState(0);
   const [manualReview, setManualReview] = useState(null);
   const [lastMergeReport, setLastMergeReport] = useState(null);
   const [progress, setProgress] = useState(0);
@@ -350,6 +386,12 @@ export default function AdminUploadPage() {
   const [automationScheduleStatus, setAutomationScheduleStatus] = useState(null);
   const [isSavingAutomationSchedule, setIsSavingAutomationSchedule] = useState(false);
   const [isSendingAutomationNow, setIsSendingAutomationNow] = useState(false);
+  const [tallyCycleStartDayInput, setTallyCycleStartDayInput] = useState(
+    String(DEFAULT_TALLY_CYCLE_SETTINGS.startDay)
+  );
+  const [tallyCycleUpdatedAt, setTallyCycleUpdatedAt] = useState(null);
+  const [tallyCycleStatus, setTallyCycleStatus] = useState(null);
+  const [isSavingTallyCycle, setIsSavingTallyCycle] = useState(false);
   const [commonReoccurrenceRules, setCommonReoccurrenceRules] = useState([]);
   const [isSavingCommonReoccurrence, setIsSavingCommonReoccurrence] = useState(false);
   const [reviewContext, setReviewContext] = useState({
@@ -430,6 +472,40 @@ export default function AdminUploadPage() {
     };
   }, [authReady]);
 
+  useEffect(() => {
+    if (!authReady) return undefined;
+
+    let cancelled = false;
+
+    const loadTallyCycleSettings = async () => {
+      try {
+        const settings = await getTallyCycleSettings();
+        if (cancelled) return;
+        setTallyCycleStartDayInput(String(settings.startDay));
+        setTallyCycleUpdatedAt(settings.updatedAt || null);
+      } catch (err) {
+        console.error('Failed to load tally cycle settings:', err);
+        if (!cancelled) {
+          setTallyCycleStatus({
+            type: 'error',
+            message: err.message || 'Failed to load tally cycle settings.',
+          });
+        }
+      }
+    };
+
+    loadTallyCycleSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady]);
+
+  const tallyCyclePreviewLabel = useMemo(() => {
+    const normalized = normalizeTallyCycleSettings({ startDay: Number(tallyCycleStartDayInput) });
+    return formatTallyDateRangeLabel(buildTallyDateRange(getTodayDate(), normalized));
+  }, [tallyCycleStartDayInput]);
+
   const runOcrPipeline = async () => {
     const results = await processImages(
       uploadedFiles,
@@ -453,6 +529,10 @@ export default function AdminUploadPage() {
 
   const handleImagesSelected = (files) => {
     setUploadedFiles(files);
+    setManualTransactions([]);
+    setManualDescriptionInput('');
+    setManualAmountInput('');
+    setManualInputError(null);
     setManualReview(null);
     setError(null);
   };
@@ -468,23 +548,42 @@ export default function AdminUploadPage() {
       if (Array.isArray(selectedIndices)) {
         const selectedIndexSet = new Set(selectedIndices);
         const reviewItems = manualReview?.items || [];
-        const reviewItemByIndex = new Map(reviewItems.map((item) => [item.index, item]));
+        const reviewItemByIndex = new Map(
+          reviewItems.map((item) => [item.index, item])
+        );
 
-        allTransactions = allTransactions
-          .map((tx, idx) => ({ tx, idx }))
-          .filter(({ idx }) => selectedIndexSet.has(idx))
-          .map(({ tx, idx }) => {
-            const reviewItem = reviewItemByIndex.get(idx);
-            const approvesDuplicateOverride =
-              reviewItems.length === 0 || (reviewItem && reviewItem.reason !== 'ready_to_import');
+        if (reviewItems.length > 0) {
+          allTransactions = Array.from(selectedIndexSet)
+            .map((index) => reviewItemByIndex.get(index))
+            .filter(Boolean)
+            .map((reviewItem) => {
+              const tx = reviewItem.transaction;
+              const approvesDuplicateOverride = reviewItem.reason !== 'ready_to_import';
 
-            return approvesDuplicateOverride
-              ? {
-                  ...tx,
-                  adminReviewApproved: true,
-                }
-              : tx;
-          });
+              return approvesDuplicateOverride
+                ? {
+                    ...tx,
+                    adminReviewApproved: true,
+                  }
+                : tx;
+            });
+        } else {
+          allTransactions = allTransactions
+            .map((tx, idx) => ({ tx, idx }))
+            .filter(({ idx }) => selectedIndexSet.has(idx))
+            .map(({ tx, idx }) => {
+              const reviewItem = reviewItemByIndex.get(idx);
+              const approvesDuplicateOverride =
+                reviewItems.length === 0 || (reviewItem && reviewItem.reason !== 'ready_to_import');
+
+              return approvesDuplicateOverride
+                ? {
+                    ...tx,
+                    adminReviewApproved: true,
+                  }
+                : tx;
+            });
+        }
       }
 
       const [existingTransactions, rawProcessedLogs, latestCommonRules] = await Promise.all([
@@ -517,7 +616,8 @@ export default function AdminUploadPage() {
             duplicateDetection,
             existingTransactions,
             processedLogs || {},
-            latestCommonRules
+            latestCommonRules,
+            manualTransactions
           )
         );
         setSuccessMessage({
@@ -635,6 +735,10 @@ export default function AdminUploadPage() {
       ]);
       const enrichedProcessedLogs = enrichProcessedLogsWithFingerprints(processedLogs || {}, existingTransactions);
       const reviewResults = annotateProcessedImagesWithProcessedLogOverlaps(results, enrichedProcessedLogs);
+      setManualTransactions([]);
+      setManualDescriptionInput('');
+      setManualAmountInput('');
+      setManualInputError(null);
       setProcessedImages(reviewResults);
       setReviewContext({
         existingTransactions,
@@ -646,7 +750,8 @@ export default function AdminUploadPage() {
           detection,
           existingTransactions,
           enrichedProcessedLogs,
-          latestCommonRules
+          latestCommonRules,
+          []
         )
       );
       setStep('review');
@@ -692,7 +797,81 @@ export default function AdminUploadPage() {
         duplicateDetection,
         reviewContext.existingTransactions,
         reviewContext.processedLogs,
-        rules
+        rules,
+        manualTransactions
+      )
+    );
+  };
+
+  const handleAddManualReviewTransaction = () => {
+    if (!manualReview || !duplicateDetection) return;
+
+    const description = manualDescriptionInput.trim();
+    const parsedAmount = parseSignedAmount(manualAmountInput);
+
+    if (!description) {
+      setManualInputError('Enter a description before adding a manual transaction.');
+      return;
+    }
+
+    if (parsedAmount === null) {
+      setManualInputError('Enter a valid dollar amount, for example 42.80 or -42.80.');
+      return;
+    }
+
+    const nextCounter = manualEntryCounter + 1;
+    const manualId = `manual-${Date.now()}-${nextCounter}`;
+    const manualTransaction = {
+      manualId,
+      isManual: true,
+      merchant: description,
+      amount: parsedAmount,
+      date: null,
+      isPending: true,
+      isRefund: parsedAmount < 0,
+      imageName: 'Manual entry',
+      rawLine: null,
+      rawParsed: {
+        merchant: description,
+        amountText: String(parsedAmount),
+        date: null,
+      },
+    };
+    const nextManualTransactions = [...manualTransactions, manualTransaction];
+
+    setManualEntryCounter(nextCounter);
+    setManualTransactions(nextManualTransactions);
+    setManualDescriptionInput('');
+    setManualAmountInput('');
+    setManualInputError(null);
+    setManualReview(
+      buildManualReviewItems(
+        processedImages,
+        duplicateDetection,
+        reviewContext.existingTransactions,
+        reviewContext.processedLogs,
+        commonReoccurrenceRules,
+        nextManualTransactions
+      )
+    );
+  };
+
+  const handleRemoveManualReviewTransaction = (manualId) => {
+    if (!manualId || !manualReview || !duplicateDetection) return;
+
+    const nextManualTransactions = manualTransactions.filter(
+      (transaction) => transaction.manualId !== manualId
+    );
+    setManualTransactions(nextManualTransactions);
+    setManualInputError(null);
+    setManualReview(
+      buildManualReviewItems(
+        processedImages,
+        duplicateDetection,
+        reviewContext.existingTransactions,
+        reviewContext.processedLogs,
+        commonReoccurrenceRules,
+        nextManualTransactions
       )
     );
   };
@@ -752,6 +931,11 @@ export default function AdminUploadPage() {
     setUploadedFiles([]);
     setProcessedImages([]);
     setDuplicateDetection(null);
+    setManualTransactions([]);
+    setManualDescriptionInput('');
+    setManualAmountInput('');
+    setManualInputError(null);
+    setManualEntryCounter(0);
     setManualReview(null);
     setLastMergeReport(null);
     setReviewContext({ existingTransactions: [], processedLogs: {} });
@@ -913,6 +1097,39 @@ export default function AdminUploadPage() {
       });
     } finally {
       setIsSavingAutomationSchedule(false);
+    }
+  };
+
+  const handleSaveTallyCycle = async () => {
+    if (!authReady) return;
+
+    setIsSavingTallyCycle(true);
+    setTallyCycleStatus(null);
+
+    try {
+      const parsedStartDay = Number(tallyCycleStartDayInput);
+      if (!Number.isFinite(parsedStartDay) || parsedStartDay < 1 || parsedStartDay > 31) {
+        throw new Error('Start day must be a number between 1 and 31.');
+      }
+
+      const normalized = normalizeTallyCycleSettings({ startDay: parsedStartDay });
+      const savedSettings = await saveTallyCycleSettings(normalized);
+      setTallyCycleStartDayInput(String(savedSettings.startDay));
+      setTallyCycleUpdatedAt(savedSettings.updatedAt || null);
+      setTallyCycleStatus({
+        type: 'success',
+        message: `Tally cycle saved. Current window: ${formatTallyDateRangeLabel(
+          buildTallyDateRange(getTodayDate(), savedSettings)
+        )}.`,
+      });
+    } catch (err) {
+      console.error('Failed to save tally cycle settings:', err);
+      setTallyCycleStatus({
+        type: 'error',
+        message: err.message || 'Failed to save tally cycle settings.',
+      });
+    } finally {
+      setIsSavingTallyCycle(false);
     }
   };
 
@@ -1304,6 +1521,52 @@ export default function AdminUploadPage() {
                 ) : null}
               </div>
 
+              <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-left">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-amber-200">Tally statement cycle</p>
+                    <p className="mt-1 text-sm text-slate-200">
+                      Current window: {tallyCyclePreviewLabel}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Totals reset monthly from this start day to the day before next month&apos;s start day.
+                    </p>
+                    {tallyCycleUpdatedAt ? (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Updated {formatLocalDateTime(new Date(tallyCycleUpdatedAt))}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <label className="text-xs uppercase tracking-wider text-amber-100" htmlFor="tally-cycle-start-day">
+                    Start day
+                  </label>
+                  <input
+                    id="tally-cycle-start-day"
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={tallyCycleStartDayInput}
+                    onChange={(e) => setTallyCycleStartDayInput(e.target.value)}
+                    className="w-28 rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveTallyCycle}
+                    disabled={isSavingTallyCycle || !authReady}
+                    className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-50"
+                  >
+                    {isSavingTallyCycle ? 'Saving...' : 'Save cycle'}
+                  </button>
+                </div>
+                {tallyCycleStatus ? (
+                  <p className={`mt-2 text-sm ${tallyCycleStatus.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {tallyCycleStatus.message}
+                  </p>
+                ) : null}
+              </div>
+
               {emailStatus && (
                 <p
                   className={`mt-4 text-sm ${emailStatus.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}
@@ -1614,6 +1877,60 @@ export default function AdminUploadPage() {
               })()}
             </div>
 
+            <div className="bg-slate-800 rounded-lg p-6 mb-6 border border-slate-700">
+              <h2 className="text-xl font-bold text-white">Add Manual Transaction</h2>
+              <p className="text-sm text-slate-400 mt-1">
+                Use this when OCR misses a row or parses one incorrectly. Uncheck the wrong row, then add your corrected one.
+              </p>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-slate-400">
+                    Description
+                  </label>
+                  <input
+                    type="text"
+                    value={manualDescriptionInput}
+                    onChange={(event) => {
+                      setManualDescriptionInput(event.target.value);
+                      setManualInputError(null);
+                    }}
+                    placeholder="Transaction description"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-slate-400">
+                    Dollar value
+                  </label>
+                  <input
+                    type="text"
+                    value={manualAmountInput}
+                    onChange={(event) => {
+                      setManualAmountInput(event.target.value);
+                      setManualInputError(null);
+                    }}
+                    placeholder="42.80 or -42.80"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={handleAddManualReviewTransaction}
+                    disabled={isLoading}
+                    className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {manualInputError ? (
+                <p className="mt-3 text-sm text-rose-300">{manualInputError}</p>
+              ) : null}
+            </div>
+
             {manualReview ? (
               <TransactionSelectionReview
                 items={manualReview.items}
@@ -1621,6 +1938,7 @@ export default function AdminUploadPage() {
                 onConfirm={(selectedIndices) => handleConfirmTransactions(selectedIndices, processedImages)}
                 onCancel={() => setStep('upload')}
                 onToggleCommonReoccurrence={handleToggleCommonReoccurrence}
+                onRemoveManualTransaction={handleRemoveManualReviewTransaction}
                 isSavingCommonReoccurrence={isSavingCommonReoccurrence}
                 isLoading={isLoading}
               />

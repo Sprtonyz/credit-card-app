@@ -1,4 +1,5 @@
 import { formatLocalDate } from './simulationDate';
+import { isTransactionWithinTallyDateRange } from './tallyCycle';
 
 export const PROFILE_NAMES = ['Tony', 'Nugs'];
 
@@ -399,12 +400,23 @@ export function shouldCountForAssignee(submission, assignee, referenceDateKey, u
   return getAssigneeContributionRatio(submission, assignee, referenceDateKey, users) > 0;
 }
 
-export function getTallyBreakdownEntries(submissions, transactionsById, assignee, referenceDateKey, users = PROFILE_NAMES) {
+export function getTallyBreakdownEntries(
+  submissions,
+  transactionsById,
+  assignee,
+  referenceDateKey,
+  users = PROFILE_NAMES,
+  tallyDateRange = null
+) {
   return Object.entries(submissions)
     .map(([transactionId, submission]) => {
       const transaction = transactionsById[transactionId];
       const contributionRatio = getAssigneeContributionRatio(submission, assignee, referenceDateKey, users);
-      if (!transaction || contributionRatio <= 0) {
+      if (
+        !transaction ||
+        contributionRatio <= 0 ||
+        !isTransactionWithinTallyDateRange(transaction, tallyDateRange)
+      ) {
         return null;
       }
 
@@ -476,10 +488,18 @@ export function getGroupedTallyBreakdownEntries(
   assignee,
   referenceDateKey,
   users = PROFILE_NAMES,
-  manualUngroups = {}
+  manualUngroups = {},
+  tallyDateRange = null
 ) {
   return groupTallyBreakdownEntries(
-    getTallyBreakdownEntries(submissions, transactionsById, assignee, referenceDateKey, users),
+    getTallyBreakdownEntries(
+      submissions,
+      transactionsById,
+      assignee,
+      referenceDateKey,
+      users,
+      tallyDateRange
+    ),
     manualUngroups,
     assignee
   );

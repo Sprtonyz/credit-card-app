@@ -27,6 +27,11 @@ import {
   buildCommonReoccurrenceRule,
   normalizeCommonReoccurrenceRules,
 } from '../utils/commonReoccurrence';
+import {
+  DEFAULT_TALLY_CYCLE_SETTINGS,
+  TALLY_CYCLE_SETTINGS_ROOT,
+  normalizeTallyCycleSettings,
+} from '../utils/tallyCycle';
 
 export async function addTransactions(transactions) {
   try {
@@ -421,6 +426,44 @@ export async function getNotificationAutomationEvents() {
     });
   } catch (error) {
     console.error('Error getting notification automation events:', error);
+    throw error;
+  }
+}
+
+export async function getTallyCycleSettings() {
+  try {
+    const snapshot = await get(ref(db, TALLY_CYCLE_SETTINGS_ROOT));
+
+    if (!snapshot.exists()) {
+      return {
+        ...DEFAULT_TALLY_CYCLE_SETTINGS,
+        updatedAt: null,
+      };
+    }
+
+    const normalized = normalizeTallyCycleSettings(snapshot.val() || {});
+    return {
+      ...normalized,
+      updatedAt: snapshot.val()?.updatedAt || null,
+    };
+  } catch (error) {
+    console.error('Error getting tally cycle settings:', error);
+    throw error;
+  }
+}
+
+export async function saveTallyCycleSettings(settings = {}) {
+  try {
+    const normalized = normalizeTallyCycleSettings(settings);
+    const nextSettings = {
+      ...normalized,
+      updatedAt: getSimulatedISOString(),
+    };
+
+    await set(ref(db, TALLY_CYCLE_SETTINGS_ROOT), nextSettings);
+    return nextSettings;
+  } catch (error) {
+    console.error('Error saving tally cycle settings:', error);
     throw error;
   }
 }

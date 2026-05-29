@@ -8,6 +8,7 @@ const reconciliationPath = path.join(rootDir, 'utils', 'reconciliation.js');
 const source = fs
   .readFileSync(reconciliationPath, 'utf8')
   .replace("import { formatLocalDate } from './simulationDate';", 'const formatLocalDate = (date) => date.toISOString().slice(0, 10);')
+  .replace("import { isTransactionWithinTallyDateRange } from './tallyCycle';", 'const isTransactionWithinTallyDateRange = () => true;')
   .replace(/export const PROFILE_NAMES = /, 'const PROFILE_NAMES = ')
   .replace(/export function /g, 'function ');
 

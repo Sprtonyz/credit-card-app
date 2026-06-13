@@ -511,7 +511,7 @@ function useIdleDelayedReady(
   return ready;
 }
 
-function UserPinPrompt({ user, title, onSubmit, onCancel = null }) {
+function UserPinPrompt({ user, title, onSubmit }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -574,25 +574,6 @@ function UserPinPrompt({ user, title, onSubmit, onCancel = null }) {
         className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 text-center text-2xl tracking-[0.4em] text-white outline-none transition focus:border-cyan-500"
       />
       {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
-      <div className="mt-5 flex gap-3">
-        {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isSubmitting}
-            className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-600 disabled:opacity-50"
-          >
-            Back
-          </button>
-        ) : null}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="flex-1 rounded-lg bg-cyan-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-600 disabled:opacity-50"
-        >
-          {isSubmitting ? 'Checking...' : 'Unlock'}
-        </button>
-      </div>
     </form>
   );
 }
@@ -2217,7 +2198,7 @@ export default function CreditCardApp() {
   const [tallyUngroups, setTallyUngroups] = useState({});
   const [tallyCycleSettings, setTallyCycleSettings] = useState(DEFAULT_TALLY_CYCLE_SETTINGS);
   const [showSwitch, setShowSwitch] = useState(false);
-  const [showMac, setShowMac] = useState(true);
+  const [showMac, setShowMac] = useState(false);
   const [showPetDebug, setShowPetDebug] = useState(false);
   const [showPetMissions, setShowPetMissions] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);

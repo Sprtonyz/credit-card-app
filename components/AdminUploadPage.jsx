@@ -152,13 +152,13 @@ function buildManualReviewItems(
             ...txForReview,
             amount: parsedOverrideAmount,
             overrideAmount: parsedOverrideAmount,
-            overrideAmountInput,
+            overrideAmountInput: amountOverrideInput,
             overrideAmountValid: true,
           }
         : {
             ...txForReview,
             overrideAmount: null,
-            overrideAmountInput,
+            overrideAmountInput: amountOverrideInput,
             overrideAmountValid: !hasAmountOverride,
           };
     const processedMatch = findProcessedLogMatch(txWithAmountOverride, processedLogs || {});

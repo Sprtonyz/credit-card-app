@@ -64,6 +64,7 @@ export default function TransactionSelectionReview({
   const [selectedIndices, setSelectedIndices] = useState(() =>
     new Set(items.filter((item) => item.defaultSelected).map((item) => item.index))
   );
+  const [draftAmounts, setDraftAmounts] = useState({});
 
   useEffect(() => {
     setSelectedIndices((previous) => {
@@ -73,6 +74,25 @@ export default function TransactionSelectionReview({
           next.add(item.index);
         }
       });
+      return next;
+    });
+  }, [items]);
+
+  useEffect(() => {
+    setDraftAmounts((previous) => {
+      const next = {};
+
+      items.forEach((item) => {
+        const key = item.reviewKey || String(item.index);
+        if (Object.prototype.hasOwnProperty.call(previous, key)) {
+          next[key] = previous[key];
+        } else if (String(item.amountOverrideInput || '').trim() !== '') {
+          next[key] = item.amountOverrideInput;
+        } else {
+          next[key] = Number(item.transaction.amount || 0).toFixed(2);
+        }
+      });
+
       return next;
     });
   }, [items]);
@@ -145,8 +165,32 @@ export default function TransactionSelectionReview({
 
   const handleAmountOverrideChange = (event, item) => {
     event.stopPropagation();
+    const nextValue = event.target.value;
+    const key = item.reviewKey || String(item.index);
+    setDraftAmounts((previous) => ({
+      ...previous,
+      [key]: nextValue,
+    }));
+  };
+
+  const handleAmountOverrideBlur = (item) => {
     if (!onUpdateAmountOverride || !item?.reviewKey) return;
-    onUpdateAmountOverride(item.reviewKey, event.target.value);
+
+    const key = item.reviewKey || String(item.index);
+    const nextValue = String(draftAmounts[key] ?? '').trim();
+    const currentValue = String(item.amountOverrideInput || '').trim();
+
+    if (nextValue === currentValue) return;
+
+    onUpdateAmountOverride(item.reviewKey, nextValue);
+  };
+
+  const handleAmountOverrideKeyDown = (event, item) => {
+    if (event.key !== 'Enter') return;
+    event.stopPropagation();
+    event.preventDefault();
+    handleAmountOverrideBlur(item);
+    event.currentTarget.blur();
   };
 
   const handleConfirm = () => {
@@ -173,7 +217,7 @@ export default function TransactionSelectionReview({
           const selected = selectedIndices.has(item.index);
           return (
             <div
-              key={`${item.index}-${item.transaction.merchant}-${item.transaction.amount}`}
+              key={item.reviewKey || item.index}
               role="button"
               tabIndex={0}
               onClick={() => handleToggle(item.index)}
@@ -200,27 +244,39 @@ export default function TransactionSelectionReview({
                         <span className="rounded-full border border-slate-700 bg-slate-950/70 px-2 py-0.5 text-[11px] uppercase tracking-wider text-slate-400">
                           parsed ${Number(item.transaction.amount || 0).toFixed(2)}
                         </span>
-                        <label className="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/70 px-2 py-1 text-[11px] uppercase tracking-wider text-slate-400">
+                        <div
+                          className="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/70 px-2 py-1 text-[11px] uppercase tracking-wider text-slate-400"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <span>Amount</span>
                           <input
                             type="text"
                             inputMode="decimal"
+                            autoComplete="off"
+                            spellCheck={false}
+                            onKeyDown={(event) => handleAmountOverrideKeyDown(event, item)}
+                            onKeyUp={(event) => event.stopPropagation()}
                             value={
-                              String(item.amountOverrideInput || '').trim() !== ''
+                              draftAmounts[item.reviewKey || String(item.index)] ??
+                              (String(item.amountOverrideInput || '').trim() !== ''
                                 ? item.amountOverrideInput
-                                : Number(item.transaction.amount || 0).toFixed(2)
+                                : Number(item.transaction.amount || 0).toFixed(2))
                             }
+                            onFocus={(event) => event.stopPropagation()}
                             onPointerDown={(event) => event.stopPropagation()}
                             onClick={(event) => event.stopPropagation()}
                             onChange={(event) => handleAmountOverrideChange(event, item)}
-                            className={`w-24 bg-transparent text-right text-xs font-semibold outline-none ${
+                            onBlur={() => handleAmountOverrideBlur(item)}
+                            className={`w-28 min-w-0 bg-transparent text-right text-xs font-semibold outline-none ${
                               String(item.amountOverrideInput || '').trim() !== '' &&
                               item.amountOverrideValid === false
                                 ? 'text-rose-200 placeholder:text-rose-300'
                                 : 'text-white placeholder:text-slate-500'
                             }`}
                           />
-                        </label>
+                        </div>
                       </div>
                       <p className="text-xs text-slate-400 mt-1">
                         From: {item.imageName || 'Unknown image'}

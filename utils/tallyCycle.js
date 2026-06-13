@@ -1,9 +1,12 @@
 export const TALLY_CYCLE_SETTINGS_ROOT = 'cc_v5_app_state/tallyCycleSettings';
 export const DEFAULT_TALLY_CYCLE_SETTINGS = Object.freeze({
   startDay: 13,
+  startMonth: null,
 });
 export const TALLY_CYCLE_MIN_DAY = 1;
 export const TALLY_CYCLE_MAX_DAY = 31;
+export const TALLY_CYCLE_MIN_MONTH = 1;
+export const TALLY_CYCLE_MAX_MONTH = 12;
 
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -90,6 +93,16 @@ function normalizeStartDay(startDay) {
   return Math.min(TALLY_CYCLE_MAX_DAY, Math.max(TALLY_CYCLE_MIN_DAY, Math.round(parsed)));
 }
 
+function normalizeStartMonth(startMonth) {
+  if (startMonth === null || startMonth === undefined || startMonth === '') {
+    return DEFAULT_TALLY_CYCLE_SETTINGS.startMonth;
+  }
+
+  const parsed = Number(startMonth);
+  if (!Number.isFinite(parsed)) return DEFAULT_TALLY_CYCLE_SETTINGS.startMonth;
+  return Math.min(TALLY_CYCLE_MAX_MONTH, Math.max(TALLY_CYCLE_MIN_MONTH, Math.round(parsed)));
+}
+
 function getMonthStartKey(year, monthIndex, startDay) {
   return formatDateKey({
     year,
@@ -121,6 +134,7 @@ function isValidDateKey(dateKey) {
 export function normalizeTallyCycleSettings(settings = {}) {
   return {
     startDay: normalizeStartDay(settings?.startDay),
+    startMonth: normalizeStartMonth(settings?.startMonth),
   };
 }
 
@@ -133,17 +147,26 @@ export function buildTallyDateRange(referenceDateKey, settings = DEFAULT_TALLY_C
       startKey: null,
       endKey: null,
       startDay: normalizedSettings.startDay,
+      startMonth: normalizedSettings.startMonth,
     };
   }
 
   const { year, monthIndex } = referenceParts;
-  const monthStartKey = getMonthStartKey(year, monthIndex, normalizedSettings.startDay);
-  const startInCurrentMonth =
-    isValidDateKey(monthStartKey) && referenceDateKey >= monthStartKey ? monthStartKey : null;
+  const activeMonthBase = normalizedSettings.startMonth
+    ? (() => {
+        const anchorMonthIndex = normalizedSettings.startMonth - 1;
+        const currentMonthStartKey = getMonthStartKey(year, anchorMonthIndex, normalizedSettings.startDay);
+        const currentMonthBase = { year, monthIndex: anchorMonthIndex };
 
-  const activeMonthBase = startInCurrentMonth
-    ? { year, monthIndex }
-    : addMonths({ year, monthIndex }, -1);
+        if (referenceDateKey >= currentMonthStartKey) {
+          return currentMonthBase;
+        }
+
+        return addMonths(currentMonthBase, -1);
+      })()
+    : referenceDateKey >= getMonthStartKey(year, monthIndex, normalizedSettings.startDay)
+      ? { year, monthIndex }
+      : addMonths({ year, monthIndex }, -1);
   const startKey = getMonthStartKey(
     activeMonthBase.year,
     activeMonthBase.monthIndex,
@@ -162,6 +185,7 @@ export function buildTallyDateRange(referenceDateKey, settings = DEFAULT_TALLY_C
     startKey,
     endKey,
     startDay: normalizedSettings.startDay,
+    startMonth: normalizedSettings.startMonth,
   };
 }
 

@@ -66,6 +66,10 @@ import {
 } from '../utils/petProfileSync';
 
 const USERS = ['Tony', 'Nugs'];
+const USER_PINS = Object.freeze({
+  Tony: '4890',
+  Nugs: '0709',
+});
 const ASSIGN_OPTS = ['Unsure', 'Macquarie', 'Tony', 'Nugs'];
 const SWIPE_ASSIGNMENTS = {
   left: { value: 'Split', label: 'Split' },
@@ -79,6 +83,9 @@ const TALLY_UNGROUP_SWIPE_MAX_PX = 104;
 const STORAGE_KEY = 'cc_v5_subs';
 const USER_KEY = 'cc_v5_user';
 const PET_STORAGE_KEY = 'cc_v5_pet_state';
+const TRANSACTIONS_CACHE_KEY = 'cc_v5_transactions_cache';
+const PIN_SESSION_KEY = 'cc_v5_pin_session';
+const PIN_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const PRESENCE_ROOT = 'cc_v5_presence';
 const PRESENCE_TTL_MS = 12000;
 const APP_STATE_ROOT = 'cc_v5_app_state';
@@ -114,6 +121,101 @@ const EMPTY_DASHBOARD_METRICS = Object.freeze({
   userTallies: Object.freeze({}),
   assigneeTotals: Object.freeze({}),
 });
+
+function formatTallyCycleStartSummary(tallyCycleSettings) {
+  const startDay = tallyCycleSettings?.startDay;
+  const startMonth = tallyCycleSettings?.startMonth;
+
+  if (!startMonth) {
+    return `starts on day ${startDay}`;
+  }
+
+  const monthLabel = new Intl.DateTimeFormat('en-AU', { month: 'long' }).format(
+    new Date(Date.UTC(2020, startMonth - 1, 1))
+  );
+  return `starts on ${monthLabel} ${startDay}`;
+}
+
+function readCachedFirebaseTransactions() {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = localStorage.getItem(TRANSACTIONS_CACHE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistCachedFirebaseTransactions(transactions) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    if (!Array.isArray(transactions)) {
+      localStorage.removeItem(TRANSACTIONS_CACHE_KEY);
+      return;
+    }
+
+    localStorage.setItem(TRANSACTIONS_CACHE_KEY, JSON.stringify(transactions));
+  } catch (error) {
+    console.warn('Failed to persist transaction cache:', error);
+  }
+}
+
+function readCachedPinSession() {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = localStorage.getItem(PIN_SESSION_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    const user = typeof parsed?.user === 'string' ? parsed.user : null;
+    const cachedAt = Number(parsed?.cachedAt || 0);
+    if (!user || !USERS.includes(user)) return null;
+    if (!cachedAt || Date.now() - cachedAt > PIN_SESSION_MAX_AGE_MS) return null;
+
+    return { user, cachedAt };
+  } catch {
+    return null;
+  }
+}
+
+function persistCachedPinSession(user) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    if (!user || !USERS.includes(user)) {
+      localStorage.removeItem(PIN_SESSION_KEY);
+      return;
+    }
+
+    localStorage.setItem(PIN_SESSION_KEY, JSON.stringify({ user, cachedAt: Date.now() }));
+  } catch (error) {
+    console.warn('Failed to persist PIN session cache:', error);
+  }
+}
+
+function clearCachedPinSession() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(PIN_SESSION_KEY);
+  } catch {
+    // ignore cache cleanup issues
+  }
+}
+
+function getFirebaseTransactionErrorMessage(error) {
+  const code = String(error?.code || '').toLowerCase();
+  if (code.includes('permission-denied') || code.includes('permission_denied')) {
+    return 'Firebase blocked transaction reads for this browser. Using the last cached transactions, if available.';
+  }
+
+  return error?.message || 'Unable to load transactions from Firebase.';
+}
 
 const DEMO_DAYS = {
   '0': [
@@ -165,6 +267,10 @@ function getOptionClassName(value) {
 
 function formatAssignmentLabel(value) {
   return value === 'Macquarie' ? 'MAC' : value;
+}
+
+function verifyUserPin(user, pin) {
+  return String(USER_PINS[user] || '') === String(pin || '').trim();
 }
 
 function normalizeAssignmentComment(comment) {
@@ -405,20 +511,119 @@ function useIdleDelayedReady(
   return ready;
 }
 
-function Landing({ onSelect }) {
+function UserPinPrompt({ user, title, onSubmit, onCancel = null }) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submitPin = async () => {
+    const nextPin = String(pin || '').trim();
+
+    if (nextPin.length !== 4) {
+      setError('Enter the 4-digit PIN.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      if (!verifyUserPin(user, nextPin)) {
+        throw new Error('Incorrect PIN.');
+      }
+
+      setPin('');
+      onSubmit?.(user);
+    } catch (err) {
+      setError(err.message || 'Incorrect PIN.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (pin.length !== 4 || isSubmitting) return;
+    submitPin();
+  }, [pin, isSubmitting]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    await submitPin();
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="w-full">
+      <p className="landing-eyebrow">Credit Card</p>
+      <h1 className="landing-title">{title}</h1>
+      <p className="landing-sub">Enter the 4-digit PIN for {user}</p>
+      <label className="block text-sm font-medium text-slate-200" htmlFor={`pin-${user}`}>
+        PIN
+      </label>
+      <input
+        id={`pin-${user}`}
+        type="password"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        value={pin}
+        onChange={(event) => {
+          setError('');
+          setPin(event.target.value.replace(/[^0-9]/g, '').slice(0, 4));
+        }}
+        maxLength={4}
+        autoFocus
+        className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 text-center text-2xl tracking-[0.4em] text-white outline-none transition focus:border-cyan-500"
+      />
+      {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
+      <div className="mt-5 flex gap-3">
+        {onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-600 disabled:opacity-50"
+          >
+            Back
+          </button>
+        ) : null}
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="flex-1 rounded-lg bg-cyan-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-600 disabled:opacity-50"
+        >
+          {isSubmitting ? 'Checking...' : 'Unlock'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function Landing({ onSelect, rememberedUser = null }) {
+  const [pendingUser, setPendingUser] = useState(rememberedUser);
+
   return (
     <div className="landing">
       <div className="landing-card">
-        <p className="landing-eyebrow">Credit Card</p>
-        <h1 className="landing-title">Who are you?</h1>
-        <p className="landing-sub">Select your name to continue</p>
-        <p className="who-label">I am...</p>
-        {USERS.map((u) => (
-          <button key={u} className="user-btn" onClick={() => onSelect(u)}>
-            <span className="user-initial">{u[0]}</span>
-            {u}
-          </button>
-        ))}
+        {pendingUser ? (
+          <UserPinPrompt
+            user={pendingUser}
+            title="Who are you?"
+            onSubmit={onSelect}
+            onCancel={() => setPendingUser(null)}
+          />
+        ) : (
+          <>
+            <p className="landing-eyebrow">Credit Card</p>
+            <h1 className="landing-title">Who are you?</h1>
+            <p className="landing-sub">Select your name to continue</p>
+            <p className="who-label">I am...</p>
+            {USERS.map((u) => (
+              <button key={u} className="user-btn" onClick={() => setPendingUser(u)}>
+                <span className="user-initial">{u[0]}</span>
+                {u}
+              </button>
+            ))}
+          </>
+        )}
         <p className="landing-footer">Westpac - Transaction reconciliation</p>
       </div>
     </div>
@@ -426,25 +631,38 @@ function Landing({ onSelect }) {
 }
 
 function SwitchOverlay({ currentUser, onSelect, onClose }) {
+  const [pendingUser, setPendingUser] = useState(null);
+
   return (
     <div className="switch-overlay" onClick={onClose}>
       <div className="switch-card" onClick={(e) => e.stopPropagation()}>
-        <p className="switch-title">Switch user</p>
-        <p className="switch-sub">Signed in as {currentUser}</p>
-        {USERS.map((u) => (
-          <button
-            key={u}
-            className="user-btn"
-            style={{ opacity: u === currentUser ? 0.3 : 1 }}
-            onClick={() => {
-              onSelect(u);
+        {pendingUser ? (
+          <UserPinPrompt
+            user={pendingUser}
+            title="Switch user"
+            onSubmit={(user) => {
+              onSelect(user);
               onClose();
             }}
-          >
-            <span className="user-initial">{u[0]}</span>
-            {u}
-          </button>
-        ))}
+            onCancel={() => setPendingUser(null)}
+          />
+        ) : (
+          <>
+            <p className="switch-title">Switch user</p>
+            <p className="switch-sub">Signed in as {currentUser}</p>
+            {USERS.map((u) => (
+              <button
+                key={u}
+                className="user-btn"
+                style={{ opacity: u === currentUser ? 0.3 : 1 }}
+                onClick={() => setPendingUser(u)}
+              >
+                <span className="user-initial">{u[0]}</span>
+                {u}
+              </button>
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
@@ -1979,19 +2197,27 @@ function OcrDiagnostics({ processedImages }) {
 
 export default function CreditCardApp() {
   const router = useRouter();
+  const cachedPinSession = typeof window === 'undefined' ? null : readCachedPinSession();
+  const [rememberedUser, setRememberedUser] = useState(() => {
+    if (typeof window === 'undefined') return null;
+    const searchParams = new URLSearchParams(window.location.search);
+    const forceLanding = searchParams.get('landing') === '1' || searchParams.get('reset') === '1';
+    if (forceLanding) return null;
+    return cachedPinSession?.user || localStorage.getItem(USER_KEY);
+  });
   const [currentUser, setCurrentUser] = useState(() => {
     if (typeof window === 'undefined') return null;
     const searchParams = new URLSearchParams(window.location.search);
     const forceLanding = searchParams.get('landing') === '1' || searchParams.get('reset') === '1';
     if (forceLanding) return null;
-    return localStorage.getItem(USER_KEY);
+    return cachedPinSession?.user || null;
   });
   const [submissions, setSubmissions] = useState({});
   const [assignmentComments, setAssignmentComments] = useState({});
   const [tallyUngroups, setTallyUngroups] = useState({});
   const [tallyCycleSettings, setTallyCycleSettings] = useState(DEFAULT_TALLY_CYCLE_SETTINGS);
   const [showSwitch, setShowSwitch] = useState(false);
-  const [showMac, setShowMac] = useState(false);
+  const [showMac, setShowMac] = useState(true);
   const [showPetDebug, setShowPetDebug] = useState(false);
   const [showPetMissions, setShowPetMissions] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
@@ -2005,9 +2231,9 @@ export default function CreditCardApp() {
   const [day, setDay] = useState(() => getSavedSimulatedDay());
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState(null);
-  const [firebaseUser, setFirebaseUser] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState({});
-  const [firebaseTransactions, setFirebaseTransactions] = useState(null);
+  const [firebaseTransactions, setFirebaseTransactions] = useState(() => readCachedFirebaseTransactions());
+  const [firebaseTransactionsError, setFirebaseTransactionsError] = useState(null);
   const [breakdownUser, setBreakdownUser] = useState(null);
   const [questDebugLog, setQuestDebugLog] = useState([]);
   const [submissionsHydrated, setSubmissionsHydrated] = useState(false);
@@ -2107,18 +2333,21 @@ export default function CreditCardApp() {
     if (localStorage.getItem(VERSION_KEY) !== APP_VERSION) {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(USER_KEY);
+      clearCachedPinSession();
       localStorage.setItem(VERSION_KEY, APP_VERSION);
     }
 
     if (forceLanding) {
       localStorage.removeItem(USER_KEY);
+      clearCachedPinSession();
+      setRememberedUser(null);
       setCurrentUser(null);
       return;
     }
 
     const savedUser = localStorage.getItem(USER_KEY);
     const savedSubs = localStorage.getItem(STORAGE_KEY);
-    if (!forceLanding && savedUser) setCurrentUser(savedUser);
+    if (!forceLanding) setRememberedUser(savedUser);
     if (savedSubs) {
       try {
         lastStoredSubmissionsRef.current = savedSubs;
@@ -2144,14 +2373,21 @@ export default function CreditCardApp() {
   }, [submissions, submissionsHydrated, submissionsStorageWriteReady]);
 
   useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem(USER_KEY, currentUser);
+      setRememberedUser(currentUser);
+      persistCachedPinSession(currentUser);
+    } else {
+      clearCachedPinSession();
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
     setSavedSimulatedDay(day);
   }, [day]);
 
   useEffect(() => ensureAnonymousAuth({
-    onReady: (user) => {
-      setFirebaseUser(user);
-      setAuthReady(true);
-    },
+    onReady: () => setAuthReady(true),
     onError: (error) => {
       console.error('Anonymous Firebase sign-in failed:', error);
       setAuthError('Unable to sign in to Firebase automatically.');
@@ -2240,10 +2476,6 @@ export default function CreditCardApp() {
     [referenceDateKey, tallyCycleSettings]
   );
   const tallyDateRangeLabel = useMemo(() => formatTallyDateRangeLabel(tallyDateRange), [tallyDateRange]);
-
-  useEffect(() => {
-    if (currentUser) localStorage.setItem(USER_KEY, currentUser);
-  }, [currentUser]);
 
   useEffect(() => {
     try {
@@ -2485,15 +2717,21 @@ export default function CreditCardApp() {
           if ((value.merchant || '').startsWith('FIREBASE TEST')) return;
           next.push(normalizeFirebaseTransaction(child.key, value));
         });
+        setFirebaseTransactionsError(null);
         setFirebaseTransactions(next);
       },
-      () => {
-        setFirebaseTransactions([]);
+      (error) => {
+        setFirebaseTransactionsError(getFirebaseTransactionErrorMessage(error));
       }
     );
 
     return () => unsubscribe();
   }, [authReady]);
+
+  useEffect(() => {
+    if (!Array.isArray(firebaseTransactions)) return;
+    persistCachedFirebaseTransactions(firebaseTransactions);
+  }, [firebaseTransactions]);
 
   const petState = currentUser
     ? petProfiles[currentUser] || normalizePetState(null, referenceDateKey)
@@ -2852,7 +3090,6 @@ export default function CreditCardApp() {
       const now = Date.now();
       const payload = {
         user: currentUser,
-        uid: firebaseUser?.uid || null,
         ts: now,
       };
       await set(userPresenceRef, payload);
@@ -2873,7 +3110,6 @@ export default function CreditCardApp() {
       const now = Date.now();
       set(userPresenceRef, {
         user: currentUser,
-        uid: firebaseUser?.uid || null,
         ts: now,
       }).catch((error) => {
         console.error('Failed to refresh presence:', error);
@@ -2892,7 +3128,7 @@ export default function CreditCardApp() {
         // ignore cleanup errors
       });
     };
-  }, [firebaseUser?.uid, presenceFirebaseReady, currentUser]);
+  }, [presenceFirebaseReady, currentUser]);
 
   const dashboardMetrics = useMemo(
     () =>
@@ -3027,7 +3263,6 @@ export default function CreditCardApp() {
       `day=${day}`,
       `referenceDateKey=${referenceDateKey}`,
       `currentUser=${currentUser || ''}`,
-      `firebaseUid=${firebaseUser?.uid || ''}`,
       ...questDebugLog,
     ].join('\n');
 
@@ -3059,6 +3294,7 @@ export default function CreditCardApp() {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(PET_STORAGE_KEY);
+    localStorage.removeItem(TRANSACTIONS_CACHE_KEY);
     setSubmissions({});
     setAssignmentComments({});
     setTallyUngroups({});
@@ -3068,7 +3304,10 @@ export default function CreditCardApp() {
     setShowPetMissions(false);
     setShowDevTools(false);
     setCurrentUser(null);
+    setRememberedUser(null);
     setBreakdownUser(null);
+    setFirebaseTransactions(null);
+    setFirebaseTransactionsError(null);
     localPetProfilesRef.current = {};
     remotePetProfilesRef.current = {};
     lastStoredSubmissionsRef.current = null;
@@ -3092,7 +3331,7 @@ export default function CreditCardApp() {
   };
 
   if (!currentUser) {
-    return <Landing onSelect={setCurrentUser} />;
+    return <Landing onSelect={setCurrentUser} rememberedUser={rememberedUser} />;
   }
 
   if (authLoading) {
@@ -3109,6 +3348,14 @@ export default function CreditCardApp() {
 
   return (
     <div>
+      {firebaseTransactionsError && (
+        <div className="sync-bar" style={{ justifyContent: 'center' }}>
+          <div className="sync-status disconnected" title={firebaseTransactionsError}>
+            <div className="sync-dot disconnected" />
+            {firebaseTransactionsError}
+          </div>
+        </div>
+      )}
       {authError && (
         <div className="sync-bar" style={{ justifyContent: 'center' }}>
           <div className="sync-status disconnected">
@@ -3336,7 +3583,7 @@ export default function CreditCardApp() {
         </button>
       </div>
       <div className="tally-cycle-banner">
-        Statement cycle: {tallyDateRangeLabel} (starts on day {tallyCycleSettings.startDay})
+        Statement cycle: {tallyDateRangeLabel} ({formatTallyCycleStartSummary(tallyCycleSettings)})
       </div>
 
       <div className="app" style={{ paddingBottom: `${appBottomPadding}px` }}>

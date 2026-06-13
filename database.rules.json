@@ -2,222 +2,46 @@
   "rules": {
     ".read": false,
     ".write": false,
-    "appAccess": {
-      ".read": false,
-      ".write": false,
-      "users": {
-        "$uid": {
-          ".read": "auth !== null && (auth.uid === $uid || root.child('appAccess/users').child(auth.uid).child('admin').val() === true)",
-          ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-          "admin": {
-            ".validate": "newData.isBoolean()"
-          },
-          "profiles": {
-            "Tony": {
-              ".validate": "newData.isBoolean()"
-            },
-            "Nugs": {
-              ".validate": "newData.isBoolean()"
-            },
-            "$other": {
-              ".validate": false
-            }
-          },
-          "$other": {
-            ".validate": false
-          }
-        }
-      }
-    },
     "transactions": {
-      ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-      ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
+      ".read": "auth !== null",
+      ".write": "auth !== null",
       ".indexOn": ["date"]
     },
     "submissions": {
-      ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-      ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-      "$txId": {
-        "$user": {
-          ".write": "($user === 'Tony' || $user === 'Nugs') && auth !== null && (root.child('appAccess/users').child(auth.uid).child('admin').val() === true || root.child('appAccess/users').child(auth.uid).child('profiles').child($user).val() === true)",
-          ".validate": "newData.hasChildren(['value', 'ts'])",
-          "value": {
-            ".validate": "newData.isString() && (newData.val() === 'Unsure' || newData.val() === 'Macquarie' || newData.val() === 'Macqbill' || newData.val() === 'Tony' || newData.val() === 'Nugs' || newData.val() === 'Split')"
-          },
-          "ts": {
-            ".validate": "newData.isNumber() && newData.val() > 0"
-          },
-          "day": {
-            ".validate": "newData.isNumber()"
-          },
-          "dateKey": {
-            ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)"
-          },
-          "comment": {
-            ".validate": "newData.isString() && newData.val().length <= 180"
-          },
-          "previousValue": {
-            ".validate": "newData.isString() && (newData.val() === 'Unsure' || newData.val() === 'Macquarie' || newData.val() === 'Macqbill' || newData.val() === 'Tony' || newData.val() === 'Nugs' || newData.val() === 'Split')"
-          },
-          "previousDateKey": {
-            ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)"
-          },
-          "$other": {
-            ".validate": false
-          }
-        }
-      }
+      ".read": "auth !== null",
+      ".write": "auth !== null"
     },
     "cc_v5_presence": {
-      ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-      "$presenceId": {
-        ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).exists() && ((!newData.exists() && (!data.exists() || data.child('uid').val() === auth.uid)) || (newData.exists() && newData.child('uid').val() === auth.uid && (root.child('appAccess/users').child(auth.uid).child('admin').val() === true || root.child('appAccess/users').child(auth.uid).child('profiles').child(newData.child('user').val()).val() === true)))",
-        ".validate": "newData.hasChildren(['user', 'uid', 'ts'])",
-        "user": {
-          ".validate": "newData.isString() && (newData.val() === 'Tony' || newData.val() === 'Nugs')"
-        },
-        "uid": {
-          ".validate": "newData.isString() && newData.val() === auth.uid"
-        },
-        "ts": {
-          ".validate": "newData.isNumber() && newData.val() > 0"
-        },
-        "$other": {
-          ".validate": false
-        }
-      }
+      ".read": "auth !== null",
+      ".write": "auth !== null"
     },
     "cc_v5_app_state": {
-      ".read": false,
-      ".write": false,
-      "simulatedDayOffset": {
-        ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-        ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-        ".validate": "newData.isNumber()"
-      },
-      "tallyCycleSettings": {
-        ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-        ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-        ".validate": "!newData.exists() || newData.hasChildren(['startDay'])",
-        "startDay": {
-          ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 31"
-        },
-        "updatedAt": {
-          ".validate": "newData.isString() || newData.val() === null"
-        },
-        "$other": {
-          ".validate": false
-        }
-      },
-      "petProfiles": {
-        ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-        ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-        "$user": {
-          ".write": "($user === 'Tony' || $user === 'Nugs') && auth !== null && (root.child('appAccess/users').child(auth.uid).child('admin').val() === true || root.child('appAccess/users').child(auth.uid).child('profiles').child($user).val() === true)",
-          ".validate": "$user === 'Tony' || $user === 'Nugs'"
-        }
-      },
-      "assignmentComments": {
-        ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-        ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-        "$txId": {
-          "$user": {
-            ".write": "($user === 'Tony' || $user === 'Nugs') && auth !== null && (root.child('appAccess/users').child(auth.uid).child('admin').val() === true || root.child('appAccess/users').child(auth.uid).child('profiles').child($user).val() === true)",
-            ".validate": "newData.hasChildren(['comment', 'ts'])",
-            "comment": {
-              ".validate": "newData.isString() && newData.val().length <= 180"
-            },
-            "value": {
-              ".validate": "newData.isString() && (newData.val() === 'Unsure' || newData.val() === 'Macquarie' || newData.val() === 'Macqbill' || newData.val() === 'Tony' || newData.val() === 'Nugs' || newData.val() === 'Split')"
-            },
-            "ts": {
-              ".validate": "newData.isNumber() && newData.val() > 0"
-            },
-            "dateKey": {
-              ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)"
-            },
-            "$other": {
-              ".validate": false
-            }
-          }
-        }
-      },
-      "tallyUngroups": {
-        ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-        ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-        "$ungroupId": {
-          ".write": "auth !== null && ((newData.exists() && (root.child('appAccess/users').child(auth.uid).child('admin').val() === true || root.child('appAccess/users').child(auth.uid).child('profiles').child(newData.child('assignee').val()).val() === true)) || (!newData.exists() && data.exists() && (root.child('appAccess/users').child(auth.uid).child('admin').val() === true || root.child('appAccess/users').child(auth.uid).child('profiles').child(data.child('assignee').val()).val() === true)))",
-          ".validate": "newData.hasChildren(['txId', 'assignee', 'itemDesc', 'createdAt', 'createdBy'])",
-          "txId": {
-            ".validate": "newData.isString() && newData.val().length > 0"
-          },
-          "assignee": {
-            ".validate": "newData.isString() && (newData.val() === 'Tony' || newData.val() === 'Nugs')"
-          },
-          "itemDesc": {
-            ".validate": "newData.isString() && newData.val().length <= 240"
-          },
-          "groupKey": {
-            ".validate": "newData.isString() || newData.val() === null"
-          },
-          "groupDesc": {
-            ".validate": "newData.isString() || newData.val() === null"
-          },
-          "createdAt": {
-            ".validate": "newData.isNumber() && newData.val() > 0"
-          },
-          "createdBy": {
-            ".validate": "newData.isString() && (newData.val() === 'Tony' || newData.val() === 'Nugs')"
-          },
-          "$other": {
-            ".validate": false
-          }
-        }
-      },
-      "userActivity": {
-        ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-        ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-        "$user": {
-          ".write": "($user === 'Tony' || $user === 'Nugs') && auth !== null && (root.child('appAccess/users').child(auth.uid).child('admin').val() === true || root.child('appAccess/users').child(auth.uid).child('profiles').child($user).val() === true)",
-          ".validate": "newData.hasChildren(['user', 'lastSeen'])",
-          "user": {
-            ".validate": "newData.val() === $user"
-          },
-          "lastSeen": {
-            ".validate": "newData.isNumber() && newData.val() > 0"
-          },
-          "uid": {
-            ".validate": "newData.isString() && newData.val() === auth.uid"
-          },
-          "$other": {
-            ".validate": false
-          }
-        }
-      }
+      ".read": "auth !== null",
+      ".write": "auth !== null"
     },
     "processedTransactions": {
-      ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-      ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true"
+      ".read": "auth !== null",
+      ".write": "auth !== null"
     },
     "importAuditLog": {
-      ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-      ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true"
+      ".read": "auth !== null",
+      ".write": "auth !== null"
     },
     "commonReoccurrences": {
-      ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-      ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true"
+      ".read": "auth !== null",
+      ".write": "auth !== null"
     },
     "notificationAutomation": {
-      ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true",
-      ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true"
+      ".read": "auth !== null",
+      ".write": "auth !== null"
     },
     "pet": {
-      ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-      ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true"
+      ".read": "auth !== null",
+      ".write": "auth !== null"
     },
     "food": {
-      ".read": "auth !== null && root.child('appAccess/users').child(auth.uid).exists()",
-      ".write": "auth !== null && root.child('appAccess/users').child(auth.uid).child('admin').val() === true"
+      ".read": "auth !== null",
+      ".write": "auth !== null"
     }
   }
 }

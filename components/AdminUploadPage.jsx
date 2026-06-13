@@ -359,6 +359,21 @@ function getReviewSummaryStats(manualReview, duplicateDetection) {
 }
 
 const ADMIN_UPLOAD_VERSION = '1.1.0';
+const TALLY_CYCLE_MONTH_OPTIONS = [
+  { value: '', label: 'Current month (auto)' },
+  { value: '1', label: 'January' },
+  { value: '2', label: 'February' },
+  { value: '3', label: 'March' },
+  { value: '4', label: 'April' },
+  { value: '5', label: 'May' },
+  { value: '6', label: 'June' },
+  { value: '7', label: 'July' },
+  { value: '8', label: 'August' },
+  { value: '9', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+];
 
 export default function AdminUploadPage() {
   const [step, setStep] = useState('upload');
@@ -388,6 +403,9 @@ export default function AdminUploadPage() {
   const [isSendingAutomationNow, setIsSendingAutomationNow] = useState(false);
   const [tallyCycleStartDayInput, setTallyCycleStartDayInput] = useState(
     String(DEFAULT_TALLY_CYCLE_SETTINGS.startDay)
+  );
+  const [tallyCycleStartMonthInput, setTallyCycleStartMonthInput] = useState(
+    DEFAULT_TALLY_CYCLE_SETTINGS.startMonth ? String(DEFAULT_TALLY_CYCLE_SETTINGS.startMonth) : ''
   );
   const [tallyCycleUpdatedAt, setTallyCycleUpdatedAt] = useState(null);
   const [tallyCycleStatus, setTallyCycleStatus] = useState(null);
@@ -482,6 +500,7 @@ export default function AdminUploadPage() {
         const settings = await getTallyCycleSettings();
         if (cancelled) return;
         setTallyCycleStartDayInput(String(settings.startDay));
+        setTallyCycleStartMonthInput(settings.startMonth ? String(settings.startMonth) : '');
         setTallyCycleUpdatedAt(settings.updatedAt || null);
       } catch (err) {
         console.error('Failed to load tally cycle settings:', err);
@@ -502,9 +521,12 @@ export default function AdminUploadPage() {
   }, [authReady]);
 
   const tallyCyclePreviewLabel = useMemo(() => {
-    const normalized = normalizeTallyCycleSettings({ startDay: Number(tallyCycleStartDayInput) });
+    const normalized = normalizeTallyCycleSettings({
+      startDay: Number(tallyCycleStartDayInput),
+      startMonth: tallyCycleStartMonthInput ? Number(tallyCycleStartMonthInput) : null,
+    });
     return formatTallyDateRangeLabel(buildTallyDateRange(getTodayDate(), normalized));
-  }, [tallyCycleStartDayInput]);
+  }, [tallyCycleStartDayInput, tallyCycleStartMonthInput]);
 
   const runOcrPipeline = async () => {
     const results = await processImages(
@@ -1112,9 +1134,21 @@ export default function AdminUploadPage() {
         throw new Error('Start day must be a number between 1 and 31.');
       }
 
-      const normalized = normalizeTallyCycleSettings({ startDay: parsedStartDay });
+      const parsedStartMonth = tallyCycleStartMonthInput ? Number(tallyCycleStartMonthInput) : null;
+      if (
+        parsedStartMonth !== null &&
+        (!Number.isFinite(parsedStartMonth) || parsedStartMonth < 1 || parsedStartMonth > 12)
+      ) {
+        throw new Error('Start month must be between 1 and 12.');
+      }
+
+      const normalized = normalizeTallyCycleSettings({
+        startDay: parsedStartDay,
+        startMonth: parsedStartMonth,
+      });
       const savedSettings = await saveTallyCycleSettings(normalized);
       setTallyCycleStartDayInput(String(savedSettings.startDay));
+      setTallyCycleStartMonthInput(savedSettings.startMonth ? String(savedSettings.startMonth) : '');
       setTallyCycleUpdatedAt(savedSettings.updatedAt || null);
       setTallyCycleStatus({
         type: 'success',
@@ -1529,7 +1563,7 @@ export default function AdminUploadPage() {
                       Current window: {tallyCyclePreviewLabel}
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
-                      Totals reset monthly from this start day to the day before next month&apos;s start day.
+                      Totals reset monthly from this start month and day to the day before next month&apos;s start day.
                     </p>
                     {tallyCycleUpdatedAt ? (
                       <p className="mt-1 text-xs text-slate-400">
@@ -1538,23 +1572,38 @@ export default function AdminUploadPage() {
                     ) : null}
                   </div>
                 </div>
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <label className="text-xs uppercase tracking-wider text-amber-100" htmlFor="tally-cycle-start-day">
-                    Start day
-                  </label>
-                  <input
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <label className="text-xs uppercase tracking-wider text-amber-100" htmlFor="tally-cycle-start-day">
+                  Start day
+                </label>
+                <input
                     id="tally-cycle-start-day"
                     type="number"
                     min="1"
                     max="31"
                     value={tallyCycleStartDayInput}
-                    onChange={(e) => setTallyCycleStartDayInput(e.target.value)}
-                    className="w-28 rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveTallyCycle}
-                    disabled={isSavingTallyCycle || !authReady}
+                  onChange={(e) => setTallyCycleStartDayInput(e.target.value)}
+                  className="w-28 rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
+                />
+                <label className="text-xs uppercase tracking-wider text-amber-100" htmlFor="tally-cycle-start-month">
+                  Start month
+                </label>
+                <select
+                  id="tally-cycle-start-month"
+                  value={tallyCycleStartMonthInput}
+                  onChange={(e) => setTallyCycleStartMonthInput(e.target.value)}
+                  className="min-w-0 rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none sm:w-44"
+                >
+                  {TALLY_CYCLE_MONTH_OPTIONS.map((option) => (
+                    <option key={option.value || 'auto'} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleSaveTallyCycle}
+                  disabled={isSavingTallyCycle || !authReady}
                     className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-50"
                   >
                     {isSavingTallyCycle ? 'Saving...' : 'Save cycle'}

@@ -131,11 +131,11 @@ Set `ADMIN_TOOLS_PASSWORD` in Vercel and local `.env.local` to protect the uploa
 
 ## Firebase Realtime Database rules
 
-The app now includes locked-down Realtime Database rules in `database.rules.json` and a Firebase CLI config in `firebase.json`.
+The app now includes Realtime Database rules in `database.rules.json` and a Firebase CLI config in `firebase.json`.
 
-Before publishing those rules, seed `/appAccess/users/{firebaseAuthUid}` with the Tony/Nugs/admin UIDs that should be allowed to use the app. The scheduled email backend should use a stable `FIREBASE_AUTH_REFRESH_TOKEN` and its UID should be marked as admin.
+The user-facing flow is PIN-based. Firebase still uses anonymous auth behind the scenes so the client can talk to Realtime Database, but the app no longer depends on per-device UID allowlisting.
 
-See `docs/firebase-realtime-database-security.md` for the exact allowlist shape and deployment steps.
+See `docs/firebase-realtime-database-security.md` for the current access model and operational notes.
 
 The email includes:
 

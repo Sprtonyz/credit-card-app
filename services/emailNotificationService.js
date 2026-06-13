@@ -507,26 +507,133 @@ export function buildCustomUpdateContent({ message, appUrl }) {
   ].join('\n');
 
   const html = `
-    <div style="font-family:Arial,Helvetica,sans-serif;background:#eef2f7;padding:32px;color:#0f172a">
-      <div style="max-width:640px;margin:0 auto">
-        <div style="background:#10223a;color:#ffffff;border-radius:18px 18px 0 0;padding:22px 28px">
-          <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8">Westpac CC Tracker</div>
-          <div style="margin-top:8px;font-size:24px;font-weight:700">Quick update</div>
-        </div>
-        <div style="background:#ffffff;border:1px solid #dbe3ee;border-top:none;border-radius:0 0 18px 18px;padding:28px">
-          <div style="font-size:16px;line-height:1.55;white-space:normal">${htmlMessage}</div>
-          <div style="margin-top:24px;color:#64748b;font-size:13px">Sent ${escapeHtml(updatedAt)}</div>
-          <div style="margin-top:22px">
-            <a
-              href="${escapeHtml(landingUrl)}"
-              style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700"
-            >
-              Open Westpac CC Tracker
-            </a>
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="color-scheme" content="light dark" />
+        <meta name="supported-color-schemes" content="light dark" />
+        <style>
+          :root {
+            color-scheme: light dark;
+            supported-color-schemes: light dark;
+          }
+
+          body,
+          .email-shell,
+          .force-dark {
+            background-color: #05080c !important;
+            color: #f8fafc !important;
+          }
+
+          .force-dark-panel {
+            background-color: #0b1218 !important;
+            color: #f8fafc !important;
+            border-color: #29323a !important;
+          }
+
+          .force-dark-soft {
+            color: inherit;
+          }
+
+          .dark-text {
+            color: #f8fafc !important;
+          }
+
+          .muted-text {
+            color: #a8b3c1 !important;
+          }
+
+          @media (prefers-color-scheme: dark) {
+            body,
+            .email-shell,
+            .force-dark {
+              background-color: #05080c !important;
+              color: #f8fafc !important;
+            }
+
+            .force-dark-panel {
+              background-color: #0b1218 !important;
+              color: #f8fafc !important;
+              border-color: #29323a !important;
+            }
+
+            .dark-text {
+              color: #f8fafc !important;
+            }
+
+            .muted-text {
+              color: #a8b3c1 !important;
+            }
+          }
+
+          @media screen and (max-width: 480px) {
+            .email-shell {
+              padding: 18px 10px !important;
+            }
+
+            .email-card {
+              border-radius: 24px !important;
+              padding: 20px 18px !important;
+            }
+
+            .headline {
+              font-size: 30px !important;
+              line-height: 34px !important;
+              margin: 12px 0 18px 0 !important;
+            }
+
+            .message-panel {
+              padding: 18px 16px !important;
+              border-radius: 18px !important;
+            }
+
+            .message-body {
+              font-size: 15px !important;
+              line-height: 21px !important;
+            }
+
+            .cta-link {
+              padding: 15px 12px !important;
+              font-size: 16px !important;
+              line-height: 21px !important;
+            }
+          }
+        </style>
+      </head>
+      <body style="margin:0;padding:0;background:#05080c;color:#f8fafc" bgcolor="#05080c">
+        <div class="email-shell force-dark" style="margin:0;padding:24px 10px;background:#081017;background-image:radial-gradient(circle at 8% 0%,#172636 0,#081017 42%,#05080c 100%);font-family:${EMAIL_FONT_STACK};color:#f8fafc" bgcolor="#05080c">
+          <div style="max-width:560px;margin:0 auto">
+            <div class="email-card force-dark-panel" style="background:#0b1218;background-image:linear-gradient(150deg,#111c25 0%,#071018 48%,#05080c 100%);border:1px solid #29323a;border-radius:28px;padding:22px;color:#f8fafc;box-shadow:0 26px 70px rgba(0,0,0,.52)">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;font-family:${EMAIL_FONT_STACK}">
+                <tr>
+                  <td>
+                    <div class="brand" style="font-size:13px;line-height:17px;text-transform:uppercase;letter-spacing:0;color:#4f83ff;font-weight:900;font-family:${EMAIL_FONT_STACK}">Westpac CC Tracker</div>
+                  </td>
+                  <td align="right" valign="top" style="width:45%;font-size:13px;line-height:17px;color:#a9b1bd;font-weight:600;font-family:${EMAIL_FONT_STACK};white-space:nowrap" class="sent-date muted-text">${escapeHtml(updatedAt)}</td>
+                </tr>
+              </table>
+
+              <h1 class="headline dark-text" style="margin:14px 0 22px 0;color:#f8fafc;font-size:36px;line-height:40px;font-weight:900;font-family:${EMAIL_FONT_STACK}">
+                Quick update
+              </h1>
+
+              <div class="message-panel force-dark-panel" style="background:#0d151b;background-image:linear-gradient(145deg,rgba(255,255,255,.04),rgba(8,15,20,.94));border:1px solid rgba(148,163,184,.20);border-radius:20px;padding:20px 18px">
+                <div class="message-body dark-text" style="font-size:17px;line-height:24px;white-space:normal;color:#f8fafc;font-family:${EMAIL_FONT_STACK}">
+                  ${htmlMessage.replace(/\n/g, '<br />')}
+                </div>
+              </div>
+
+              <div style="margin-top:18px;color:#a8b3c1;font-size:12px;line-height:16px;font-family:${EMAIL_FONT_STACK}">
+                Sent ${escapeHtml(updatedAt)}
+              </div>
+
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </body>
+    </html>
   `;
 
   return { text, html };

@@ -63,13 +63,19 @@ function buildAllTransactions(processedImages) {
   processedImages.forEach((image) => {
     if (!image.transactions) return;
 
-    image.transactions.forEach((tx) => {
+    image.transactions.forEach((tx, txIndex) => {
+      const reviewKey =
+        tx.isManual && tx.manualId
+          ? `manual:${tx.manualId}`
+          : `ocr:${image.imageHash || image.fileName || 'image'}:${tx.lineIndex ?? txIndex}`;
+
       allTransactions.push({
         ...tx,
         imageHash: image.imageHash,
         imageFingerprint: image.imageFingerprint,
         orderedImageFingerprint: image.orderedImageFingerprint || tx.orderedImageFingerprint || null,
         imageName: image.fileName,
+        reviewKey,
       });
     });
   });
@@ -102,7 +108,8 @@ function buildManualReviewItems(
   existingTransactions,
   processedLogs = {},
   commonReoccurrenceRules = [],
-  manualTransactions = []
+  manualTransactions = [],
+  amountOverrides = {}
 ) {
   const allTransactions = [
     ...buildAllTransactions(processedImages),
@@ -129,17 +136,36 @@ function buildManualReviewItems(
 
   const reviewItems = allTransactions.map((tx, index) => {
     const duplicateInfo = duplicateMap.get(index);
+    const amountOverrideInput = amountOverrides?.[tx.reviewKey] ?? '';
+    const parsedOverrideAmount = parseSignedAmount(amountOverrideInput);
+    const hasAmountOverride = String(amountOverrideInput || '').trim() !== '';
+    const isAmountOverrideValid = !hasAmountOverride || parsedOverrideAmount !== null;
     const txForReview = duplicateInfo
       ? {
           ...tx,
           duplicateMatch: duplicateInfo.duplicateMatch,
         }
       : tx;
-    const processedMatch = findProcessedLogMatch(txForReview, processedLogs || {});
+    const txWithAmountOverride =
+      isAmountOverrideValid && parsedOverrideAmount !== null
+        ? {
+            ...txForReview,
+            amount: parsedOverrideAmount,
+            overrideAmount: parsedOverrideAmount,
+            overrideAmountInput,
+            overrideAmountValid: true,
+          }
+        : {
+            ...txForReview,
+            overrideAmount: null,
+            overrideAmountInput,
+            overrideAmountValid: !hasAmountOverride,
+          };
+    const processedMatch = findProcessedLogMatch(txWithAmountOverride, processedLogs || {});
     const processedEntry = processedMatch?.log || null;
-    const isCommonReoccurrence = isCommonReoccurrenceTransaction(txForReview, normalizedCommonRules);
-    const commonReoccurrenceKey = getCommonReoccurrenceKey(txForReview);
-    const singleMergeResult = mergeTransactions([txForReview], existingTransactions, processedLogs, {
+    const isCommonReoccurrence = isCommonReoccurrenceTransaction(txWithAmountOverride, normalizedCommonRules);
+    const commonReoccurrenceKey = getCommonReoccurrenceKey(txWithAmountOverride);
+    const singleMergeResult = mergeTransactions([txWithAmountOverride], existingTransactions, processedLogs, {
       commonReoccurrenceRules: normalizedCommonRules,
     });
     const flaggedDecision = singleMergeResult.flagged?.[0] || null;
@@ -201,7 +227,7 @@ function buildManualReviewItems(
 
     return {
       index,
-      transaction: txForReview,
+      transaction: txWithAmountOverride,
       imageName: tx.imageName || (txForReview.isManual ? 'Manual entry' : null),
       reason,
       defaultSelected,
@@ -211,6 +237,8 @@ function buildManualReviewItems(
       existingMatch,
       commonReoccurrenceKey,
       isCommonReoccurrence,
+      amountOverrideInput,
+      amountOverrideValid: isAmountOverrideValid,
     };
   });
 
@@ -360,7 +388,6 @@ function getReviewSummaryStats(manualReview, duplicateDetection) {
 
 const ADMIN_UPLOAD_VERSION = '1.1.0';
 const TALLY_CYCLE_MONTH_OPTIONS = [
-  { value: '', label: 'Current month (auto)' },
   { value: '1', label: 'January' },
   { value: '2', label: 'February' },
   { value: '3', label: 'March' },
@@ -382,6 +409,7 @@ export default function AdminUploadPage() {
   const [ocrPreviewImages, setOcrPreviewImages] = useState([]);
   const [duplicateDetection, setDuplicateDetection] = useState(null);
   const [manualTransactions, setManualTransactions] = useState([]);
+  const [manualReviewAmountOverrides, setManualReviewAmountOverrides] = useState({});
   const [manualDescriptionInput, setManualDescriptionInput] = useState('');
   const [manualAmountInput, setManualAmountInput] = useState('');
   const [manualInputError, setManualInputError] = useState(null);
@@ -528,6 +556,24 @@ export default function AdminUploadPage() {
     return formatTallyDateRangeLabel(buildTallyDateRange(getTodayDate(), normalized));
   }, [tallyCycleStartDayInput, tallyCycleStartMonthInput]);
 
+  const tallyCycleMonthOptions = useMemo(() => {
+    const normalized = normalizeTallyCycleSettings({
+      startDay: Number(tallyCycleStartDayInput),
+      startMonth: null,
+    });
+    const currentRange = buildTallyDateRange(getTodayDate(), normalized);
+    const currentCycleMonthLabel = currentRange.startKey
+      ? new Intl.DateTimeFormat('en-AU', { month: 'long' }).format(
+          new Date(`${currentRange.startKey}T00:00:00Z`)
+        )
+      : 'Current cycle';
+
+    return [
+      { value: '', label: `Current cycle (auto) - ${currentCycleMonthLabel}` },
+      ...TALLY_CYCLE_MONTH_OPTIONS,
+    ];
+  }, [tallyCycleStartDayInput]);
+
   const runOcrPipeline = async () => {
     const results = await processImages(
       uploadedFiles,
@@ -552,6 +598,7 @@ export default function AdminUploadPage() {
   const handleImagesSelected = (files) => {
     setUploadedFiles(files);
     setManualTransactions([]);
+    setManualReviewAmountOverrides({});
     setManualDescriptionInput('');
     setManualAmountInput('');
     setManualInputError(null);
@@ -639,7 +686,8 @@ export default function AdminUploadPage() {
             existingTransactions,
             processedLogs || {},
             latestCommonRules,
-            manualTransactions
+            manualTransactions,
+            manualReviewAmountOverrides
           )
         );
         setSuccessMessage({
@@ -758,6 +806,7 @@ export default function AdminUploadPage() {
       const enrichedProcessedLogs = enrichProcessedLogsWithFingerprints(processedLogs || {}, existingTransactions);
       const reviewResults = annotateProcessedImagesWithProcessedLogOverlaps(results, enrichedProcessedLogs);
       setManualTransactions([]);
+      setManualReviewAmountOverrides({});
       setManualDescriptionInput('');
       setManualAmountInput('');
       setManualInputError(null);
@@ -773,7 +822,8 @@ export default function AdminUploadPage() {
           existingTransactions,
           enrichedProcessedLogs,
           latestCommonRules,
-          []
+          [],
+          {}
         )
       );
       setStep('review');
@@ -820,9 +870,41 @@ export default function AdminUploadPage() {
         reviewContext.existingTransactions,
         reviewContext.processedLogs,
         rules,
-        manualTransactions
+        manualTransactions,
+        manualReviewAmountOverrides
       )
     );
+  };
+
+  const rebuildManualReviewWithOverrides = (overrides) => {
+    if (!manualReview || !duplicateDetection) return;
+
+    setManualReview(
+      buildManualReviewItems(
+        processedImages,
+        duplicateDetection,
+        reviewContext.existingTransactions,
+        reviewContext.processedLogs,
+        commonReoccurrenceRules,
+        manualTransactions,
+        overrides
+      )
+    );
+  };
+
+  const handleUpdateManualReviewAmountOverride = (reviewKey, rawValue) => {
+    if (!reviewKey) return;
+
+    const trimmed = String(rawValue || '').trim();
+    const nextOverrides = { ...manualReviewAmountOverrides };
+    if (!trimmed) {
+      delete nextOverrides[reviewKey];
+    } else {
+      nextOverrides[reviewKey] = String(rawValue);
+    }
+
+    setManualReviewAmountOverrides(nextOverrides);
+    rebuildManualReviewWithOverrides(nextOverrides);
   };
 
   const handleAddManualReviewTransaction = () => {
@@ -873,7 +955,8 @@ export default function AdminUploadPage() {
         reviewContext.existingTransactions,
         reviewContext.processedLogs,
         commonReoccurrenceRules,
-        nextManualTransactions
+        nextManualTransactions,
+        manualReviewAmountOverrides
       )
     );
   };
@@ -884,8 +967,11 @@ export default function AdminUploadPage() {
     const nextManualTransactions = manualTransactions.filter(
       (transaction) => transaction.manualId !== manualId
     );
+    const nextOverrides = { ...manualReviewAmountOverrides };
+    delete nextOverrides[`manual:${manualId}`];
     setManualTransactions(nextManualTransactions);
     setManualInputError(null);
+    setManualReviewAmountOverrides(nextOverrides);
     setManualReview(
       buildManualReviewItems(
         processedImages,
@@ -893,7 +979,8 @@ export default function AdminUploadPage() {
         reviewContext.existingTransactions,
         reviewContext.processedLogs,
         commonReoccurrenceRules,
-        nextManualTransactions
+        nextManualTransactions,
+        nextOverrides
       )
     );
   };
@@ -954,6 +1041,7 @@ export default function AdminUploadPage() {
     setProcessedImages([]);
     setDuplicateDetection(null);
     setManualTransactions([]);
+    setManualReviewAmountOverrides({});
     setManualDescriptionInput('');
     setManualAmountInput('');
     setManualInputError(null);
@@ -1594,7 +1682,7 @@ export default function AdminUploadPage() {
                   onChange={(e) => setTallyCycleStartMonthInput(e.target.value)}
                   className="min-w-0 rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none sm:w-44"
                 >
-                  {TALLY_CYCLE_MONTH_OPTIONS.map((option) => (
+                  {tallyCycleMonthOptions.map((option) => (
                     <option key={option.value || 'auto'} value={option.value}>
                       {option.label}
                     </option>
@@ -1988,6 +2076,7 @@ export default function AdminUploadPage() {
                 onCancel={() => setStep('upload')}
                 onToggleCommonReoccurrence={handleToggleCommonReoccurrence}
                 onRemoveManualTransaction={handleRemoveManualReviewTransaction}
+                onUpdateAmountOverride={handleUpdateManualReviewAmountOverride}
                 isSavingCommonReoccurrence={isSavingCommonReoccurrence}
                 isLoading={isLoading}
               />

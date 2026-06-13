@@ -57,6 +57,7 @@ export default function TransactionSelectionReview({
   onCancel,
   onToggleCommonReoccurrence = null,
   onRemoveManualTransaction = null,
+  onUpdateAmountOverride = null,
   isSavingCommonReoccurrence = false,
   isLoading = false,
 }) {
@@ -89,6 +90,14 @@ export default function TransactionSelectionReview({
   const selectedItems = useMemo(
     () => items.filter((item) => selectedIndices.has(item.index)),
     [items, selectedIndices]
+  );
+  const hasInvalidAmountOverrides = useMemo(
+    () =>
+      items.some(
+        (item) =>
+          String(item.amountOverrideInput || '').trim() !== '' && item.amountOverrideValid === false
+      ),
+    [items]
   );
 
   const handleToggle = (index) => {
@@ -132,6 +141,12 @@ export default function TransactionSelectionReview({
     event.stopPropagation();
     if (!onRemoveManualTransaction || !manualId) return;
     onRemoveManualTransaction(manualId);
+  };
+
+  const handleAmountOverrideChange = (event, item) => {
+    event.stopPropagation();
+    if (!onUpdateAmountOverride || !item?.reviewKey) return;
+    onUpdateAmountOverride(item.reviewKey, event.target.value);
   };
 
   const handleConfirm = () => {
@@ -178,9 +193,35 @@ export default function TransactionSelectionReview({
                 <div className="flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-white">
-                        {item.transaction.merchant} - ${Number(item.transaction.amount || 0).toFixed(2)}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-white">
+                          {item.transaction.merchant}
+                        </p>
+                        <span className="rounded-full border border-slate-700 bg-slate-950/70 px-2 py-0.5 text-[11px] uppercase tracking-wider text-slate-400">
+                          parsed ${Number(item.transaction.amount || 0).toFixed(2)}
+                        </span>
+                        <label className="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/70 px-2 py-1 text-[11px] uppercase tracking-wider text-slate-400">
+                          <span>Amount</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={
+                              String(item.amountOverrideInput || '').trim() !== ''
+                                ? item.amountOverrideInput
+                                : Number(item.transaction.amount || 0).toFixed(2)
+                            }
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={(event) => handleAmountOverrideChange(event, item)}
+                            className={`w-24 bg-transparent text-right text-xs font-semibold outline-none ${
+                              String(item.amountOverrideInput || '').trim() !== '' &&
+                              item.amountOverrideValid === false
+                                ? 'text-rose-200 placeholder:text-rose-300'
+                                : 'text-white placeholder:text-slate-500'
+                            }`}
+                          />
+                        </label>
+                      </div>
                       <p className="text-xs text-slate-400 mt-1">
                         From: {item.imageName || 'Unknown image'}
                         {item.transaction.lineIndex ? ` · OCR line ${item.transaction.lineIndex}` : ''}
@@ -288,12 +329,17 @@ export default function TransactionSelectionReview({
         </button>
         <button
           onClick={handleConfirm}
-          disabled={isLoading}
+          disabled={isLoading || hasInvalidAmountOverrides}
           className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-white font-medium transition"
         >
           {isLoading ? 'Importing...' : `Import ${selectedItems.length} Transaction${selectedItems.length === 1 ? '' : 's'}`}
         </button>
       </div>
+      {hasInvalidAmountOverrides ? (
+        <p className="mt-3 text-xs text-rose-300">
+          Fix any invalid amount overrides before importing.
+        </p>
+      ) : null}
     </div>
   );
 }

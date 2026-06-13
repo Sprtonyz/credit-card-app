@@ -4,11 +4,13 @@ import {
   buildImageRowContexts,
   buildOrderedImageImportFingerprint,
   enrichTransactionsWithImportContext,
-} from './importFingerprint';
-import { correctTransaction } from './ocrErrorCorrection';
-import { getTodayDate } from '../services/firebaseService';
+} from './importFingerprint.js';
+import { correctTransaction } from './ocrErrorCorrection.js';
+import { getTodayDate } from '../services/firebaseService.js';
 
 const MONTH_PATTERN = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*';
+const CATEGORY_HINT_RE =
+  /^(?:category in progress|in progress|uncategorised|uncategorized|groceries|takeaway & fast food|restaurants & dining|online shopping|online services|coffee shops|shopping|parking|service charges & fees|refunds & rebates|other utilities|other expenses|loan repayment|personal care|pay tv & telephone|electronics & software|clothes & shoes|food & drink|transport|utilities|health|entertainment|medicine & health|medicine & supplements)$/i;
 const DATE_LINE_RE = new RegExp(
   `^(?:(?:mon|tue|wed|thu|fri|sat|sun)(?:day)?\\s+)?\\d{1,2}\\s+${MONTH_PATTERN}\\s+\\d{2,4}$`,
   'i'
@@ -19,6 +21,9 @@ const DATE_PREFIX_RE = new RegExp(
 );
 const AMOUNT_RE = /(?:[-+]?\s*\$?\s*\d[\d,]*(?:[.,]\d{2})?|\$?\s*\d[\d,]*[.,]\d{2})/i;
 const BARE_AMOUNT_RE = /(?:^|[^\d])(\d[\d,]*(?:[.,]\d{2}))(?!\d)/g;
+const RELATIVE_DATE_RE = /^(today|yesterday)$/i;
+const CATEGORY_LABEL_RE =
+  /(?:^|[^a-z])(?:category|ategory)\s+in\s+progress\b|^(?:uncategorised|uncategorized|groceries|takeaway & fast food|restaurants & dining|online shopping|online services|coffee shops|shopping|parking|service charges & fees|refunds & rebates|other utilities|other expenses|loan repayment|personal care|pay tv & telephone|electronics & software|clothes & shoes|food & drink|transport|utilities|health|entertainment|medicine & health|medicine & supplements)$/i;
 
 function normalizeOcrLine(line) {
   return String(line || '')
@@ -34,23 +39,66 @@ function normalizeOcrLine(line) {
 function cleanMerchantCandidate(text) {
   if (!text) return '';
 
-  return String(text)
+  let cleaned = String(text)
     .replace(/^[^A-Za-z0-9]+/, '')
-    .replace(/^[A-Z]\s+(?=[A-Za-z])/g, '')
-    .replace(/^\s*(pending|posted)\s*[-:\u2013\u2014]?\s*/i, '')
+    .replace(/\b(?:amt|amount|frgn amt|frgn|foreign fee|pending|posted)\b[:\s-]*/gi, ' ')
     .replace(DATE_PREFIX_RE, '')
-    .replace(/^\s*[-:\u2013\u2014]+\s*/i, '')
-    .replace(/\b(?:amt|amount|frgn amt|foreign fee|pending|posted)\b[:\s-]*/gi, ' ')
+    .replace(/^\s*[-:\u2013\u2014]+\s*/i, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  const parts = cleaned.split(' ');
+  while (
+    parts.length > 1 &&
+    (/^[A-Za-z0-9]{1,2}[\W_]*$/.test(parts[0]) || /^[a-z]{1,4}$/.test(parts[0])) &&
+    /[A-Za-z]/.test(parts[1] || '')
+  ) {
+    parts.shift();
+  }
+
+  cleaned = parts.join(' ').replace(/\s+/g, ' ').trim();
+
+  return cleaned;
 }
 
 function isForeignFeeLine(text) {
-  return /foreign\s+fee/i.test(text || '');
+  return /(?:foreign\s+fee|frgn\s+amt|u\.?\s*s\.?\s*dollar)/i.test(text || '');
 }
 
 function isStandaloneDateLine(text) {
-  return DATE_LINE_RE.test(normalizeOcrLine(text || ''));
+  const cleaned = normalizeOcrLine(text || '');
+  if (RELATIVE_DATE_RE.test(cleaned)) return true;
+  const dateToken = extractDateFromLine(cleaned);
+  if (!dateToken) return false;
+
+  const leftovers = cleaned
+    .replace(dateToken, '')
+    .replace(/^[^A-Za-z0-9]+/, '')
+    .replace(/[^A-Za-z0-9]+$/g, '')
+    .trim();
+
+  return leftovers.length === 0 || /^[A-Za-z]{1,2}$/.test(leftovers);
+}
+
+function resolveRelativeDateHeader(header, fallbackDate) {
+  const normalizedHeader = normalizeOcrLine(header || '').toLowerCase();
+  if (!normalizedHeader) return null;
+
+  if (!RELATIVE_DATE_RE.test(normalizedHeader)) {
+    return extractDateFromLine(normalizedHeader) || null;
+  }
+
+  const reference = new Date(fallbackDate || Date.now());
+  if (Number.isNaN(reference.getTime())) return null;
+
+  if (normalizedHeader === 'yesterday') {
+    reference.setDate(reference.getDate() - 1);
+  }
+
+  const year = reference.getFullYear();
+  const month = String(reference.getMonth() + 1).padStart(2, '0');
+  const day = String(reference.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function extractDateFromLine(text) {
@@ -64,18 +112,43 @@ function extractDateFromLine(text) {
 function extractAmountMatch(text) {
   if (!text) return null;
   const normalized = normalizeOcrLine(text);
-  const matches = normalized.match(AMOUNT_RE);
-  if (matches && matches.length > 0) {
-    return matches[matches.length - 1];
+  const tokens = normalized.split(' ');
+  const candidates = [];
+
+  const pushCandidate = (candidate, tokenIndex = -1) => {
+    const normalizedCandidate = normalizeAmountToken(candidate);
+    if (!normalizedCandidate) return;
+    if (!/[\d]/.test(normalizedCandidate)) return;
+
+    const hasDecimal = /[.,]\d{2}$/.test(normalizedCandidate);
+    const hasCurrencyMarker = /[$+-]/.test(normalizedCandidate);
+    if (!hasDecimal && !hasCurrencyMarker) return;
+
+    candidates.push(normalizedCandidate);
+  };
+
+  tokens.forEach((token, index) => {
+    const candidate = token
+      .replace(/^[^0-9$+\-]+/, '')
+      .replace(/[^0-9.,$+\-]+$/g, '');
+
+    if (!candidate) return;
+    if (!/^[+-]?\$?\d[\d,]*(?:[.,]\d{2})?$|^\$[+-]?\d[\d,]*(?:[.,]\d{2})?$/.test(candidate)) return;
+    if (!/[.,]\d{2}$/.test(candidate) && !/[$+-]/.test(candidate)) return;
+    pushCandidate(candidate, index);
+  });
+
+  if (candidates.length > 0) {
+    const uniqueCandidates = [...new Set(candidates)];
+    uniqueCandidates.sort((a, b) => {
+      const scoreDiff = scoreAmountCandidate(b) - scoreAmountCandidate(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return b.length - a.length;
+    });
+    return uniqueCandidates[0];
   }
 
-  const bareMatches = [];
-  let match;
-  while ((match = BARE_AMOUNT_RE.exec(normalized)) !== null) {
-    bareMatches.push(match[1]);
-  }
-
-  return bareMatches.length > 0 ? bareMatches[bareMatches.length - 1] : null;
+  return null;
 }
 
 function normalizeAmountToken(amountToken) {
@@ -96,23 +169,33 @@ function isNoiseLine(text) {
 function isLabelOnlyLine(text) {
   const normalized = normalizeOcrLine(text || '').toLowerCase();
   if (!normalized) return true;
-  return /^(category in progress|in progress|date|description|merchant|amount|total|balance|card|transaction|transactions)$/.test(
+  return /^(category in progress|in progress|date|description|merchant|amount|total|balance|card|transaction|transactions|pending|posted)$/i.test(
     normalized
   );
+}
+
+function isCategoryLine(text) {
+  return CATEGORY_LABEL_RE.test(normalizeOcrLine(text || ''));
 }
 
 function isMerchantStarterLine(text) {
   const normalized = normalizeOcrLine(text || '');
   if (!normalized) return false;
   if (isLabelOnlyLine(normalized) || isNoiseLine(normalized)) return false;
-  return /^(pending|posted)\b/i.test(normalized);
+  if (isForeignFeeLine(normalized) || isCategoryLine(normalized) || isStandaloneDateLine(normalized)) return false;
+  if (extractAmountMatch(normalized)) return false;
+  if (/^[A-Za-z]{1,3}\s*[:\-]?$/.test(normalized)) return false;
+  if (/^[A-Za-z]{1,3}$/.test(normalized) && !/[&*']/g.test(normalized)) return false;
+  return /[A-Za-z]/.test(normalized);
 }
 
 function isMerchantContinuationLine(text) {
   const normalized = normalizeOcrLine(text || '');
   if (!normalized) return false;
   if (isLabelOnlyLine(normalized) || isNoiseLine(normalized)) return false;
+  if (isForeignFeeLine(normalized) || isCategoryLine(normalized) || isStandaloneDateLine(normalized)) return false;
   if (extractAmountMatch(normalized)) return false;
+  if (/^[A-Za-z]{1,3}\s*[:\-]?$/.test(normalized)) return false;
   return /[A-Za-z]/.test(normalized);
 }
 
@@ -253,14 +336,17 @@ function extractAmountCandidatesFromWords(entry, wordEntries = []) {
 }
 
 function extractBestAmountCandidate(entry, wordEntries = []) {
-  const candidates = [
-    entry?.text || '',
-    entry?.rawText || '',
-    ...extractAmountCandidatesFromWords(entry, wordEntries),
-  ]
+  const lineLevelCandidates = [entry?.text || '', entry?.rawText || '']
     .map((value) => extractAmountMatch(value))
     .filter(Boolean)
     .map((value) => normalizeAmountToken(value));
+
+  const candidates = lineLevelCandidates.length > 0
+    ? lineLevelCandidates
+    : extractAmountCandidatesFromWords(entry, wordEntries)
+        .map((value) => extractAmountMatch(value))
+        .filter(Boolean)
+        .map((value) => normalizeAmountToken(value));
 
   const uniqueCandidates = [...new Set(candidates)];
   if (uniqueCandidates.length === 0) return null;
@@ -274,7 +360,23 @@ function extractBestAmountCandidate(entry, wordEntries = []) {
   return uniqueCandidates[0];
 }
 
-function parseClassicTransactionText(text, lineEntries = [], wordEntries = []) {
+function stripAmountFromLine(text, amountText) {
+  const amount = String(amountText || '').trim();
+  const withoutAmount = amount
+    ? String(text || '').replace(new RegExp(amount.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), ' ')
+    : String(text || '');
+
+  return cleanMerchantCandidate(
+    withoutAmount
+      .replace(/\b(?:aud|usd)\b/gi, ' ')
+      .replace(/\b(?:amt|amount|frgn amt|frgn|foreign fee|pending|posted)\b[:\s-]*/gi, ' ')
+      .replace(/[:\-–—]+$/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
+}
+
+function parseClassicTransactionText(text, lineEntries = [], wordEntries = [], fallbackDate = null) {
   const entries = toLineEntries(text, lineEntries);
   if (entries.length === 0) return [];
 
@@ -300,7 +402,6 @@ function parseClassicTransactionText(text, lineEntries = [], wordEntries = []) {
     });
 
     currentMerchantParts = [];
-    currentDate = null;
     currentCategory = null;
   };
 
@@ -308,9 +409,18 @@ function parseClassicTransactionText(text, lineEntries = [], wordEntries = []) {
     const trimmed = entry.text.trim();
     if (!trimmed) continue;
 
+    if (RELATIVE_DATE_RE.test(normalizeOcrLine(trimmed))) {
+      currentDate = resolveRelativeDateHeader(trimmed, fallbackDate) || currentDate;
+      currentMerchantParts = [];
+      currentCategory = null;
+      continue;
+    }
+
     const dateMatch = extractDateFromLine(trimmed);
     if (dateMatch && isStandaloneDateLine(trimmed)) {
-      currentDate = dateMatch;
+      currentDate = resolveRelativeDateHeader(trimmed, fallbackDate) || dateMatch;
+      currentMerchantParts = [];
+      currentCategory = null;
       continue;
     }
 
@@ -320,8 +430,10 @@ function parseClassicTransactionText(text, lineEntries = [], wordEntries = []) {
       continue;
     }
 
-    if (/entertainment|food|groceries|transport|shopping|utilities|health/i.test(trimmed)) {
+    if (isCategoryLine(trimmed) || /entertainment|food|groceries|transport|shopping|utilities|health|parking|repair|repay|subscription|refund/i.test(trimmed)) {
       currentCategory = trimmed;
+      currentMerchantParts = [];
+      continue;
     }
 
     if (isLabelOnlyLine(trimmed) || isNoiseLine(trimmed)) {
@@ -330,38 +442,26 @@ function parseClassicTransactionText(text, lineEntries = [], wordEntries = []) {
 
     const amountMatch = extractBestAmountCandidate(entry, normalizedWords);
     if (amountMatch) {
-      const inlineMerchant = cleanMerchantCandidate(
-        trimmed
-          .replace(amountMatch, '')
-          .replace(/\b(?:aud|usd)\b/i, '')
-          .replace(/[:\-]+$/, '')
-          .trim()
-      );
+      const inlineMerchant = stripAmountFromLine(trimmed, amountMatch);
       const mergedMerchant = cleanMerchantCandidate(currentMerchantParts.join(' '));
-      const safeInlineMerchant =
-        inlineMerchant && !mergedMerchant && isLikelyNoiseMerchant(inlineMerchant) ? '' : inlineMerchant;
-      const merchant = safeInlineMerchant || mergedMerchant;
-      const rawLine = safeInlineMerchant
-        ? `${safeInlineMerchant} ${amountMatch}`.trim()
-        : `${mergedMerchant} ${amountMatch}`.trim();
+      const merchant = cleanMerchantCandidate([mergedMerchant, inlineMerchant].filter(Boolean).join(' '));
+      const rawLine = [merchant || mergedMerchant || inlineMerchant, amountMatch].filter(Boolean).join(' ').trim();
+
+      if (!merchant || isLikelyNoiseMerchant(merchant) || isCategoryLine(merchant)) {
+        currentMerchantParts = [];
+        continue;
+      }
 
       pushTransaction(merchant, amountMatch, entry, rawLine);
       continue;
     }
 
-    if (isMerchantStarterLine(trimmed)) {
-      const cleaned = cleanMerchantCandidate(trimmed);
-      if (cleaned) {
-        currentMerchantParts = [cleaned];
-      }
-      continue;
-    }
-
-    if (isMerchantContinuationLine(trimmed) && currentMerchantParts.length > 0) {
+    if (isMerchantStarterLine(trimmed) || (isMerchantContinuationLine(trimmed) && currentMerchantParts.length > 0)) {
       const cleaned = cleanMerchantCandidate(trimmed);
       if (cleaned) {
         currentMerchantParts.push(cleaned);
       }
+      continue;
     }
   }
 
@@ -420,7 +520,13 @@ function parseItemizedTransactionText(text, lineEntries = [], fallbackDate = nul
 
     if (dateMatch && isStandaloneDateLine(trimmed)) {
       flushGroup();
-      currentDate = dateMatch;
+      currentDate = resolveRelativeDateHeader(trimmed, fallbackDate) || dateMatch;
+      continue;
+    }
+
+    if (RELATIVE_DATE_RE.test(normalizeOcrLine(trimmed))) {
+      flushGroup();
+      currentDate = resolveRelativeDateHeader(trimmed, fallbackDate) || currentDate;
       continue;
     }
 
@@ -449,6 +555,17 @@ function detectParserProfile(text, lines, requestedProfile = 'classic') {
 
   return 'classic';
 }
+
+export {
+  cleanMerchantCandidate,
+  detectParserProfile,
+  extractAmountMatch,
+  extractDateFromLine,
+  extractBestAmountCandidate,
+  parseClassicTransactionText,
+  parseItemizedTransactionText,
+  parseOcrResult,
+};
 
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -550,7 +667,7 @@ function parseOcrResult(ocrData, requestedProfile, uploadDate) {
   const rawTransactions =
     profile === 'itemized'
       ? parseItemizedTransactionText(ocrData.text, ocrData.lines, uploadDate)
-      : parseClassicTransactionText(ocrData.text, ocrData.lines, ocrData.words);
+      : parseClassicTransactionText(ocrData.text, ocrData.lines, ocrData.words, uploadDate);
 
   return {
     ...ocrData,

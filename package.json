@@ -15,7 +15,8 @@
     "test:pet-progression": "node ./scripts/verify-pet-progression.mjs",
     "test:pet-profile-sync": "node ./scripts/verify-pet-profile-sync.mjs",
     "test:import-fingerprint": "node ./scripts/verify-import-fingerprint.mjs",
-    "test:transaction-merger": "node ./scripts/verify-transaction-merger.mjs"
+    "test:transaction-merger": "node ./scripts/verify-transaction-merger.mjs",
+    "test:ocr-samples": "node ./scripts/verify-ocr-samples.mjs"
   },
   "dependencies": {
     "firebase": "^9.23.0",

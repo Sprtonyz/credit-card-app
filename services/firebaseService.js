@@ -1,4 +1,4 @@
-import { db } from '../config/firebase';
+import { db } from '../config/firebase.js';
 import {
   ref,
   push,
@@ -14,24 +14,24 @@ import {
   getSimulatedISOString,
   getSimulatedTodayDate,
   shiftDateKey,
-} from '../utils/simulationDate';
+} from '../utils/simulationDate.js';
 import {
   AUTOMATED_NOTIFICATION_EVENTS_ROOT,
   AUTOMATED_NOTIFICATION_SETTINGS_ROOT,
   DEFAULT_AUTOMATED_EMAIL_TIME,
   DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
   DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
-} from '../config/emailNotifications';
-import { normalizeScheduleWindowMinutes } from '../utils/emailSchedule';
+} from '../config/emailNotifications.js';
+import { normalizeScheduleWindowMinutes } from '../utils/emailSchedule.js';
 import {
   buildCommonReoccurrenceRule,
   normalizeCommonReoccurrenceRules,
-} from '../utils/commonReoccurrence';
+} from '../utils/commonReoccurrence.js';
 import {
   DEFAULT_TALLY_CYCLE_SETTINGS,
   TALLY_CYCLE_SETTINGS_ROOT,
   normalizeTallyCycleSettings,
-} from '../utils/tallyCycle';
+} from '../utils/tallyCycle.js';
 
 export async function addTransactions(transactions) {
   try {

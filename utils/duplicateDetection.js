@@ -4,7 +4,7 @@ import {
   buildOrderedImageImportFingerprint,
   buildTransactionRowFingerprint,
   enrichTransactionsWithImportContext,
-} from './importFingerprint';
+} from './importFingerprint.js';
 
 function normalizeText(value) {
   return String(value || '')

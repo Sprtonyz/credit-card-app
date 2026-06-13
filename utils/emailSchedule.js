@@ -3,7 +3,7 @@ import {
   DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
   DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
   MAX_AUTOMATED_EMAIL_WINDOW_MINUTES,
-} from '../config/emailNotifications';
+} from '../config/emailNotifications.js';
 
 function parseMeridiemTime(value) {
   const match = String(value || '')

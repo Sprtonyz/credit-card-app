@@ -122,6 +122,30 @@ const EMPTY_DASHBOARD_METRICS = Object.freeze({
   assigneeTotals: Object.freeze({}),
 });
 
+function getDaysInMonth(year, monthIndex) {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+}
+
+function shiftDateKeyByMonths(dateKey, monthsToAdd) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ''))) return dateKey;
+
+  const [yearRaw, monthRaw, dayRaw] = String(dateKey).split('-');
+  const year = Number(yearRaw);
+  const monthIndex = Number(monthRaw) - 1;
+  const day = Number(dayRaw);
+
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex) || !Number.isFinite(day)) {
+    return dateKey;
+  }
+
+  const totalMonths = year * 12 + monthIndex + Number(monthsToAdd || 0);
+  const nextYear = Math.floor(totalMonths / 12);
+  const nextMonthIndex = ((totalMonths % 12) + 12) % 12;
+  const nextDay = Math.min(day, getDaysInMonth(nextYear, nextMonthIndex));
+
+  return `${String(nextYear).padStart(4, '0')}-${String(nextMonthIndex + 1).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`;
+}
+
 function formatTallyCycleStartSummary(tallyCycleSettings) {
   const startDay = tallyCycleSettings?.startDay;
   return `starts on day ${startDay}`;
@@ -2188,6 +2212,7 @@ export default function CreditCardApp() {
   const [assignmentComments, setAssignmentComments] = useState({});
   const [tallyUngroups, setTallyUngroups] = useState({});
   const [tallyCycleSettings, setTallyCycleSettings] = useState(DEFAULT_TALLY_CYCLE_SETTINGS);
+  const [statementCycleOffsetMonths, setStatementCycleOffsetMonths] = useState(0);
   const [showSwitch, setShowSwitch] = useState(false);
   const [showMac, setShowMac] = useState(false);
   const [showPetDebug, setShowPetDebug] = useState(false);
@@ -2443,9 +2468,13 @@ export default function CreditCardApp() {
   const dateAnchorNow = useDateAnchorNow();
   const simulatedNow = useMemo(() => getSimulatedNow(dateAnchorNow, day), [dateAnchorNow, day]);
   const referenceDateKey = useMemo(() => formatLocalDate(simulatedNow), [simulatedNow]);
+  const statementCycleReferenceDateKey = useMemo(
+    () => shiftDateKeyByMonths(referenceDateKey, statementCycleOffsetMonths),
+    [referenceDateKey, statementCycleOffsetMonths]
+  );
   const tallyDateRange = useMemo(
-    () => buildTallyDateRange(referenceDateKey, tallyCycleSettings),
-    [referenceDateKey, tallyCycleSettings]
+    () => buildTallyDateRange(statementCycleReferenceDateKey, tallyCycleSettings),
+    [statementCycleReferenceDateKey, tallyCycleSettings]
   );
   const tallyDateRangeLabel = useMemo(() => formatTallyDateRangeLabel(tallyDateRange), [tallyDateRange]);
 
@@ -3160,13 +3189,13 @@ export default function CreditCardApp() {
           submissions,
           transactionsById,
           breakdownUser,
-          referenceDateKey,
+          statementCycleReferenceDateKey,
           USERS,
           tallyUngroups,
           tallyDateRange
         )
       : [],
-    [breakdownUser, submissions, transactionsById, referenceDateKey, tallyUngroups, tallyDateRange]
+    [breakdownUser, submissions, transactionsById, statementCycleReferenceDateKey, tallyUngroups, tallyDateRange]
   );
   const activeMacquarieExcessGroups = useMemo(() => {
     if (!breakdownUser || macTally <= 0) return [];
@@ -3176,7 +3205,7 @@ export default function CreditCardApp() {
         submissions,
         transactionsById,
         'Macquarie',
-        referenceDateKey,
+        statementCycleReferenceDateKey,
         USERS,
         tallyDateRange
       ),
@@ -3185,11 +3214,19 @@ export default function CreditCardApp() {
     );
 
     return groupTallyBreakdownEntries(macquarieExcessEntries);
-  }, [breakdownUser, macTally, submissions, transactionsById, referenceDateKey, tallyDateRange]);
+  }, [breakdownUser, macTally, submissions, transactionsById, statementCycleReferenceDateKey, tallyDateRange]);
   const activeTallyUndoRecords = useMemo(
     () => (breakdownUser ? getUndoableTallyUngroupRecords(tallyUngroups, breakdownUser) : []),
     [breakdownUser, tallyUngroups]
   );
+
+  const shiftStatementCycle = useCallback((monthsDelta) => {
+    setStatementCycleOffsetMonths((current) => current + monthsDelta);
+  }, []);
+
+  const resetStatementCycle = useCallback(() => {
+    setStatementCycleOffsetMonths(0);
+  }, []);
 
   const stepDay = useCallback(() => {
     const nextDay = day + 1;
@@ -3555,7 +3592,39 @@ export default function CreditCardApp() {
         </button>
       </div>
       <div className="tally-cycle-banner">
-        Statement cycle: {tallyDateRangeLabel} ({formatTallyCycleStartSummary(tallyCycleSettings)})
+        <span className="tally-cycle-banner-label">
+          Statement cycle: {tallyDateRangeLabel} ({formatTallyCycleStartSummary(tallyCycleSettings)})
+        </span>
+        <div className="tally-cycle-controls">
+          <button
+            type="button"
+            className="day-btn tally-cycle-btn"
+            aria-label="Previous statement cycle"
+            title="View previous statement cycle"
+            onClick={() => shiftStatementCycle(-1)}
+          >
+            {'\u2039'}
+          </button>
+          <button
+            type="button"
+            className="day-btn tally-cycle-btn"
+            aria-label="Next statement cycle"
+            title="View next statement cycle"
+            disabled={statementCycleOffsetMonths === 0}
+            onClick={() => shiftStatementCycle(1)}
+          >
+            {'\u203A'}
+          </button>
+          <button
+            type="button"
+            className="reset-btn tally-cycle-reset-btn"
+            aria-label="Reset statement cycle"
+            title="Reset to current statement cycle"
+            onClick={resetStatementCycle}
+          >
+            reset
+          </button>
+        </div>
       </div>
 
       <div className="app" style={{ paddingBottom: `${appBottomPadding}px` }}>
@@ -3586,20 +3655,20 @@ export default function CreditCardApp() {
         </div>
 
         {sections.map((section) => (
-          <TxGroup
-            key={section.key}
-            title={section.title}
-            date={section.date}
-            dayKey={section.key}
-            txs={section.txs}
-            submissions={submissions}
-            assignmentComments={assignmentComments}
-            currentUser={currentUser}
-            referenceDateKey={referenceDateKey}
-            onAssign={handleAssign}
-            onSaveComment={saveAssignmentComment}
-          />
-        ))}
+        <TxGroup
+          key={section.key}
+          title={section.title}
+          date={section.date}
+          dayKey={section.key}
+          txs={section.txs}
+          submissions={submissions}
+          assignmentComments={assignmentComments}
+          currentUser={currentUser}
+          referenceDateKey={statementCycleReferenceDateKey}
+          onAssign={handleAssign}
+          onSaveComment={saveAssignmentComment}
+        />
+      ))}
 
       {!anyVisible && <AllDone msg={doneMsg.current} />}
       {levelUpMsg && (

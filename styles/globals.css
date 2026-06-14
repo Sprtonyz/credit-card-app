@@ -406,6 +406,10 @@ body {
 }
 
 .tally-cycle-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.22rem 0.85rem 0.32rem;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   font-size: 0.5rem;
@@ -413,6 +417,23 @@ body {
   text-transform: uppercase;
   color: #64748b;
   background: rgba(255,255,255,0.01);
+}
+
+.tally-cycle-banner-label {
+  min-width: 0;
+}
+
+.tally-cycle-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.tally-cycle-btn,
+.tally-cycle-reset-btn {
+  font-size: 0.58rem;
+  padding: 0.1rem 0.42rem;
 }
 
 .mac-panel {

@@ -14,6 +14,7 @@ import {
   getPresenceEntries,
   getTodayDate,
   getUserActivityEntries,
+  getTallyCycleSettings,
 } from '../services/firebaseService';
 
 const LAST_UPLOAD_UNDO_KEY = 'cc_last_upload_undo';
@@ -77,11 +78,17 @@ export function useAdminDashboardData(step, successMessage, onAuthError) {
   }, [step, successMessage]);
 
   const loadNotificationReports = async () => {
-    const [allTransactions, allSubmissions] = await Promise.all([
+    const [allTransactions, allSubmissions, tallyCycleSettings] = await Promise.all([
       getAllTransactions(),
       getAllSubmissions(),
+      getTallyCycleSettings(),
     ]);
-    const reports = buildProfileEmailReports(allTransactions, allSubmissions || {}, getTodayDate());
+    const reports = buildProfileEmailReports(
+      allTransactions,
+      allSubmissions || {},
+      getTodayDate(),
+      tallyCycleSettings
+    );
     setNotificationReports(reports);
     return reports;
   };
@@ -93,12 +100,20 @@ export function useAdminDashboardData(step, successMessage, onAuthError) {
 
     const run = async () => {
       try {
-        const [allTransactions, allSubmissions] = await Promise.all([
+        const [allTransactions, allSubmissions, tallyCycleSettings] = await Promise.all([
           getAllTransactions(),
           getAllSubmissions(),
+          getTallyCycleSettings(),
         ]);
         if (cancelled) return;
-        setNotificationReports(buildProfileEmailReports(allTransactions, allSubmissions || {}, getTodayDate()));
+        setNotificationReports(
+          buildProfileEmailReports(
+            allTransactions,
+            allSubmissions || {},
+            getTodayDate(),
+            tallyCycleSettings
+          )
+        );
       } catch (error) {
         console.error('Failed to load notification reports:', error);
       }

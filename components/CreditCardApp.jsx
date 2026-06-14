@@ -124,16 +124,7 @@ const EMPTY_DASHBOARD_METRICS = Object.freeze({
 
 function formatTallyCycleStartSummary(tallyCycleSettings) {
   const startDay = tallyCycleSettings?.startDay;
-  const startMonth = tallyCycleSettings?.startMonth;
-
-  if (!startMonth) {
-    return `starts on day ${startDay}`;
-  }
-
-  const monthLabel = new Intl.DateTimeFormat('en-AU', { month: 'long' }).format(
-    new Date(Date.UTC(2020, startMonth - 1, 1))
-  );
-  return `starts on ${monthLabel} ${startDay}`;
+  return `starts on day ${startDay}`;
 }
 
 function readCachedFirebaseTransactions() {

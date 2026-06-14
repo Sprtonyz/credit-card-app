@@ -7,6 +7,7 @@ import {
   DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
 } from '../config/emailNotifications';
 import { normalizeScheduleWindowMinutes } from '../utils/emailSchedule';
+import { TALLY_CYCLE_SETTINGS_ROOT, DEFAULT_TALLY_CYCLE_SETTINGS } from '../utils/tallyCycle';
 
 function getDatabaseUrl() {
   return String(process.env.FIREBASE_DATABASE_URL || firebaseConfig.databaseURL || '').replace(/\/$/, '');
@@ -145,6 +146,19 @@ export async function getAutomationSettings(authToken) {
     ),
     updatedAt: settings?.updatedAt || null,
   };
+}
+
+export async function getTallyCycleSettings(authToken) {
+  try {
+    const settings = await requestFirebaseJson(TALLY_CYCLE_SETTINGS_ROOT, { authToken });
+    return {
+      ...DEFAULT_TALLY_CYCLE_SETTINGS,
+      ...settings,
+    };
+  } catch (error) {
+    console.warn('Failed to load tally cycle settings via REST; falling back to defaults.', error);
+    return DEFAULT_TALLY_CYCLE_SETTINGS;
+  }
 }
 
 export async function saveAutomationSettings(settings, authToken) {

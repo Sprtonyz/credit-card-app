@@ -1,17 +1,23 @@
 import {
   PROFILE_NAMES,
-  getAssigneeContributionRatio,
   getSurfacedSubmissionStatus,
   getTransactionReferenceDateKey,
   isVisibleForUser,
-} from './reconciliation';
+} from './reconciliation.js';
+import { buildDashboardMetrics } from './creditCardAppData.js';
 import {
   MACQUARIE_EXCESS_THRESHOLD,
   getMacquarieExcessAmount,
   getMacquarieExcessShare,
-} from './macquarieExcess';
-import { SIMULATED_TIME_ZONE } from './simulationDate';
-import { DEFAULT_APP_URL } from '../config/emailNotifications';
+} from './macquarieExcess.js';
+import { SIMULATED_TIME_ZONE } from './simulationDate.js';
+import { DEFAULT_APP_URL } from '../config/emailNotifications.js';
+import {
+  buildTallyDateRange,
+  DEFAULT_TALLY_CYCLE_SETTINGS,
+  formatTallyDateRangeLabel,
+  normalizeTallyCycleSettings,
+} from './tallyCycle.js';
 
 export const PRESENCE_TTL_MS = 12000;
 export { MACQUARIE_EXCESS_THRESHOLD };
@@ -20,13 +26,6 @@ function dateToMs(dateKey) {
   if (!dateKey) return null;
   const ms = Date.parse(`${dateKey}T00:00:00Z`);
   return Number.isNaN(ms) ? null : ms;
-}
-
-function daysBetween(olderKey, newerKey) {
-  const olderMs = dateToMs(olderKey);
-  const newerMs = dateToMs(newerKey);
-  if (olderMs === null || newerMs === null) return null;
-  return Math.floor((newerMs - olderMs) / 86400000);
 }
 
 function getLatestSubmissionEntryForUser(submissions = {}, user) {
@@ -48,60 +47,85 @@ function getLatestSubmissionEntryForUser(submissions = {}, user) {
   }, null);
 }
 
-function getAssigneeTotal(transactions, submissions, assignee, todayKey) {
-  return Object.entries(submissions).reduce((acc, [transactionId, submission]) => {
-    const transaction = transactions.find((item) => item.id === transactionId);
-    const contributionRatio = getAssigneeContributionRatio(submission, assignee, todayKey);
-    if (!transaction || contributionRatio <= 0) return acc;
-    return acc + Number(transaction.amount || 0) * contributionRatio;
-  }, 0);
-}
+const DASHBOARD_ASSIGNEES = ['Macquarie', 'Macqbill'];
 
-export function buildProfileEmailReports(transactions, submissions, todayKey) {
-  const macquarieTotal = getAssigneeTotal(transactions, submissions, 'Macquarie', todayKey);
-  const macquarieExcessAmount = getMacquarieExcessAmount(macquarieTotal);
+export function buildProfileEmailReports(
+  transactions,
+  submissions,
+  todayKey,
+  tallyCycleSettings = DEFAULT_TALLY_CYCLE_SETTINGS
+) {
+  const normalizedTallyCycleSettings = normalizeTallyCycleSettings(tallyCycleSettings);
+  const tallyDateRange = buildTallyDateRange(todayKey, normalizedTallyCycleSettings);
+  const statementCycleLabel = formatTallyDateRangeLabel(tallyDateRange);
 
   return PROFILE_NAMES.map((profileName) => {
+    const dashboardMetrics = buildDashboardMetrics({
+      transactions,
+      submissions,
+      currentUser: profileName,
+      users: PROFILE_NAMES,
+      referenceDateKey: todayKey,
+      simulatedNow: new Date(`${todayKey}T00:00:00Z`),
+      assignees: DASHBOARD_ASSIGNEES,
+      tallyDateRange,
+    });
     const visibleTransactions = transactions.filter((transaction) =>
       isVisibleForUser(transaction, submissions, profileName, todayKey)
     );
 
-    const totalSpend = getAssigneeTotal(transactions, submissions, profileName, todayKey);
+    const cycleAssignedTotal = dashboardMetrics.userTallies[profileName] || 0;
+    const remainingCount = dashboardMetrics.remainingByUser[profileName] || 0;
+    const macquarieTotal = dashboardMetrics.assigneeTotals.Macquarie || 0;
+    const macquarieExcessAmount = getMacquarieExcessAmount(macquarieTotal);
 
-    const pendingTransactions = visibleTransactions.filter((transaction) => {
-      if (!(transaction.isPending || !transaction.date)) return false;
-      const referenceDay = getTransactionReferenceDateKey(transaction, todayKey);
-      return referenceDay === todayKey;
-    });
+    const bucketCounts = visibleTransactions.reduce(
+      (counts, transaction) => {
+        const submission = submissions[transaction.id] || {};
+        const surfacedStatus = getSurfacedSubmissionStatus(submission, todayKey);
+        const referenceDay = getTransactionReferenceDateKey(transaction, todayKey);
+        const isCurrentDayPending =
+          (transaction.isPending || !transaction.date) && referenceDay === todayKey;
 
-    const outstandingTransactions = visibleTransactions.filter((transaction) => {
-      if (!(transaction.isPending || !transaction.date)) return false;
-      const referenceDay = getTransactionReferenceDateKey(transaction, todayKey);
-      if (!referenceDay) return false;
-      const age = daysBetween(referenceDay, todayKey);
-      return age !== null && age > 1;
-    });
+        if (isCurrentDayPending) {
+          counts.pendingCount += 1;
+          return counts;
+        }
 
-    const conflictsCount = visibleTransactions.filter((transaction) => {
-      const status = getSurfacedSubmissionStatus(submissions[transaction.id] || {}, todayKey);
-      return status.conflict;
-    }).length;
+        if (surfacedStatus.conflict) {
+          counts.conflictsCount += 1;
+          return counts;
+        }
 
-    const unsuresCount = visibleTransactions.filter((transaction) => {
-      const status = getSurfacedSubmissionStatus(submissions[transaction.id] || {}, todayKey);
-      return status.unsure;
-    }).length;
+        if (surfacedStatus.unsure) {
+          counts.unsuresCount += 1;
+          return counts;
+        }
+
+        counts.outstandingCount += 1;
+        return counts;
+      },
+      {
+        pendingCount: 0,
+        outstandingCount: 0,
+        conflictsCount: 0,
+        unsuresCount: 0,
+      }
+    );
 
     return {
       profileName,
       subject: `${profileName} profile summary - ${todayKey}`,
       appUrl: DEFAULT_APP_URL,
+      statementCycleLabel,
       stats: {
-        totalSpend,
-        pendingCount: pendingTransactions.length,
-        outstandingCount: outstandingTransactions.length,
-        conflictsCount,
-        unsuresCount,
+        remainingCount,
+        totalSpend: cycleAssignedTotal,
+        cycleAssignedTotal,
+        pendingCount: bucketCounts.pendingCount,
+        outstandingCount: bucketCounts.outstandingCount,
+        conflictsCount: bucketCounts.conflictsCount,
+        unsuresCount: bucketCounts.unsuresCount,
         macquarieTotal,
         macquarieExcessAmount,
         macquarieExcessShare: getMacquarieExcessShare(profileName, macquarieTotal),

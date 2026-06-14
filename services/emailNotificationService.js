@@ -40,6 +40,10 @@ function formatCurrency(value) {
 }
 
 function getActionRequiredCount(stats = {}) {
+  if (Number.isFinite(Number(stats.remainingCount))) {
+    return Number(stats.remainingCount);
+  }
+
   return [
     stats.pendingCount,
     stats.outstandingCount,
@@ -101,6 +105,7 @@ export function getLandingUrl(appUrl) {
 export function buildEmailContent(report) {
   const profileName = report.profileName || report.profile || 'Profile';
   const stats = report.stats || {};
+  const statementCycleLabel = report.statementCycleLabel || 'Current cycle';
   const appUrl = getLandingUrl(report.appUrl || DEFAULT_APP_URL);
   const updatedAt = new Date().toLocaleString('en-AU', {
     weekday: 'short',
@@ -113,6 +118,7 @@ export function buildEmailContent(report) {
   const actionRequiredCount = getActionRequiredCount(stats);
   const hasActionRequired = actionRequiredCount > 0;
   const macquarieExcessShare = Number(stats.macquarieExcessShare || 0);
+  const cycleAssignedTotal = Number(stats.cycleAssignedTotal ?? stats.totalSpend ?? 0);
 
   const breakdownRows = [
     {
@@ -153,8 +159,9 @@ export function buildEmailContent(report) {
     ? [
         `${profileName} update`,
         '',
-        `Action required: ${formatCount(actionRequiredCount)} items`,
-        `Spending: ${formatCurrency(stats.totalSpend)}`,
+        `Items to review: ${formatCount(actionRequiredCount)}`,
+        `Current cycle assigned total: ${formatCurrency(cycleAssignedTotal)}`,
+        `Statement cycle: ${statementCycleLabel}`,
         macquarieExcessShare > 0
           ? `+ ${formatCurrency(macquarieExcessShare)} Macquarie excess split`
           : '',
@@ -172,7 +179,8 @@ export function buildEmailContent(report) {
         '',
         'Nothing to action',
         'No pending, outstanding, conflict, or unsure items need review right now.',
-        `Spending: ${formatCurrency(stats.totalSpend)}`,
+        `Current cycle assigned total: ${formatCurrency(cycleAssignedTotal)}`,
+        `Statement cycle: ${statementCycleLabel}`,
         macquarieExcessShare > 0
           ? `+ ${formatCurrency(macquarieExcessShare)} Macquarie excess split`
           : '',
@@ -376,6 +384,10 @@ export function buildEmailContent(report) {
             ${escapeHtml(profileName)} summary
           </h1>
 
+          <div class="dark-text" style="margin:-10px 0 18px 0;color:#d2dae5;font-size:14px;line-height:18px;font-weight:700;font-family:${EMAIL_FONT_STACK}">
+            Statement cycle: ${escapeHtml(statementCycleLabel)}
+          </div>
+
           ${
             hasActionRequired
               ? `
@@ -393,7 +405,7 @@ export function buildEmailContent(report) {
                               })}
                             </td>
                             <td valign="top" class="tile-label" style="padding-top:8px;color:#4f83ff;font-size:15px;line-height:21px;text-transform:uppercase;letter-spacing:0;font-weight:900;font-family:${EMAIL_FONT_STACK}">
-                              Action<br />Required
+                              Items to<br />Review
                             </td>
                           </tr>
                         </table>
@@ -418,15 +430,15 @@ export function buildEmailContent(report) {
                               })}
                             </td>
                             <td valign="top" class="tile-label muted-text" style="padding-top:15px;color:#b2bac5;font-size:15px;line-height:20px;text-transform:uppercase;letter-spacing:0;font-weight:900;font-family:${EMAIL_FONT_STACK}">
-                              Spending
+                              Cycle total
                             </td>
                           </tr>
                         </table>
                         <div class="spend-amount dark-text" style="margin-top:39px;color:#f8fafc;font-size:40px;line-height:44px;font-weight:900;font-family:${EMAIL_FONT_STACK};white-space:nowrap">
-                          ${escapeHtml(formatCurrency(stats.totalSpend))}
+                          ${escapeHtml(formatCurrency(cycleAssignedTotal))}
                         </div>
                         <div class="tile-caption muted-text" style="margin-top:6px;color:#a8b3c1;font-size:17px;line-height:22px;font-weight:500;font-family:${EMAIL_FONT_STACK}">
-                          assigned so far
+                          current cycle assignments
                         </div>
                         ${
                           macquarieExcessShare > 0

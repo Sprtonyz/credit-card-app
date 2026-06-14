@@ -1,6 +1,6 @@
-import { getAssigneeContributionRatio, getTransactionReferenceDateKey, isVisibleForUser } from './reconciliation';
-import { formatLocalDate } from './simulationDate';
-import { isTransactionWithinTallyDateRange } from './tallyCycle';
+import { getAssigneeContributionRatio, getTransactionReferenceDateKey, isVisibleForUser } from './reconciliation.js';
+import { formatLocalDate } from './simulationDate.js';
+import { isTransactionWithinTallyDateRange } from './tallyCycle.js';
 
 export function normalizeFirebaseTransaction(id, tx) {
   const amount = Number(tx.amount) || 0;

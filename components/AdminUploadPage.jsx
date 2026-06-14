@@ -1651,7 +1651,7 @@ export default function AdminUploadPage() {
                       Current window: {tallyCyclePreviewLabel}
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
-                      Totals reset monthly from this start month and day to the day before next month&apos;s start day.
+                      Totals reset monthly from this start day to the day before next month&apos;s start day.
                     </p>
                     {tallyCycleUpdatedAt ? (
                       <p className="mt-1 text-xs text-slate-400">

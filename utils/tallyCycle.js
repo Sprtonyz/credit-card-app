@@ -152,19 +152,11 @@ export function buildTallyDateRange(referenceDateKey, settings = DEFAULT_TALLY_C
   }
 
   const { year, monthIndex } = referenceParts;
-  const activeMonthBase = normalizedSettings.startMonth
-    ? (() => {
-        const anchorMonthIndex = normalizedSettings.startMonth - 1;
-        const currentMonthStartKey = getMonthStartKey(year, anchorMonthIndex, normalizedSettings.startDay);
-        const currentMonthBase = { year, monthIndex: anchorMonthIndex };
-
-        if (referenceDateKey >= currentMonthStartKey) {
-          return currentMonthBase;
-        }
-
-        return addMonths(currentMonthBase, -1);
-      })()
-    : referenceDateKey >= getMonthStartKey(year, monthIndex, normalizedSettings.startDay)
+  // The current window should always follow the reference date's month/day.
+  // `startMonth` is preserved for stored settings and admin UI, but the live
+  // tally window must not get pinned to a historical month.
+  const activeMonthBase =
+    referenceDateKey >= getMonthStartKey(year, monthIndex, normalizedSettings.startDay)
       ? { year, monthIndex }
       : addMonths({ year, monthIndex }, -1);
   const startKey = getMonthStartKey(

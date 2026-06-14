@@ -1,5 +1,5 @@
-import { formatLocalDate } from './simulationDate';
-import { isTransactionWithinTallyDateRange } from './tallyCycle';
+import { formatLocalDate } from './simulationDate.js';
+import { isTransactionWithinTallyDateRange } from './tallyCycle.js';
 
 export const PROFILE_NAMES = ['Tony', 'Nugs'];
 

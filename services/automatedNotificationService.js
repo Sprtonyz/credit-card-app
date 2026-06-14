@@ -11,6 +11,7 @@ import {
   getAutomationRun,
   getEmailAutomationData,
   getFirebaseRestAuthToken,
+  getTallyCycleSettings,
   saveAutomationRun,
 } from './firebaseRestService';
 import {
@@ -86,6 +87,7 @@ export async function runAutomatedNotificationEmail({
   }
 
   const { transactions, submissions } = await getEmailAutomationData(authToken);
+  const tallyCycleSettings = await getTallyCycleSettings(authToken);
   const previousRun = await getAutomationRun(scheduleDecision.localDate, authToken);
 
   if (!force && previousRun?.sentAt) {
@@ -103,7 +105,8 @@ export async function runAutomatedNotificationEmail({
   const reports = buildProfileEmailReports(
     transactions,
     submissions || {},
-    scheduleDecision.localDate
+    scheduleDecision.localDate,
+    tallyCycleSettings
   ).map((report) => ({
     ...report,
     appUrl: getAppUrl(),

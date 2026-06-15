@@ -179,7 +179,14 @@ function buildManualReviewItems(
     let trace = readyDecision?.trace || null;
     let existingMatch = null;
 
-    if (processedEntry) {
+    if (isCommonReoccurrence) {
+      reason = 'ready_to_import';
+      defaultSelected = true;
+      explanation =
+        'Recognized as a common reoccurrence, so it will import unless you manually uncheck it.';
+      confidence = readyDecision?.confidence || skippedDecision?.confidence || confidence;
+      trace = readyDecision?.trace || skippedDecision?.trace || trace;
+    } else if (processedEntry) {
       reason = 'already_processed';
       defaultSelected = false;
       explanation = processedEntry.uploadDay

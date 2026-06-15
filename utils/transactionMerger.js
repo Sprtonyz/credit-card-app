@@ -18,6 +18,31 @@ const MERCHANT_STOP_WORDS = new Set([
   'category',
   'in',
   'progress',
+  'online',
+  'services',
+  'service',
+  'charges',
+  'fees',
+  'takeaway',
+  'fast',
+  'restaurants',
+  'dining',
+  'shopping',
+  'refunds',
+  'rebates',
+  'loan',
+  'repayment',
+  'other',
+  'utilities',
+  'medicine',
+  'supplements',
+  'electronics',
+  'software',
+  'clothes',
+  'shoes',
+  'pay',
+  'tv',
+  'telephone',
 ]);
 const RECENT_DUPLICATE_DAYS = 5;
 const RECENT_PENDING_DUPLICATE_DAYS = 5;
@@ -409,120 +434,122 @@ export function mergeTransactions(
     const txKey = buildTransactionKey(txWithDate);
     const isCommonReoccurrence = isCommonReoccurrenceTransaction(txWithDate, commonReoccurrenceRules);
 
-    const processedMatch = findProcessedLogMatch(txWithDate, processedLog);
-    if (processedMatch) {
-      if (adminReviewApproved) {
-        markManualOverride('already_processed', {
-          processedDay: processedMatch.log?.uploadDay,
-          processedDate: processedMatch.log?.uploadDate,
-        });
-      } else {
-        const decision = buildDecision(txWithDate, {
-          outcome: 'skipped',
-          reasonCode: 'already_processed',
-          processedDay: processedMatch.log?.uploadDay,
-          processedDate: processedMatch.log?.uploadDate,
-        });
-        skipped.push({
-          transaction: txWithDate,
-          reason: 'already_processed',
-          processedDate: processedMatch.log?.uploadDate,
-          processedDay: processedMatch.log?.uploadDay,
-          processedMatchType: processedMatch.matchType,
-          explanation: decision.explanation,
-          confidence: decision.confidence,
-          trace: decision.trace,
-        });
-        decisions.push(decision);
-        continue;
+    if (!isCommonReoccurrence) {
+      const processedMatch = findProcessedLogMatch(txWithDate, processedLog);
+      if (processedMatch) {
+        if (adminReviewApproved) {
+          markManualOverride('already_processed', {
+            processedDay: processedMatch.log?.uploadDay,
+            processedDate: processedMatch.log?.uploadDate,
+          });
+        } else {
+          const decision = buildDecision(txWithDate, {
+            outcome: 'skipped',
+            reasonCode: 'already_processed',
+            processedDay: processedMatch.log?.uploadDay,
+            processedDate: processedMatch.log?.uploadDate,
+          });
+          skipped.push({
+            transaction: txWithDate,
+            reason: 'already_processed',
+            processedDate: processedMatch.log?.uploadDate,
+            processedDay: processedMatch.log?.uploadDay,
+            processedMatchType: processedMatch.matchType,
+            explanation: decision.explanation,
+            confidence: decision.confidence,
+            trace: decision.trace,
+          });
+          decisions.push(decision);
+          continue;
+        }
       }
-    }
 
-    const processedRowMatch = findProcessedRowMatch(txWithDate, processedLog);
-    if (processedRowMatch) {
-      if (adminReviewApproved) {
-        markManualOverride('already_processed', {
-          processedDay: processedRowMatch.log?.uploadDay,
-          processedDate: processedRowMatch.log?.uploadDate,
-        });
-      } else {
-        const decision = buildDecision(txWithDate, {
-          outcome: 'skipped',
-          reasonCode: 'already_processed',
-          processedDay: processedRowMatch.log?.uploadDay,
-          processedDate: processedRowMatch.log?.uploadDate,
-        });
-        skipped.push({
-          transaction: txWithDate,
-          reason: 'already_processed',
-          processedDate: processedRowMatch.log?.uploadDate,
-          processedDay: processedRowMatch.log?.uploadDay,
-          processedMatchType: processedRowMatch.matchType,
-          explanation: decision.explanation,
-          confidence: decision.confidence,
-          trace: decision.trace,
-        });
-        decisions.push(decision);
-        continue;
+      const processedRowMatch = findProcessedRowMatch(txWithDate, processedLog);
+      if (processedRowMatch) {
+        if (adminReviewApproved) {
+          markManualOverride('already_processed', {
+            processedDay: processedRowMatch.log?.uploadDay,
+            processedDate: processedRowMatch.log?.uploadDate,
+          });
+        } else {
+          const decision = buildDecision(txWithDate, {
+            outcome: 'skipped',
+            reasonCode: 'already_processed',
+            processedDay: processedRowMatch.log?.uploadDay,
+            processedDate: processedRowMatch.log?.uploadDate,
+          });
+          skipped.push({
+            transaction: txWithDate,
+            reason: 'already_processed',
+            processedDate: processedRowMatch.log?.uploadDate,
+            processedDay: processedRowMatch.log?.uploadDay,
+            processedMatchType: processedRowMatch.matchType,
+            explanation: decision.explanation,
+            confidence: decision.confidence,
+            trace: decision.trace,
+          });
+          decisions.push(decision);
+          continue;
+        }
       }
-    }
 
-    if (
-      txWithDate.duplicateAction === 'skip' &&
-      (
-        txWithDate.duplicateMatch?.reason === 'processed_screenshot_overlap' ||
-        txWithDate.duplicateMatch?.reason === 'processed_ordered_subsequence_overlap'
-      )
-    ) {
-      if (adminReviewApproved) {
-        markManualOverride('already_processed', {
-          processedDay: txWithDate.duplicateMatch.processedDay || null,
-          processedDate: txWithDate.duplicateMatch.processedDate || null,
-          duplicateMatch: txWithDate.duplicateMatch || null,
-        });
-      } else {
-        const decision = buildDecision(txWithDate, {
-          outcome: 'skipped',
-          reasonCode: 'already_processed',
-          processedDay: txWithDate.duplicateMatch.processedDay || null,
-          processedDate: txWithDate.duplicateMatch.processedDate || null,
-          duplicateMatch: txWithDate.duplicateMatch || null,
-        });
-        skipped.push({
-          transaction: txWithDate,
-          reason: 'already_processed',
-          processedDate: txWithDate.duplicateMatch.processedDate || null,
-          processedDay: txWithDate.duplicateMatch.processedDay || null,
-          processedMatchType: 'processed_screenshot_overlap',
-          explanation: decision.explanation,
-          confidence: decision.confidence,
-          trace: decision.trace,
-        });
-        decisions.push(decision);
-        continue;
+      if (
+        txWithDate.duplicateAction === 'skip' &&
+        (
+          txWithDate.duplicateMatch?.reason === 'processed_screenshot_overlap' ||
+          txWithDate.duplicateMatch?.reason === 'processed_ordered_subsequence_overlap'
+        )
+      ) {
+        if (adminReviewApproved) {
+          markManualOverride('already_processed', {
+            processedDay: txWithDate.duplicateMatch.processedDay || null,
+            processedDate: txWithDate.duplicateMatch.processedDate || null,
+            duplicateMatch: txWithDate.duplicateMatch || null,
+          });
+        } else {
+          const decision = buildDecision(txWithDate, {
+            outcome: 'skipped',
+            reasonCode: 'already_processed',
+            processedDay: txWithDate.duplicateMatch.processedDay || null,
+            processedDate: txWithDate.duplicateMatch.processedDate || null,
+            duplicateMatch: txWithDate.duplicateMatch || null,
+          });
+          skipped.push({
+            transaction: txWithDate,
+            reason: 'already_processed',
+            processedDate: txWithDate.duplicateMatch.processedDate || null,
+            processedDay: txWithDate.duplicateMatch.processedDay || null,
+            processedMatchType: 'processed_screenshot_overlap',
+            explanation: decision.explanation,
+            confidence: decision.confidence,
+            trace: decision.trace,
+          });
+          decisions.push(decision);
+          continue;
+        }
       }
-    }
 
-    if (txWithDate.duplicateAction === 'skip') {
-      if (adminReviewApproved) {
-        markManualOverride('duplicate_in_upload', {
-          duplicateMatch: tx.duplicateMatch || null,
-        });
-      } else {
-        const decision = buildDecision(txWithDate, {
-          outcome: 'skipped',
-          reasonCode: 'duplicate_in_upload',
-          duplicateMatch: tx.duplicateMatch || null,
-        });
-        skipped.push({
-          transaction: txWithDate,
-          reason: 'duplicate_in_upload',
-          explanation: decision.explanation,
-          confidence: decision.confidence,
-          trace: decision.trace,
-        });
-        decisions.push(decision);
-        continue;
+      if (txWithDate.duplicateAction === 'skip') {
+        if (adminReviewApproved) {
+          markManualOverride('duplicate_in_upload', {
+            duplicateMatch: tx.duplicateMatch || null,
+          });
+        } else {
+          const decision = buildDecision(txWithDate, {
+            outcome: 'skipped',
+            reasonCode: 'duplicate_in_upload',
+            duplicateMatch: tx.duplicateMatch || null,
+          });
+          skipped.push({
+            transaction: txWithDate,
+            reason: 'duplicate_in_upload',
+            explanation: decision.explanation,
+            confidence: decision.confidence,
+            trace: decision.trace,
+          });
+          decisions.push(decision);
+          continue;
+        }
       }
     }
 

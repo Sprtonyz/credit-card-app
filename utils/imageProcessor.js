@@ -430,7 +430,24 @@ function parseClassicTransactionText(text, lineEntries = [], wordEntries = [], f
       continue;
     }
 
-    if (isCategoryLine(trimmed) || /entertainment|food|groceries|transport|shopping|utilities|health|parking|repair|repay|subscription|refund/i.test(trimmed)) {
+    const lineAmountMatch = extractAmountMatch(trimmed);
+    const amountMatch = extractBestAmountCandidate(entry, normalizedWords);
+
+    if (
+      lineAmountMatch &&
+      looksLikeMissingDecimalAmount(lineAmountMatch) &&
+      amountMatch &&
+      normalizeAmountToken(amountMatch) !== normalizeAmountToken(lineAmountMatch)
+    ) {
+      currentMerchantParts = [];
+      continue;
+    }
+
+    if (
+      !amountMatch &&
+      (isCategoryLine(trimmed) ||
+        /entertainment|food|groceries|transport|shopping|utilities|health|parking|repair|repay|subscription|refund/i.test(trimmed))
+    ) {
       currentCategory = trimmed;
       currentMerchantParts = [];
       continue;
@@ -440,8 +457,21 @@ function parseClassicTransactionText(text, lineEntries = [], wordEntries = [], f
       continue;
     }
 
-    const amountMatch = extractBestAmountCandidate(entry, normalizedWords);
     if (amountMatch) {
+      const normalizedTrimmed = normalizeOcrLine(trimmed);
+      if (looksLikeMissingDecimalAmount(amountMatch) && /\.\s*$/.test(trimmed)) {
+        currentMerchantParts = [];
+        continue;
+      }
+
+      if (
+        !normalizedTrimmed.includes(normalizeAmountToken(amountMatch)) &&
+        /(?:[-+]?\$?\d[\d,]*[.,])$/.test(normalizedTrimmed)
+      ) {
+        currentMerchantParts = [];
+        continue;
+      }
+
       const inlineMerchant = stripAmountFromLine(trimmed, amountMatch);
       const mergedMerchant = cleanMerchantCandidate(currentMerchantParts.join(' '));
       const merchant = cleanMerchantCandidate([mergedMerchant, inlineMerchant].filter(Boolean).join(' '));

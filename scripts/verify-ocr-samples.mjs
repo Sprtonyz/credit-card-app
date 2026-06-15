@@ -55,7 +55,16 @@ assert.equal(image4.raw[0].amount, '-$15.00', 'image4 ebay row should keep the r
 assert.equal(image4.corrected[5].amount, -149.9, 'image4 refund row should normalize as a refund');
 
 const image1 = await parseSample('image1.jpeg');
-assert.equal(image1.corrected.slice(-2)[0].date, '2026-06-12', 'image1 relative date should resolve yesterday');
-assert.equal(image1.corrected.slice(-1)[0].date, '2026-06-12', 'image1 relative date should persist across the final rows');
+assert.equal(image1.raw.length, 7, 'image1 should keep all seven real transactions');
+assert.equal(
+  image1.raw[0].merchant,
+  'SecureParking Melbourne AU',
+  'image1 pending SecureParking row should be captured'
+);
+assert.equal(
+  image1.corrected[6].date,
+  '2026-06-12',
+  'image1 relative date should resolve yesterday on the final transaction'
+);
 
 console.log('OCR sample regression checks passed for image0, image1, image4, and image7.');

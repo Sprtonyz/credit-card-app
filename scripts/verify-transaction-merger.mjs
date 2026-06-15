@@ -46,7 +46,44 @@ const source = fs
         .replace(/[^a-z0-9]+/g, ' ')
         .trim()
         .split(/\\s+/)
-        .filter((token) => token && !['au', 'notau', 'australia', 'pending', 'posted', 'category', 'in', 'progress'].includes(token))
+        .filter((token) =>
+          token &&
+          ![
+            'au',
+            'notau',
+            'australia',
+            'pending',
+            'posted',
+            'category',
+            'in',
+            'progress',
+            'online',
+            'services',
+            'service',
+            'charges',
+            'fees',
+            'takeaway',
+            'fast',
+            'restaurants',
+            'dining',
+            'shopping',
+            'refunds',
+            'rebates',
+            'loan',
+            'repayment',
+            'other',
+            'utilities',
+            'medicine',
+            'supplements',
+            'electronics',
+            'software',
+            'clothes',
+            'shoes',
+            'pay',
+            'tv',
+            'telephone',
+          ].includes(token)
+        )
         .join('_');
       return merchant ? \`\${Math.abs(amount).toFixed(2).replace('.', '')}_\${merchant}\` : null;
     };
@@ -163,6 +200,103 @@ run('imports recent matching transactions marked as common reoccurrences', () =>
       },
     ],
     {},
+    {
+      commonReoccurrenceRules: [
+        {
+          key: '1250_coffee_house',
+          enabled: true,
+        },
+      ],
+    }
+  );
+
+  assertEqual(result.toAdd.length, 1, 'added count');
+  assertEqual(result.skipped.length, 0, 'skipped count');
+  assertEqual(result.decisions[0].reasonCode, 'ready_to_import', 'decision reason');
+});
+
+run('imports OCR-shaped common reoccurrence merchants without treating the header noise as a duplicate', () => {
+  const result = mergeTransactions(
+    [
+      transaction({
+        merchant: 'Online Services COLES 7795 BRAYBROOK AUS',
+        amount: 32.25,
+        date: '2026-06-01',
+        rawParsed: {
+          date: '1 Jun 2026',
+        },
+      }),
+    ],
+    [
+      {
+        id: 'coles-1',
+        merchant: 'COLES 7795 BRAYBROOK AUS',
+        amount: 32.25,
+        date: '2026-05-31',
+      },
+    ],
+    {},
+    {
+      commonReoccurrenceRules: [
+        {
+          key: '3225_coles_7795_braybrook_aus',
+          enabled: true,
+        },
+      ],
+    }
+  );
+
+  assertEqual(result.toAdd.length, 1, 'added count');
+  assertEqual(result.skipped.length, 0, 'skipped count');
+  assertEqual(result.decisions[0].reasonCode, 'ready_to_import', 'decision reason');
+});
+
+run('keeps common reoccurrences selected even when duplicate flags would otherwise skip them', () => {
+  const result = mergeTransactions(
+    [
+      transaction({
+        merchant: 'Coffee House',
+        amount: 12.5,
+        duplicateAction: 'skip',
+        duplicateMatch: {
+          reason: 'duplicate_in_upload',
+          merchantSimilarity: 100,
+        },
+      }),
+    ],
+    [],
+    {},
+    {
+      commonReoccurrenceRules: [
+        {
+          key: '1250_coffee_house',
+          enabled: true,
+        },
+      ],
+    }
+  );
+
+  assertEqual(result.toAdd.length, 1, 'added count');
+  assertEqual(result.skipped.length, 0, 'skipped count');
+  assertEqual(result.decisions[0].reasonCode, 'ready_to_import', 'decision reason');
+});
+
+run('imports common reoccurrences even when the screenshot was already processed', () => {
+  const result = mergeTransactions(
+    [
+      transaction({
+        merchant: 'Coffee House',
+        amount: 12.5,
+        imageHash: 'hash-processed',
+      }),
+    ],
+    [],
+    {
+      'hash-processed': {
+        uploadDay: '2026-05-08',
+        uploadDate: '2026-05-08T12:00:00.000Z',
+      },
+    },
     {
       commonReoccurrenceRules: [
         {

@@ -214,6 +214,28 @@ run('surfaces same-day disagreements on the next day', () => {
   assertEqual(isVisibleForUser(newTransaction, submissions, 'Nugs', '2026-04-30'), true, 'Nugs visibility');
 });
 
+run('keeps untouched current-day transactions visible', () => {
+  const newTransaction = {
+    id: 'today-only',
+    uploadedDay: '2026-04-29',
+    isPending: true,
+  };
+
+  assertEqual(isVisibleForUser(newTransaction, {}, 'Tony', '2026-04-29'), true, 'Tony visibility');
+  assertEqual(isVisibleForUser(newTransaction, {}, 'Nugs', '2026-04-29'), true, 'Nugs visibility');
+});
+
+run('hides untouched historical transactions', () => {
+  const oldTransaction = {
+    id: 'old-only',
+    uploadedDay: '2026-04-28',
+    isPending: true,
+  };
+
+  assertEqual(isVisibleForUser(oldTransaction, {}, 'Tony', '2026-04-29'), false, 'Tony visibility');
+  assertEqual(isVisibleForUser(oldTransaction, {}, 'Nugs', '2026-04-29'), false, 'Nugs visibility');
+});
+
 run('keeps resolved assignments hidden after midnight', () => {
   const submissions = {
     'shared-note': {

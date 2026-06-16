@@ -356,9 +356,15 @@ export function isVisibleForUser(transaction, submissions, user, referenceDateKe
   if (!user) return true;
 
   const submission = submissions[transaction.id] || {};
+  const submissionStatus = getSubmissionStatus(submission, users);
   const surfacedStatus = getSurfacedSubmissionStatus(submission, referenceDateKey, users);
   const submittedDateKey = getSubmissionDateKey(submission, user);
   const submittedToday = submittedDateKey === referenceDateKey;
+  const transactionReferenceDateKey = getTransactionReferenceDateKey(transaction, referenceDateKey);
+
+  if (!submissionStatus.anyPicked) {
+    return transactionReferenceDateKey === referenceDateKey;
+  }
 
   if (surfacedStatus.conflict || surfacedStatus.unsure) {
     return !submittedToday;

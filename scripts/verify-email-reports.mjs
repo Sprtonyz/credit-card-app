@@ -47,9 +47,9 @@ run('builds dashboard-aligned email summaries', () => {
   );
 
   assert.equal(tonyReport.statementCycleLabel, '13 June 2026 - 12 July 2026');
-  assert.equal(tonyReport.stats.remainingCount, 3);
+  assert.equal(tonyReport.stats.remainingCount, 1);
   assert.equal(tonyReport.stats.pendingCount, 0);
-  assert.equal(tonyReport.stats.outstandingCount, 2);
+  assert.equal(tonyReport.stats.outstandingCount, 0);
   assert.equal(tonyReport.stats.conflictsCount, 1);
   assert.equal(tonyReport.stats.unsuresCount, 0);
   assert.equal(

@@ -356,19 +356,9 @@ export function isVisibleForUser(transaction, submissions, user, referenceDateKe
   if (!user) return true;
 
   const submission = submissions[transaction.id] || {};
-  const surfacedStatus = getSurfacedSubmissionStatus(submission, referenceDateKey, users);
-  const submittedDateKey = getSubmissionDateKey(submission, user);
-  const transactionReferenceDateKey = getTransactionReferenceDateKey(transaction, referenceDateKey);
-  const submittedForThisTransaction =
-    submittedDateKey !== null &&
-    transactionReferenceDateKey !== null &&
-    submittedDateKey >= transactionReferenceDateKey;
+  const submittedToday = hasSubmissionOnDate(submission, user, referenceDateKey);
 
-  if (surfacedStatus.conflict || surfacedStatus.unsure) {
-    return !hasSubmissionOnDate(submission, user, referenceDateKey);
-  }
-
-  return !surfacedStatus.resolved && !submittedForThisTransaction;
+  return !submittedToday;
 }
 
 export function getAssigneeContributionRatio(submission, assignee, referenceDateKey, users = PROFILE_NAMES) {

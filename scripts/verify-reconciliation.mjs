@@ -7,8 +7,14 @@ const reconciliationPath = path.join(rootDir, 'utils', 'reconciliation.js');
 
 const source = fs
   .readFileSync(reconciliationPath, 'utf8')
-  .replace("import { formatLocalDate } from './simulationDate';", 'const formatLocalDate = (date) => date.toISOString().slice(0, 10);')
-  .replace("import { isTransactionWithinTallyDateRange } from './tallyCycle';", 'const isTransactionWithinTallyDateRange = () => true;')
+  .replace(
+    /import\s+\{\s*formatLocalDate\s*\}\s+from\s+'\.\/simulationDate(?:\.js)?';/,
+    'const formatLocalDate = (date) => date.toISOString().slice(0, 10);'
+  )
+  .replace(
+    /import\s+\{\s*isTransactionWithinTallyDateRange\s*\}\s+from\s+'\.\/tallyCycle(?:\.js)?';/,
+    'const isTransactionWithinTallyDateRange = () => true;'
+  )
   .replace(/export const PROFILE_NAMES = /, 'const PROFILE_NAMES = ')
   .replace(/export function /g, 'function ');
 
@@ -54,7 +60,7 @@ run('keeps surfaced conflicts visible to both profiles', () => {
   assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-29'), true, 'Nugs visibility');
 });
 
-run('does not create current-day remaining from a first live disagreement', () => {
+run('keeps a row visible to the user who has not acted today', () => {
   const submissions = {
     'shared-note': {
       Tony: {
@@ -70,7 +76,7 @@ run('does not create current-day remaining from a first live disagreement', () =
     },
   };
 
-  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-29'), false, 'Tony visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-29'), true, 'Tony visibility');
   assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-29'), false, 'Nugs visibility');
 });
 
@@ -114,8 +120,8 @@ run('hides surfaced conflict for both profiles after both re-pick today', () => 
 
   assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-29'), false, 'Tony visibility');
   assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-29'), false, 'Nugs visibility');
-  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-30'), false, 'Tony next-day visibility');
-  assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-30'), false, 'Nugs next-day visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-30'), true, 'Tony next-day visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-30'), true, 'Nugs next-day visibility');
 });
 
 run('resurfaces corrected conflict next day when re-picks still disagree', () => {
@@ -208,7 +214,7 @@ run('surfaces same-day disagreements on the next day', () => {
   assertEqual(isVisibleForUser(newTransaction, submissions, 'Nugs', '2026-04-30'), true, 'Nugs visibility');
 });
 
-run('still hides resolved assignments after both profiles agree', () => {
+run('resets resolved assignments after midnight', () => {
   const submissions = {
     'shared-note': {
       Tony: {
@@ -224,8 +230,10 @@ run('still hides resolved assignments after both profiles agree', () => {
     },
   };
 
-  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-29'), false, 'Tony visibility');
-  assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-29'), false, 'Nugs visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-29'), true, 'Tony visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-29'), true, 'Nugs visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-30'), true, 'Tony next-day visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-30'), true, 'Nugs next-day visibility');
 });
 
 run('groups OCR-similar tally breakdown rows by merchant total', () => {

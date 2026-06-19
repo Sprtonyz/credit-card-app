@@ -107,9 +107,9 @@ This email feature needs a standard Next.js/Vercel deployment. Avoid the static 
 
 Automatic emails are sent from `/api/cron/send-notification-email`. The default schedule is 11:00 PM Melbourne time and the app sends Tony and Nugs their own profile summaries once per local day. You can change the send time from the admin upload page; it is saved in Firebase under `notificationAutomation/settings`, so changing it does not require a redeploy. `AUTOMATED_EMAIL_TIME` is only the fallback default when no saved setting exists.
 
-Vercel Hobby cron jobs only have hourly precision, so `vercel.json` keeps a best-effort daily fallback. The app only accepts sends inside a 15-minute window after the configured Melbourne time, which prevents Hobby cron from sending nearly an hour late.
+The cron path uses a 45-minute post-target grace window so delayed scheduler runs still send the correct day's summary, but it still avoids crossing into the next Melbourne day. `vercel.json` keeps a best-effort daily fallback for both `12:00` UTC and `13:00` UTC so the fallback survives Melbourne DST changes.
 
-For the main scheduler, `.github/workflows/email-scheduler.yml` runs during the UTC hours that cover late evening in Melbourne. The workflow reads the saved schedule, waits until the configured local send time, then calls the cron endpoint. This keeps the daily send close to the exact configured time without requiring Vercel Pro. Because GitHub can still delay or drop scheduled runs, it is best-effort rather than a hard real-time guarantee.
+For the main scheduler, `.github/workflows/email-scheduler.yml` runs every 5 minutes during the UTC hours that cover late evening in Melbourne. The workflow reads the saved schedule, waits until the configured local send time, then calls the cron endpoint. This keeps the daily send close to the exact configured time without requiring Vercel Pro. Because GitHub can still delay or drop scheduled runs, it is best-effort rather than a hard real-time guarantee.
 
 If you set `CRON_SECRET` in Vercel, add the same value as a GitHub Actions repository secret named `CRON_SECRET`. If the production app URL changes, add a GitHub Actions repository secret named `APP_URL`; otherwise it defaults to `https://sprtony.vercel.app/`.
 

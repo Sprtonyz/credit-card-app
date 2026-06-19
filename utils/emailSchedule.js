@@ -2,6 +2,7 @@ import {
   DEFAULT_AUTOMATED_EMAIL_TIME,
   DEFAULT_AUTOMATED_EMAIL_TIME_ZONE,
   DEFAULT_AUTOMATED_EMAIL_WINDOW_MINUTES,
+  MIN_AUTOMATED_EMAIL_WINDOW_MINUTES,
   MAX_AUTOMATED_EMAIL_WINDOW_MINUTES,
 } from '../config/emailNotifications.js';
 
@@ -94,7 +95,7 @@ export function normalizeScheduleWindowMinutes(
   }
 
   return Math.min(
-    Math.max(Math.floor(parsedWindow), 1),
+    Math.max(Math.floor(parsedWindow), MIN_AUTOMATED_EMAIL_WINDOW_MINUTES),
     MAX_AUTOMATED_EMAIL_WINDOW_MINUTES
   );
 }

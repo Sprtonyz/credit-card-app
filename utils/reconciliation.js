@@ -50,7 +50,7 @@ export function getLocalDateKey(dateLike) {
 }
 
 export function getTransactionReferenceDateKey(transaction, referenceDateKey) {
-  return transaction?.uploadedDay || getLocalDateKey(transaction?.uploadedDate || transaction?.date) || referenceDateKey;
+  return getLocalDateKey(transaction?.date || transaction?.uploadedDate) || transaction?.uploadedDay || referenceDateKey;
 }
 
 export function getSurfacedSubmissionValue(submission, user, referenceDateKey) {
@@ -352,7 +352,14 @@ function getManualTallyUngroupRecords(manualUngroups = {}, assignee = null) {
   });
 }
 
-export function isVisibleForUser(transaction, submissions, user, referenceDateKey, users = PROFILE_NAMES) {
+export function isVisibleForUser(
+  transaction,
+  submissions,
+  user,
+  referenceDateKey,
+  users = PROFILE_NAMES,
+  options = {}
+) {
   if (!user) return true;
 
   const submission = submissions[transaction.id] || {};
@@ -363,7 +370,7 @@ export function isVisibleForUser(transaction, submissions, user, referenceDateKe
   const transactionReferenceDateKey = getTransactionReferenceDateKey(transaction, referenceDateKey);
 
   if (!submissionStatus.anyPicked) {
-    return transactionReferenceDateKey === referenceDateKey;
+    return Boolean(options.includeUnassignedHistorical) || transactionReferenceDateKey === referenceDateKey;
   }
 
   if (surfacedStatus.conflict || surfacedStatus.unsure) {

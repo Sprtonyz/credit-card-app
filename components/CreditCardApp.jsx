@@ -3143,6 +3143,7 @@ export default function CreditCardApp() {
             simulatedNow,
             assignees: DASHBOARD_ASSIGNEES,
             tallyDateRange,
+            includeUnassignedHistorical: true,
           })
         : EMPTY_DASHBOARD_METRICS,
     [

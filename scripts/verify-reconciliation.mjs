@@ -225,7 +225,7 @@ run('keeps untouched current-day transactions visible', () => {
   assertEqual(isVisibleForUser(newTransaction, {}, 'Nugs', '2026-04-29'), true, 'Nugs visibility');
 });
 
-run('hides untouched historical transactions', () => {
+run('hides untouched historical transactions by default', () => {
   const oldTransaction = {
     id: 'old-only',
     uploadedDay: '2026-04-28',
@@ -234,6 +234,29 @@ run('hides untouched historical transactions', () => {
 
   assertEqual(isVisibleForUser(oldTransaction, {}, 'Tony', '2026-04-29'), false, 'Tony visibility');
   assertEqual(isVisibleForUser(oldTransaction, {}, 'Nugs', '2026-04-29'), false, 'Nugs visibility');
+});
+
+run('can keep untouched historical transactions visible for the dashboard', () => {
+  const oldTransaction = {
+    id: 'old-only',
+    uploadedDay: '2026-04-28',
+    isPending: true,
+  };
+
+  assertEqual(
+    isVisibleForUser(oldTransaction, {}, 'Tony', '2026-04-29', undefined, {
+      includeUnassignedHistorical: true,
+    }),
+    true,
+    'Tony visibility'
+  );
+  assertEqual(
+    isVisibleForUser(oldTransaction, {}, 'Nugs', '2026-04-29', undefined, {
+      includeUnassignedHistorical: true,
+    }),
+    true,
+    'Nugs visibility'
+  );
 });
 
 run('keeps resolved assignments hidden after midnight', () => {

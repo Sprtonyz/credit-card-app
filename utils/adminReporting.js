@@ -16,6 +16,7 @@ import {
   buildTallyDateRange,
   DEFAULT_TALLY_CYCLE_SETTINGS,
   formatTallyDateRangeLabel,
+  isTransactionWithinTallyDateRange,
   normalizeTallyCycleSettings,
 } from './tallyCycle.js';
 
@@ -58,10 +59,13 @@ export function buildProfileEmailReports(
   const normalizedTallyCycleSettings = normalizeTallyCycleSettings(tallyCycleSettings);
   const tallyDateRange = buildTallyDateRange(todayKey, normalizedTallyCycleSettings);
   const statementCycleLabel = formatTallyDateRangeLabel(tallyDateRange);
+  const cycleTransactions = transactions.filter((transaction) =>
+    isTransactionWithinTallyDateRange(transaction, tallyDateRange)
+  );
 
   return PROFILE_NAMES.map((profileName) => {
     const dashboardMetrics = buildDashboardMetrics({
-      transactions,
+      transactions: cycleTransactions,
       submissions,
       currentUser: profileName,
       users: PROFILE_NAMES,
@@ -70,7 +74,7 @@ export function buildProfileEmailReports(
       assignees: DASHBOARD_ASSIGNEES,
       tallyDateRange,
     });
-    const visibleTransactions = transactions.filter((transaction) =>
+    const visibleTransactions = cycleTransactions.filter((transaction) =>
       isVisibleForUser(transaction, submissions, profileName, todayKey)
     );
 

@@ -84,13 +84,21 @@ export function buildTransactionSections({
   currentUser,
   referenceDateKey,
   simulatedNow,
+  includeUnassignedHistorical = false,
 }) {
   const pending = [];
   const agedPendingGroups = {};
   const datedTransactions = [];
 
   transactions.forEach((transaction) => {
-    const visible = isVisibleForUser(transaction, submissions, currentUser, referenceDateKey);
+    const visible = isVisibleForUser(
+      transaction,
+      submissions,
+      currentUser,
+      referenceDateKey,
+      undefined,
+      { includeUnassignedHistorical }
+    );
     if (!visible) return;
 
     const isPending = transaction.isPending || !transaction.date;
@@ -154,6 +162,7 @@ export function buildDashboardMetrics({
   simulatedNow,
   assignees = [],
   tallyDateRange = null,
+  includeUnassignedHistorical = false,
 }) {
   const activeUsers = users.length ? users : [];
   const remainingByUser = Object.fromEntries(activeUsers.map((user) => [user, 0]));
@@ -163,12 +172,20 @@ export function buildDashboardMetrics({
 
   transactions.forEach((transaction) => {
     activeUsers.forEach((user) => {
-      if (isVisibleForUser(transaction, submissions, user, referenceDateKey, activeUsers)) {
+      if (
+        isVisibleForUser(transaction, submissions, user, referenceDateKey, activeUsers, {
+          includeUnassignedHistorical,
+        })
+      ) {
         remainingByUser[user] += 1;
       }
     });
 
-    if (!isVisibleForUser(transaction, submissions, currentUser, referenceDateKey, activeUsers)) {
+    if (
+      !isVisibleForUser(transaction, submissions, currentUser, referenceDateKey, activeUsers, {
+        includeUnassignedHistorical,
+      })
+    ) {
       return;
     }
 

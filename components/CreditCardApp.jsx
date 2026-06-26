@@ -21,6 +21,11 @@ import {
   SIMULATED_DAY_KEY,
   setSavedSimulatedDay,
 } from '../utils/simulationDate';
+import {
+  buildPrizeLoseState,
+  buildPrizeWinState,
+  shouldShowPrizeReady,
+} from '../utils/prizeGame';
 import { ensureAnonymousAuth } from '../utils/firebaseAuth';
 import {
   buildDashboardMetrics,
@@ -2051,7 +2056,7 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
       return;
     }
 
-    if (state?.lastOutcome === 'lose' && (secondChanceAt > 0 && secondChanceAt <= Date.now() || (state?.round === 2 && secondChanceAt === 0))) {
+    if (shouldShowPrizeReady(state, phase) || (state?.lastOutcome === 'lose' && secondChanceAt > 0 && secondChanceAt <= Date.now())) {
       setPhase('ready');
       setCountdownRemaining(0);
       return;
@@ -2064,7 +2069,7 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
     setPhase('choose');
     setSelectedCup(null);
     setCountdownRemaining(0);
-  }, [phase, state?.consumed, state?.lastOutcome, state?.secondChanceAt]);
+  }, [phase, state?.consumed, state?.lastOutcome, state?.secondChanceAt, state?.round]);
 
   useEffect(() => {
     if (phase !== 'countdown') return undefined;
@@ -2098,14 +2103,7 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
       clearTimers();
       setSelectedCup(cupIndex);
       setPhase('lose');
-      onStateChange?.({
-        attemptCount: (state?.attemptCount || 0) + 1,
-        consumed: false,
-        completedAt: null,
-        lastOutcome: 'lose',
-        secondChanceAt: Date.now() + 15000,
-        round: 2,
-      });
+      onStateChange?.(buildPrizeLoseState(state, Date.now(), 15000));
       scheduleTimer(() => {
         setPhase('countdown');
       }, 5000);
@@ -2117,14 +2115,7 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
       setSelectedCup(cupIndex);
       setPhase('winning');
       scheduleTimer(() => {
-        onStateChange?.({
-          attemptCount: (state?.attemptCount || 0) + 1,
-          consumed: false,
-          completedAt: Date.now(),
-          lastOutcome: 'win',
-          secondChanceAt: null,
-          round: 2,
-        });
+        onStateChange?.(buildPrizeWinState(state, Date.now()));
         onCelebrate?.();
         setPhase('won');
       }, 520);

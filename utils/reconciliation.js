@@ -53,6 +53,19 @@ export function getTransactionReferenceDateKey(transaction, referenceDateKey) {
   return getLocalDateKey(transaction?.date || transaction?.uploadedDate) || transaction?.uploadedDay || referenceDateKey;
 }
 
+function isRecentUpload(transaction, referenceDateKey) {
+  const uploadedDateKey = getLocalDateKey(transaction?.uploadedDate) || transaction?.uploadedDay || null;
+  if (!uploadedDateKey) return false;
+  if (uploadedDateKey === referenceDateKey) return true;
+
+  const referenceDate = new Date(`${referenceDateKey}T00:00:00Z`);
+  if (Number.isNaN(referenceDate.getTime())) return false;
+
+  referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
+  const previousDateKey = formatLocalDate(referenceDate);
+  return uploadedDateKey === previousDateKey;
+}
+
 export function getSurfacedSubmissionValue(submission, user, referenceDateKey) {
   const entry = submission?.[user];
   const submittedDateKey = getSubmissionDateKeyEntry(entry);
@@ -370,7 +383,10 @@ export function isVisibleForUser(
   const transactionReferenceDateKey = getTransactionReferenceDateKey(transaction, referenceDateKey);
 
   if (!submissionStatus.anyPicked) {
-    return Boolean(options.includeUnassignedHistorical) || transactionReferenceDateKey === referenceDateKey;
+    return (
+      transactionReferenceDateKey === referenceDateKey ||
+      (Boolean(options.includeUnassignedHistorical) && isRecentUpload(transaction, referenceDateKey))
+    );
   }
 
   if (surfacedStatus.conflict || surfacedStatus.unsure) {

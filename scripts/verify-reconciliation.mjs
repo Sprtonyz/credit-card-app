@@ -259,6 +259,29 @@ run('can keep untouched historical transactions visible for the dashboard', () =
   );
 });
 
+run('does not resurface old historical transactions from weeks ago', () => {
+  const staleTransaction = {
+    id: 'stale-only',
+    uploadedDay: '2026-04-10',
+    isPending: true,
+  };
+
+  assertEqual(
+    isVisibleForUser(staleTransaction, {}, 'Tony', '2026-04-29', undefined, {
+      includeUnassignedHistorical: true,
+    }),
+    false,
+    'Tony visibility'
+  );
+  assertEqual(
+    isVisibleForUser(staleTransaction, {}, 'Nugs', '2026-04-29', undefined, {
+      includeUnassignedHistorical: true,
+    }),
+    false,
+    'Nugs visibility'
+  );
+});
+
 run('keeps resolved assignments hidden after midnight', () => {
   const submissions = {
     'shared-note': {

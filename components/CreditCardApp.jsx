@@ -270,6 +270,86 @@ const DONE = [
   { emoji: '\u{1F680}', title: 'Done and dusted!', sub: 'Go enjoy the rest of your day.' },
 ];
 
+const NUGS_CUPS = [
+  { id: 'left', label: 'Cup 1', emoji: '\u{2615}' },
+  { id: 'right', label: 'Cup 2', emoji: '\u{2615}' },
+  { id: 'center', label: 'Cup 3', emoji: '\u{2615}' },
+];
+
+const PRIZE_GAME_STORAGE_KEY = 'cc_v5_prize_game_state';
+const NUGS_PRIZE_GAME_KEY = 'nugs-free-parking';
+const PRIZE_GAME_CATALOG = Object.freeze({
+  [NUGS_PRIZE_GAME_KEY]: {
+    key: NUGS_PRIZE_GAME_KEY,
+    owner: 'Nugs',
+    title: "You've won a prize!",
+    subtitle: "You've won a prize!! Choose a cup. 1 cup is a winner, 2 cups are losers.",
+    prizeTitle: 'Free Parking at The Strand for a Month',
+    prizeSubtitle: 'A little gift to say I love you lots!',
+    loseTitle: "You've lost",
+    loseSubtitle: 'That cup did not pay out.',
+    winningCupIndex: 1,
+    cupCount: 3,
+  },
+});
+
+function getPrizeWinningCupIndex(config) {
+  const cupCount = Math.max(1, Number(config?.cupCount || NUGS_CUPS.length));
+  const configuredIndex = Number(config?.winningCupIndex);
+  if (Number.isInteger(configuredIndex) && configuredIndex >= 0 && configuredIndex < cupCount) {
+    return configuredIndex;
+  }
+  return Math.min(1, cupCount - 1);
+}
+
+function buildDefaultPrizeGameState(config) {
+  return {
+    enabled: true,
+    consumed: false,
+    attemptCount: 0,
+    lastOutcome: null,
+    completedAt: null,
+    winningCupIndex: getPrizeWinningCupIndex(config),
+    prizeTitle: config?.prizeTitle || '',
+    prizeSubtitle: config?.prizeSubtitle || '',
+  };
+}
+
+function readPrizeGameStore() {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = localStorage.getItem(PRIZE_GAME_STORAGE_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizePrizeGameStore(store) {
+  const next = {};
+
+  Object.entries(PRIZE_GAME_CATALOG).forEach(([key, config]) => {
+    const current = store?.[key];
+    const baseState = buildDefaultPrizeGameState(config);
+    const currentWinningCupIndex = Number(current?.winningCupIndex);
+    next[key] = {
+      ...baseState,
+      ...(current && typeof current === 'object' ? current : {}),
+    };
+    if (!Number.isInteger(currentWinningCupIndex) || currentWinningCupIndex < 0 || currentWinningCupIndex >= Math.max(1, Number(config?.cupCount || NUGS_CUPS.length))) {
+      next[key].winningCupIndex = baseState.winningCupIndex;
+    }
+    next[key].prizeTitle = config.prizeTitle;
+    next[key].prizeSubtitle = config.prizeSubtitle;
+  });
+
+  return next;
+}
+
 function getOptionClassName(value) {
   if (value === 'Macquarie') return 'mac-btn';
   if (value === 'Unsure') return 'unsure-btn';
@@ -1944,6 +2024,268 @@ function AllDone({ msg }) {
   );
 }
 
+function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
+  const [phase, setPhase] = useState('choose');
+  const [selectedCup, setSelectedCup] = useState(null);
+  const [countdownRemaining, setCountdownRemaining] = useState(0);
+  const timersRef = useRef([]);
+
+  const clearTimers = useCallback(() => {
+    timersRef.current.forEach((timer) => window.clearTimeout(timer));
+    timersRef.current = [];
+  }, []);
+
+  const scheduleTimer = useCallback((callback, delay) => {
+    const timer = window.setTimeout(() => {
+      timersRef.current = timersRef.current.filter((item) => item !== timer);
+      callback();
+    }, delay);
+    timersRef.current.push(timer);
+    return timer;
+  }, []);
+
+  useEffect(() => () => clearTimers(), [clearTimers]);
+
+  useEffect(() => {
+    if (state?.consumed || state?.lastOutcome === 'win') {
+      setPhase('won');
+      return;
+    }
+
+    const secondChanceAt = Number(state?.secondChanceAt || 0);
+    if (state?.lastOutcome === 'lose' && secondChanceAt > Date.now()) {
+      if (phase !== 'lose' && phase !== 'countdown') {
+        setPhase('countdown');
+      }
+      setCountdownRemaining(Math.max(0, Math.ceil((secondChanceAt - Date.now()) / 1000)));
+      return;
+    }
+
+    if (state?.lastOutcome === 'lose' && secondChanceAt > 0 && secondChanceAt <= Date.now()) {
+      setPhase('ready');
+      setCountdownRemaining(0);
+      return;
+    }
+
+    if (phase === 'ready') {
+      return;
+    }
+
+    setPhase('choose');
+    setSelectedCup(null);
+    setCountdownRemaining(0);
+  }, [phase, state?.consumed, state?.lastOutcome, state?.secondChanceAt]);
+
+  useEffect(() => {
+    if (phase !== 'countdown') return undefined;
+
+    const tick = () => {
+      const secondChanceAt = Number(state?.secondChanceAt || 0);
+      const remaining = Math.max(0, Math.ceil((secondChanceAt - Date.now()) / 1000));
+      setCountdownRemaining(remaining);
+      if (remaining <= 0) {
+        clearTimers();
+        onStateChange?.((current) => ({
+          ...current,
+          lastOutcome: 'lose',
+          secondChanceAt: null,
+        }));
+        setSelectedCup(null);
+        setPhase('ready');
+      }
+    };
+
+    tick();
+    const timer = window.setInterval(tick, 250);
+    timersRef.current.push(timer);
+    return () => window.clearInterval(timer);
+  }, [clearTimers, onStateChange, phase, state?.secondChanceAt]);
+
+  const chooseCup = (cupIndex) => {
+    const winningCupIndex = Number.isInteger(state?.winningCupIndex)
+      ? state.winningCupIndex
+      : getPrizeWinningCupIndex(config);
+
+    if (phase === 'winning' || phase === 'won' || phase === 'lose' || phase === 'countdown') return;
+    if (phase === 'choose' && cupIndex === winningCupIndex) {
+      clearTimers();
+      setSelectedCup(cupIndex);
+
+      setPhase('winning');
+      scheduleTimer(() => {
+        onStateChange?.({
+          attemptCount: (state?.attemptCount || 0) + 1,
+          consumed: false,
+          completedAt: Date.now(),
+          lastOutcome: 'win',
+          secondChanceAt: null,
+          winningCupIndex,
+        });
+        onCelebrate?.();
+        setPhase('won');
+      }, 520);
+      return;
+    }
+
+    if (phase === 'choose' && cupIndex !== winningCupIndex) {
+      clearTimers();
+      setSelectedCup(cupIndex);
+      setPhase('lose');
+      onStateChange?.({
+        attemptCount: (state?.attemptCount || 0) + 1,
+        consumed: false,
+        completedAt: null,
+        lastOutcome: 'lose',
+        secondChanceAt: Date.now() + 10000,
+        winningCupIndex,
+      });
+      scheduleTimer(() => {
+        setPhase('countdown');
+      }, 5000);
+      return;
+    }
+
+    if (phase === 'ready' && cupIndex === winningCupIndex) {
+      clearTimers();
+      setSelectedCup(cupIndex);
+      setPhase('winning');
+      scheduleTimer(() => {
+        onStateChange?.({
+          attemptCount: (state?.attemptCount || 0) + 1,
+          consumed: false,
+          completedAt: Date.now(),
+          lastOutcome: 'win',
+          secondChanceAt: null,
+          winningCupIndex,
+        });
+        onCelebrate?.();
+        setPhase('won');
+      }, 520);
+    }
+  };
+
+  const handleWinOk = () => {
+    clearTimers();
+    onStateChange?.((current) => ({
+      ...current,
+      consumed: true,
+    }));
+  };
+
+  const didWin = phase === 'winning' || phase === 'won' || state?.lastOutcome === 'win';
+  const cupCount = Math.max(2, Number(config?.cupCount || NUGS_CUPS.length));
+  const cupOptions = Array.from({ length: cupCount }, (_, index) => ({
+    id: `${config?.key || 'game'}-${index}`,
+    label: `Cup ${index + 1}`,
+    emoji: '\u{2615}',
+  }));
+  const shownPrizeTitle = config?.prizeTitle || 'Prize unlocked';
+  const shownPrizeSubtitle = config?.prizeSubtitle || 'A little win for clearing the day.';
+
+  return (
+    <div className="all-done prize-complete">
+      <div className="all-done-inner prize-inner">
+        <span className="all-done-emoji">{msg.emoji}</span>
+        <h2 className="all-done-title">{msg.title}</h2>
+        <p className="all-done-sub">{msg.sub}</p>
+
+        <div className="prize-game">
+          <div className="prize-pill">win a prize</div>
+          <div className="prize-cup-row" aria-label="Choose a cup to reveal a prize">
+            {cupOptions.map((cup, index) => {
+              const isSelected = selectedCup === index;
+              const isCupOne = index === 0;
+              const isCupTwo = index === 1;
+              const isCupThree = index === 2;
+              const winningCupIndex = Number.isInteger(state?.winningCupIndex)
+                ? state.winningCupIndex
+                : getPrizeWinningCupIndex(config);
+              const isWinningCup = index === winningCupIndex;
+              const isLocked =
+                phase === 'winning' ||
+                phase === 'lose' ||
+                phase === 'countdown' ||
+                Boolean(state?.consumed) ||
+                (phase === 'ready' && !isWinningCup);
+              const isHot = didWin && isSelected;
+
+              return (
+                <button
+                  key={cup.id}
+                  type="button"
+                  className={`prize-cup ${isLocked ? 'locked' : ''} ${isSelected ? 'selected' : ''} ${
+                    isHot ? 'winning' : ''
+                  } ${isCupOne ? 'cup-one' : ''} ${isCupTwo ? 'cup-two' : ''} ${isCupThree ? 'cup-three' : ''}`}
+                  onClick={() => chooseCup(index)}
+                  disabled={isLocked}
+                  aria-label={cup.label}
+                >
+                  <span className="prize-cup-rim" aria-hidden="true" />
+                  <span className="prize-cup-icon" aria-hidden="true">
+                    {cup.emoji}
+                  </span>
+                  <span className="prize-cup-label">{cup.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {phase === 'choose' ? (
+            <p className="prize-hint">{config?.subtitle || "You've won a prize!! Choose a cup. 1 cup is a winner, 2 cups are losers."}</p>
+          ) : phase === 'lose' ? (
+            <div className="prize-reveal show">
+              <div className="prize-reveal-card lose huge">
+                <span className="prize-reveal-icon huge" aria-hidden="true">
+                  {'\u{1F6AB}'}
+                </span>
+                <div className="prize-reveal-copy">
+                  <div className="prize-reveal-title">You Lose...</div>
+                  <p className="prize-reveal-sub">{config?.loseSubtitle || 'That cup did not pay out.'}</p>
+                </div>
+              </div>
+              <p className="prize-hint">Hold tight...</p>
+            </div>
+          ) : phase === 'countdown' ? (
+            <div className="prize-reveal show">
+              <div className="prize-reveal-card wait">
+                <span className="prize-reveal-icon" aria-hidden="true">
+                  ⏳
+                </span>
+                <div className="prize-reveal-copy">
+                  <div className="prize-reveal-title">I'll give you one more try...</div>
+                  <p className="prize-reveal-sub">Choose again in {countdownRemaining}s.</p>
+                </div>
+              </div>
+              <p className="prize-hint">Hang tight. The cups unlock when the timer hits zero.</p>
+            </div>
+          ) : phase === 'ready' ? (
+            <p className="prize-hint">Second chance ready. Tap the winning cup now.</p>
+          ) : didWin ? (
+            <div className="prize-reveal show">
+              <div className="prize-reveal-card win">
+                <span className="prize-reveal-icon" aria-hidden="true">
+                  {'\u{1F4B0}'}
+                </span>
+                <div className="prize-reveal-copy">
+                  <div className="prize-reveal-title">{shownPrizeTitle}</div>
+                  <p className="prize-reveal-sub">{shownPrizeSubtitle}</p>
+                </div>
+              </div>
+              <div className="prize-actions">
+                <button type="button" className="prize-again" onClick={handleWinOk}>
+                  ok
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="prize-hint">Tap Cup 1 to start the game.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function formatBreakdownAmount(amount) {
   const value = Number(amount || 0);
   return `${value < 0 ? '-$' : '$'}${Math.abs(value).toFixed(2)}`;
@@ -2234,6 +2576,7 @@ export default function CreditCardApp() {
   const [breakdownUser, setBreakdownUser] = useState(null);
   const [questDebugLog, setQuestDebugLog] = useState([]);
   const [submissionsHydrated, setSubmissionsHydrated] = useState(false);
+  const [prizeGameStore, setPrizeGameStore] = useState(() => normalizePrizeGameStore(readPrizeGameStore()));
   const doneMsg = useRef(DONE[Math.floor(Math.random() * DONE.length)]);
   const confettiRef = useRef(null);
   const confettiFiredRef = useRef(false);
@@ -2323,6 +2666,22 @@ export default function CreditCardApp() {
     setQuestDebugLog((prev) => [...prev.slice(-79), entry]);
   }, []);
 
+  const updatePrizeGameState = useCallback((gameKey, updater) => {
+    if (!gameKey) return;
+
+    setPrizeGameStore((prev) => {
+      const current = prev?.[gameKey] || buildDefaultPrizeGameState(PRIZE_GAME_CATALOG[gameKey]);
+      const nextState = typeof updater === 'function' ? updater(current) : updater;
+      return {
+        ...prev,
+        [gameKey]: {
+          ...current,
+          ...(nextState && typeof nextState === 'object' ? nextState : {}),
+        },
+      };
+    });
+  }, []);
+
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const forceLanding = searchParams.get('landing') === '1' || searchParams.get('reset') === '1';
@@ -2368,6 +2727,16 @@ export default function CreditCardApp() {
       console.warn('Failed to persist submissions to localStorage:', error);
     }
   }, [submissions, submissionsHydrated, submissionsStorageWriteReady]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      localStorage.setItem(PRIZE_GAME_STORAGE_KEY, JSON.stringify(prizeGameStore));
+    } catch (error) {
+      console.warn('Failed to persist prize game state:', error);
+    }
+  }, [prizeGameStore]);
 
   useEffect(() => {
     if (currentUser) {
@@ -3161,6 +3530,9 @@ export default function CreditCardApp() {
 
   const sections = dashboardMetrics.sections;
   const anyVisible = dashboardMetrics.anyVisible;
+  const nugsPrizeGameConfig = PRIZE_GAME_CATALOG[NUGS_PRIZE_GAME_KEY];
+  const nugsPrizeGameState = prizeGameStore[NUGS_PRIZE_GAME_KEY] || buildDefaultPrizeGameState(nugsPrizeGameConfig);
+  const nugsPrizeGameActive = currentUser === 'Nugs' && !anyVisible && nugsPrizeGameState.enabled && !nugsPrizeGameState.consumed;
 
   useEffect(() => {
     if (!currentUser) return;
@@ -3305,6 +3677,7 @@ export default function CreditCardApp() {
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(PET_STORAGE_KEY);
     localStorage.removeItem(TRANSACTIONS_CACHE_KEY);
+    localStorage.removeItem(PRIZE_GAME_STORAGE_KEY);
     setSubmissions({});
     setAssignmentComments({});
     setTallyUngroups({});
@@ -3318,6 +3691,7 @@ export default function CreditCardApp() {
     setBreakdownUser(null);
     setFirebaseTransactions(null);
     setFirebaseTransactionsError(null);
+    setPrizeGameStore(normalizePrizeGameStore({}));
     localPetProfilesRef.current = {};
     remotePetProfilesRef.current = {};
     lastStoredSubmissionsRef.current = null;
@@ -3456,6 +3830,32 @@ export default function CreditCardApp() {
             </button>
             <button className="day-btn" onClick={copyQuestDebugLog}>
               copy debug
+            </button>
+            <button
+              className="day-btn"
+              style={{
+                background: nugsPrizeGameState.enabled ? 'rgba(96,165,250,0.15)' : 'rgba(148,163,184,0.08)',
+                borderColor: nugsPrizeGameState.enabled ? 'rgba(96,165,250,0.3)' : 'rgba(148,163,184,0.18)',
+                color: nugsPrizeGameState.enabled ? '#bfdbfe' : '#cbd5e1',
+              }}
+              onClick={() =>
+                updatePrizeGameState(NUGS_PRIZE_GAME_KEY, (current) => ({
+                  ...current,
+                  enabled: !current.enabled,
+                }))
+              }
+              title="Toggle the Nugs prize game on or off"
+            >
+              prize {nugsPrizeGameState.enabled ? 'on' : 'off'}
+            </button>
+            <button
+              className="reset-btn"
+              onClick={() =>
+                updatePrizeGameState(NUGS_PRIZE_GAME_KEY, () => buildDefaultPrizeGameState(nugsPrizeGameConfig))
+              }
+              title="Re-arm the prize game so it can be played again"
+            >
+              reset prize
             </button>
             <span className="dev-sep">|</span>
             <button className="clear-btn" onClick={clearCache}>
@@ -3671,7 +4071,20 @@ export default function CreditCardApp() {
         />
       ))}
 
-      {!anyVisible && <AllDone msg={doneMsg.current} />}
+      {!anyVisible &&
+        (nugsPrizeGameActive ? (
+          <PrizeCupGame
+            config={nugsPrizeGameConfig}
+            msg={doneMsg.current}
+            state={nugsPrizeGameState}
+            onStateChange={(nextState) => updatePrizeGameState(NUGS_PRIZE_GAME_KEY, nextState)}
+            onCelebrate={() => {
+              confettiRef.current?.launch?.();
+            }}
+          />
+        ) : (
+          <AllDone msg={doneMsg.current} />
+        ))}
       {levelUpMsg && (
         <div className="levelup-overlay">
           <div className="levelup-badge">✦ {levelUpMsg} ✦</div>

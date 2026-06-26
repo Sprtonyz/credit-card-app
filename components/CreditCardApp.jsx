@@ -288,19 +288,9 @@ const PRIZE_GAME_CATALOG = Object.freeze({
     prizeSubtitle: 'A little gift to say I love you lots!',
     loseTitle: "You've lost",
     loseSubtitle: 'That cup did not pay out.',
-    winningCupIndex: 1,
     cupCount: 3,
   },
 });
-
-function getPrizeWinningCupIndex(config) {
-  const cupCount = Math.max(1, Number(config?.cupCount || NUGS_CUPS.length));
-  const configuredIndex = Number(config?.winningCupIndex);
-  if (Number.isInteger(configuredIndex) && configuredIndex >= 0 && configuredIndex < cupCount) {
-    return configuredIndex;
-  }
-  return Math.min(1, cupCount - 1);
-}
 
 function buildDefaultPrizeGameState(config) {
   return {
@@ -309,7 +299,7 @@ function buildDefaultPrizeGameState(config) {
     attemptCount: 0,
     lastOutcome: null,
     completedAt: null,
-    winningCupIndex: getPrizeWinningCupIndex(config),
+    round: 1,
     prizeTitle: config?.prizeTitle || '',
     prizeSubtitle: config?.prizeSubtitle || '',
   };
@@ -335,16 +325,16 @@ function normalizePrizeGameStore(store) {
   Object.entries(PRIZE_GAME_CATALOG).forEach(([key, config]) => {
     const current = store?.[key];
     const baseState = buildDefaultPrizeGameState(config);
-    const currentWinningCupIndex = Number(current?.winningCupIndex);
     next[key] = {
       ...baseState,
       ...(current && typeof current === 'object' ? current : {}),
     };
-    if (!Number.isInteger(currentWinningCupIndex) || currentWinningCupIndex < 0 || currentWinningCupIndex >= Math.max(1, Number(config?.cupCount || NUGS_CUPS.length))) {
-      next[key].winningCupIndex = baseState.winningCupIndex;
-    }
+    delete next[key].winningCupIndex;
     next[key].prizeTitle = config.prizeTitle;
     next[key].prizeSubtitle = config.prizeSubtitle;
+    if (next[key].round !== 1 && next[key].round !== 2) {
+      next[key].round = baseState.round;
+    }
   });
 
   return next;
@@ -2061,7 +2051,7 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
       return;
     }
 
-    if (state?.lastOutcome === 'lose' && secondChanceAt > 0 && secondChanceAt <= Date.now()) {
+    if (state?.lastOutcome === 'lose' && (secondChanceAt > 0 && secondChanceAt <= Date.now() || (state?.round === 2 && secondChanceAt === 0))) {
       setPhase('ready');
       setCountdownRemaining(0);
       return;
@@ -2102,32 +2092,9 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
   }, [clearTimers, onStateChange, phase, state?.secondChanceAt]);
 
   const chooseCup = (cupIndex) => {
-    const winningCupIndex = Number.isInteger(state?.winningCupIndex)
-      ? state.winningCupIndex
-      : getPrizeWinningCupIndex(config);
-
     if (phase === 'winning' || phase === 'won' || phase === 'lose' || phase === 'countdown') return;
-    if (phase === 'choose' && cupIndex === winningCupIndex) {
-      clearTimers();
-      setSelectedCup(cupIndex);
 
-      setPhase('winning');
-      scheduleTimer(() => {
-        onStateChange?.({
-          attemptCount: (state?.attemptCount || 0) + 1,
-          consumed: false,
-          completedAt: Date.now(),
-          lastOutcome: 'win',
-          secondChanceAt: null,
-          winningCupIndex,
-        });
-        onCelebrate?.();
-        setPhase('won');
-      }, 520);
-      return;
-    }
-
-    if (phase === 'choose' && cupIndex !== winningCupIndex) {
+    if (phase === 'choose') {
       clearTimers();
       setSelectedCup(cupIndex);
       setPhase('lose');
@@ -2136,8 +2103,8 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
         consumed: false,
         completedAt: null,
         lastOutcome: 'lose',
-        secondChanceAt: Date.now() + 10000,
-        winningCupIndex,
+        secondChanceAt: Date.now() + 15000,
+        round: 2,
       });
       scheduleTimer(() => {
         setPhase('countdown');
@@ -2145,7 +2112,7 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
       return;
     }
 
-    if (phase === 'ready' && cupIndex === winningCupIndex) {
+    if (phase === 'ready') {
       clearTimers();
       setSelectedCup(cupIndex);
       setPhase('winning');
@@ -2156,7 +2123,7 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
           completedAt: Date.now(),
           lastOutcome: 'win',
           secondChanceAt: null,
-          winningCupIndex,
+          round: 2,
         });
         onCelebrate?.();
         setPhase('won');
@@ -2197,16 +2164,11 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
               const isCupOne = index === 0;
               const isCupTwo = index === 1;
               const isCupThree = index === 2;
-              const winningCupIndex = Number.isInteger(state?.winningCupIndex)
-                ? state.winningCupIndex
-                : getPrizeWinningCupIndex(config);
-              const isWinningCup = index === winningCupIndex;
               const isLocked =
                 phase === 'winning' ||
                 phase === 'lose' ||
                 phase === 'countdown' ||
-                Boolean(state?.consumed) ||
-                (phase === 'ready' && !isWinningCup);
+                Boolean(state?.consumed);
               const isHot = didWin && isSelected;
 
               return (
@@ -2259,7 +2221,7 @@ function PrizeCupGame({ config, msg, state, onStateChange, onCelebrate }) {
               <p className="prize-hint">Hang tight. The cups unlock when the timer hits zero.</p>
             </div>
           ) : phase === 'ready' ? (
-            <p className="prize-hint">Second chance ready. Tap the winning cup now.</p>
+            <p className="prize-hint">Second chance ready. Any cup will win now.</p>
           ) : didWin ? (
             <div className="prize-reveal show">
               <div className="prize-reveal-card win">

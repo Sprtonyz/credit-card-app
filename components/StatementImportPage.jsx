@@ -13,6 +13,7 @@ const MOCK_ASSIGNMENT_POOL = [
     description: 'ALDI STORES WEST FOOTSCRA AUS',
     assignment: 'Tony',
     sheetCode: 't',
+    comment: 'Groceries for the team',
   },
   {
     id: 'mock-kc-cha',
@@ -281,6 +282,7 @@ export default function StatementImportPage() {
 
       const matches = await resolveLiveAssignmentMatches(parsed.transactions);
       const assignmentCodes = matches.map((match) => match.code || '');
+      const assignmentComments = matches.map((match) => match.matched?.comment || '');
       setAssignmentMatches(matches);
 
       const response = await fetch('/api/update-sheet', {
@@ -290,6 +292,7 @@ export default function StatementImportPage() {
         },
         body: JSON.stringify({
           assignmentCodes,
+          assignmentComments,
           transactions: parsed.transactions,
           closingBalance: parsed.statement?.closingBalance ?? null,
         }),
@@ -308,7 +311,7 @@ export default function StatementImportPage() {
       anchor.click();
       URL.revokeObjectURL(url);
 
-      setSheetMessage('Updated workbook created and saved to local/sheet-updated-from-pdf.xlsx.');
+      setSheetMessage('Local workbook built and saved to local/sheet-updated-from-pdf.xlsx.');
     } catch (err) {
       setError(err?.message || 'Failed to build the updated workbook.');
     } finally {
@@ -328,6 +331,7 @@ export default function StatementImportPage() {
         MOCK_ASSIGNMENT_POOL
       );
       const assignmentCodes = matches.map((match) => match.code || '');
+      const assignmentComments = matches.map((match) => match.matched?.comment || '');
       setAssignmentMatches(matches);
       setShowMockPreview(true);
 
@@ -338,6 +342,7 @@ export default function StatementImportPage() {
         },
         body: JSON.stringify({
           assignmentCodes,
+          assignmentComments,
           transactions: MOCK_STATEMENT_TRANSACTIONS,
           closingBalance: null,
         }),
@@ -380,6 +385,7 @@ export default function StatementImportPage() {
 
       const matches = await resolveLiveAssignmentMatches(parsed.transactions);
       const assignmentCodes = matches.map((match) => match.code || '');
+      const assignmentComments = matches.map((match) => match.matched?.comment || '');
       setAssignmentMatches(matches);
 
       const response = await fetch('/api/push-google-sheet', {
@@ -389,6 +395,7 @@ export default function StatementImportPage() {
         },
         body: JSON.stringify({
           assignmentCodes,
+          assignmentComments,
           transactions: parsed.transactions,
           closingBalance: parsed.statement?.closingBalance ?? null,
         }),
@@ -571,7 +578,7 @@ export default function StatementImportPage() {
                     disabled={isLoading || !parsed || showMockPreview}
                     className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Build updated sheet.xlsx
+                    Build and test locally
                   </button>
                   <button
                     onClick={handleBuildMockUpdatedSheet}

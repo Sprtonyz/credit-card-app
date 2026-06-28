@@ -10,6 +10,9 @@ export default async function handler(req, res) {
     const assignmentCodes = Array.isArray(req.body?.assignmentCodes)
       ? req.body.assignmentCodes
       : [];
+    const assignmentComments = Array.isArray(req.body?.assignmentComments)
+      ? req.body.assignmentComments
+      : [];
     const transactions = Array.isArray(req.body?.transactions) ? req.body.transactions : null;
     const closingBalance = Number(req.body?.closingBalance);
 
@@ -21,6 +24,7 @@ export default async function handler(req, res) {
     const result = await pushRowsToGoogleSheet(
       transactions,
       assignmentCodes,
+      assignmentComments,
       Number.isFinite(closingBalance) ? closingBalance : null
     );
 

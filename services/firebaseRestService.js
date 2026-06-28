@@ -121,17 +121,26 @@ function mapFirebaseTransactions(value = {}) {
     }));
 }
 
+function mapFirebaseObject(value = {}) {
+  if (!value || typeof value !== 'object') return {};
+  return value;
+}
+
 export async function getEmailAutomationData(authToken = null) {
   const resolvedAuthToken = authToken || (await getFirebaseRestAuthToken());
-  const [transactions, submissions] = await Promise.all([
+  const [transactions, submissions, assignmentCommentsResult] = await Promise.all([
     requestFirebaseJson('transactions', { authToken: resolvedAuthToken }),
     requestFirebaseJson('submissions', { authToken: resolvedAuthToken }),
+    requestFirebaseJson('cc_v5_app_state/assignmentComments', { authToken: resolvedAuthToken }).catch(
+      () => null
+    ),
   ]);
 
   return {
     authToken: resolvedAuthToken,
     transactions: mapFirebaseTransactions(transactions),
     submissions: submissions || {},
+    assignmentComments: mapFirebaseObject(assignmentCommentsResult),
   };
 }
 

@@ -4,6 +4,10 @@ import { buildTopSpendingsSummary } from '../utils/topSpendingsSummary.js';
 const DEFAULT_SPREADSHEET_ID = '1GJj79D8DovXaocK1o_9mVBmy5H5yCVuKWCZNc62jdVc';
 const SOURCE_SHEET_NAME = 'Sheet1';
 const SPLIT_ASSIGNMENT_CODE = 'split';
+const SPLIT_SHARE_FORMULAS = {
+  t: '2/3',
+  n: '1/3',
+};
 const DUE_BALANCE_MATCH_TOLERANCE = 0.01;
 const DUE_BALANCE_MATCH_COLOR = { red: 198 / 255, green: 239 / 255, blue: 206 / 255 };
 const DUE_BALANCE_MISMATCH_COLOR = { red: 1, green: 199 / 255, blue: 206 / 255 };
@@ -218,9 +222,13 @@ function withSplitShareFormula(formula, assignmentCode) {
   );
   if (!assigneeSumIfPattern.test(baseFormula)) return baseFormula;
 
+  const splitShareFormula = SPLIT_SHARE_FORMULAS[assignmentCode];
+  if (!splitShareFormula) return baseFormula;
+
   return baseFormula.replace(
     assigneeSumIfPattern,
-    (matchedFormula) => `${matchedFormula}+SUMIF(D:D, "${SPLIT_ASSIGNMENT_CODE}", B:B)/2`
+    (matchedFormula) =>
+      `${matchedFormula}+SUMIF(D:D, "${SPLIT_ASSIGNMENT_CODE}", B:B)*${splitShareFormula}`
   );
 }
 
@@ -293,7 +301,7 @@ async function clearGeneratedSheetColumns(sheets, sheetName) {
   const spreadsheetId = getSpreadsheetId();
   await sheets.spreadsheets.values.clear({
     spreadsheetId,
-    range: `${sheetName}!A:D`,
+    range: `${sheetName}!A:E`,
   });
 }
 
@@ -303,7 +311,7 @@ async function writeRowsToGeneratedSheet(sheets, sheetName, rows) {
 
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `${sheetName}!A1:D${rows.length}`,
+    range: `${sheetName}!A1:E${rows.length}`,
     valueInputOption: 'USER_ENTERED',
     requestBody: {
       values: rows,
@@ -658,14 +666,25 @@ async function updateGeneratedSheetDueBalanceFormat(sheets, generatedSheetId, du
   });
 }
 
-export async function pushRowsToGoogleSheet(parsedTransactions = [], assignmentCodes = [], closingAmount = null) {
+function normalizeAssignmentComment(comment) {
+  return String(comment || '')
+    .replace(/\r\n?/g, '\n')
+    .trim();
+}
+
+export async function pushRowsToGoogleSheet(
+  parsedTransactions = [],
+  assignmentCodes = [],
+  assignmentComments = [],
+  closingAmount = null
+) {
   try {
     const sheets = await getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
     const metadata = await getSpreadsheetMetadata(sheets);
     const sourceSheet = getSheetByName(metadata, SOURCE_SHEET_NAME);
     const generatedSheet = await duplicateSourceSheet(sheets, metadata);
-    const rows = buildGoogleSheetRows(parsedTransactions, assignmentCodes);
+    const rows = buildGoogleSheetRows(parsedTransactions, assignmentCodes, assignmentComments);
 
     await unmergeGeneratedSheetTransactionArea(sheets, sourceSheet, generatedSheet.sheetId);
     await clearGeneratedSheetColumns(sheets, generatedSheet.sheetName);
@@ -723,11 +742,18 @@ function formatSheetDate(dateValue) {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
-export function buildGoogleSheetRows(parsedTransactions = [], assignmentCodes = []) {
-  return getSortedTransactions(parsedTransactions, assignmentCodes).map(({ transaction, assignmentCode }) => [
-    formatSheetDate(transaction.date),
-    Number((-Number(transaction.amount || 0)).toFixed(2)),
-    transaction.description || '',
-    assignmentCode,
-  ]);
+export function buildGoogleSheetRows(
+  parsedTransactions = [],
+  assignmentCodes = [],
+  assignmentComments = []
+) {
+  return getSortedTransactions(parsedTransactions, assignmentCodes).map(
+    ({ transaction, assignmentCode, index }) => [
+      formatSheetDate(transaction.date),
+      Number((-Number(transaction.amount || 0)).toFixed(2)),
+      transaction.description || '',
+      assignmentCode,
+      normalizeAssignmentComment(assignmentComments[index]),
+    ]
+  );
 }

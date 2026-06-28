@@ -15,6 +15,7 @@
     "test:pet-progression": "node ./scripts/verify-pet-progression.mjs",
     "test:pet-profile-sync": "node ./scripts/verify-pet-profile-sync.mjs",
     "test:import-fingerprint": "node ./scripts/verify-import-fingerprint.mjs",
+    "test:sheet-comment-export": "node ./scripts/verify-sheet-comment-export.mjs",
     "test:transaction-merger": "node ./scripts/verify-transaction-merger.mjs",
     "test:tally-cycle": "node ./scripts/verify-tally-cycle.mjs",
     "test:email-reports": "node ./scripts/verify-email-reports.mjs",

@@ -21,13 +21,14 @@ export default async function handler(req, res) {
       return;
     }
 
-    const { transactions, submissions } = await getEmailAutomationData();
+    const { transactions, submissions, assignmentComments } = await getEmailAutomationData();
     const normalizedTransactions = (transactions || []).map((transaction) =>
       normalizeFirebaseTransaction(transaction.id, transaction)
     );
     const assignmentPool = buildResolvedAssignmentPool(
       normalizedTransactions,
-      submissions || {}
+      submissions || {},
+      assignmentComments || {}
     );
     const matches = matchAssignmentsToParsedTransactions(
       statementTransactions,

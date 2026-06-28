@@ -5,6 +5,10 @@ const SPLIT_ASSIGNMENT_CODE = 'split';
 const DUE_BALANCE_MATCH_TOLERANCE = 0.01;
 const DUE_BALANCE_MATCH_FILL_RGB = 'FFC6EFCE';
 const DUE_BALANCE_MISMATCH_FILL_RGB = 'FFFFC7CE';
+const SPLIT_SHARE_FORMULAS = {
+  t: '2/3',
+  n: '1/3',
+};
 const ASSIGNMENT_FILL_RGB_BY_CODE = {
   n: 'FFA4C2F4',
   t: 'FFB7E1CD',
@@ -74,6 +78,15 @@ function buildAssignmentCell(assignmentValue, templateCell) {
   return {
     t: 's',
     v: String(assignmentValue || ''),
+    z: templateCell?.z || 'General',
+    s: templateCell?.s || undefined,
+  };
+}
+
+function buildCommentCell(commentValue, templateCell) {
+  return {
+    t: 's',
+    v: String(commentValue || ''),
     z: templateCell?.z || 'General',
     s: templateCell?.s || undefined,
   };
@@ -268,9 +281,13 @@ function withSplitShareFormula(formula, assignmentCode) {
 
   if (!assigneeSumIfPattern.test(baseFormula)) return baseFormula;
 
+  const splitShareFormula = SPLIT_SHARE_FORMULAS[assignmentCode];
+  if (!splitShareFormula) return baseFormula;
+
   return baseFormula.replace(
     assigneeSumIfPattern,
-    (matchedFormula) => `${matchedFormula}+SUMIF(D:D, "${SPLIT_ASSIGNMENT_CODE}", B:B)/2`
+    (matchedFormula) =>
+      `${matchedFormula}+SUMIF(D:D, "${SPLIT_ASSIGNMENT_CODE}", B:B)*${splitShareFormula}`
   );
 }
 
@@ -617,8 +634,10 @@ export function updateWorkbookColumnsABC(workbookBuffer, transactions = [], opti
   const amountTemplate = worksheet.B1 || worksheet.B2 || null;
   const descriptionTemplate = worksheet.C103 || worksheet.C2 || worksheet.C1 || null;
   const assignmentTemplate = worksheet.D1 || worksheet.D2 || null;
+  const commentTemplate = worksheet.E1 || worksheet.E2 || null;
   const closingAmountTemplate = worksheet.G9 || worksheet.G10 || null;
   const assignmentCodes = Array.isArray(options.assignmentCodes) ? options.assignmentCodes : [];
+  const assignmentComments = Array.isArray(options.assignmentComments) ? options.assignmentComments : [];
   const assignmentColorRows = [];
 
   const splitFormulaUpdated = applySplitAwareFormulas(worksheet);
@@ -632,17 +651,24 @@ export function updateWorkbookColumnsABC(workbookBuffer, transactions = [], opti
     const addressB = `B${rowIndex}`;
     const addressC = `C${rowIndex}`;
     const addressD = `D${rowIndex}`;
+    const addressE = `E${rowIndex}`;
 
     if (transaction) {
       worksheet[addressA] = buildDateCell(transaction.date, dateTemplate);
       worksheet[addressB] = buildAmountCell(transaction.amount, amountTemplate);
       worksheet[addressC] = buildDescriptionCell(transaction.description, descriptionTemplate);
       const assignmentCode = String(assignmentCodes[rowIndex - 1] || '').trim();
+      const assignmentComment = String(assignmentComments[rowIndex - 1] || '').trim();
       if (!assignmentCode) {
         clearCellAddress(worksheet, addressD);
       } else {
         worksheet[addressD] = buildAssignmentCell(assignmentCode, assignmentTemplate);
         assignmentColorRows.push({ row: rowIndex, code: assignmentCode });
+      }
+      if (!assignmentComment) {
+        clearCellAddress(worksheet, addressE);
+      } else {
+        worksheet[addressE] = buildCommentCell(assignmentComment, commentTemplate);
       }
       continue;
     }
@@ -651,6 +677,7 @@ export function updateWorkbookColumnsABC(workbookBuffer, transactions = [], opti
     clearCellAddress(worksheet, addressB);
     clearCellAddress(worksheet, addressC);
     clearCellAddress(worksheet, addressD);
+    clearCellAddress(worksheet, addressE);
   }
 
   const summaryAnchorStartRow = Math.max(

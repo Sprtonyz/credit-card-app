@@ -12,10 +12,13 @@ export default async function handler(req, res) {
     return;
   }
 
-  try {
-    const assignmentCodes = Array.isArray(req.body?.assignmentCodes) ? req.body.assignmentCodes : [];
-    const transactions = Array.isArray(req.body?.transactions) ? req.body.transactions : null;
-    const closingAmount = Number(req.body?.closingBalance);
+    try {
+      const assignmentCodes = Array.isArray(req.body?.assignmentCodes) ? req.body.assignmentCodes : [];
+      const assignmentComments = Array.isArray(req.body?.assignmentComments)
+        ? req.body.assignmentComments
+        : [];
+      const transactions = Array.isArray(req.body?.transactions) ? req.body.transactions : null;
+      const closingAmount = Number(req.body?.closingBalance);
 
     if (!transactions) {
       res.status(400).json({ error: 'Missing parsed transactions.' });
@@ -26,6 +29,7 @@ export default async function handler(req, res) {
     const workbookBuffer = await fs.readFile(localWorkbookPath);
     const workbook = updateWorkbookColumnsABC(workbookBuffer, transactions, {
       assignmentCodes,
+      assignmentComments,
       closingAmount: Number.isFinite(closingAmount) ? closingAmount : null,
     });
     ensureBackupSheet(workbook, 'Sheet1', 'back up');

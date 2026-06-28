@@ -79,6 +79,12 @@ function valuesAgree(values = []) {
   return filtered.length === 2 && new Set(filtered).size === 1 ? filtered[0] : null;
 }
 
+function normalizeAssignmentComment(comment) {
+  return String(comment || '')
+    .replace(/\r\n?/g, '\n')
+    .trim();
+}
+
 function mapAssignmentToSheetCode(value) {
   if (value === 'Tony') return 't';
   if (value === 'Nugs') return 'n';
@@ -88,7 +94,47 @@ function mapAssignmentToSheetCode(value) {
   return '';
 }
 
-export function buildResolvedAssignmentPool(transactions = [], submissions = {}) {
+function buildResolvedAssignmentComment(transactionId, submissions = {}, assignmentComments = {}) {
+  const commentEntries = [];
+  const seenComments = new Set();
+
+  const pushComment = (entry, fallbackUser) => {
+    const comment = normalizeAssignmentComment(entry?.comment);
+    if (!comment || seenComments.has(comment)) return;
+
+    seenComments.add(comment);
+    commentEntries.push({
+      user: fallbackUser || null,
+      comment,
+      ts: Number(entry?.ts) || 0,
+    });
+  };
+
+  const txAssignmentComments = assignmentComments?.[transactionId];
+  if (txAssignmentComments && typeof txAssignmentComments === 'object') {
+    Object.entries(txAssignmentComments).forEach(([user, entry]) => {
+      pushComment(entry, user);
+    });
+  }
+
+  const txSubmissions = submissions || {};
+  Object.entries(txSubmissions).forEach(([user, submission]) => {
+    pushComment(submission, user);
+  });
+
+  if (commentEntries.length === 0) return null;
+
+  commentEntries.sort((left, right) => {
+    const leftTs = Number(left.ts) || 0;
+    const rightTs = Number(right.ts) || 0;
+    if (leftTs !== rightTs) return leftTs - rightTs;
+    return String(left.user || '').localeCompare(String(right.user || ''));
+  });
+
+  return commentEntries.map((entry) => entry.comment).join('\n');
+}
+
+export function buildResolvedAssignmentPool(transactions = [], submissions = {}, assignmentComments = {}) {
   return transactions
     .map((transaction) => {
       const submission = submissions[transaction.id] || {};
@@ -108,6 +154,7 @@ export function buildResolvedAssignmentPool(transactions = [], submissions = {})
         description: transaction.merchant || transaction.desc || '',
         assignment: resolvedValue,
         sheetCode: mapAssignmentToSheetCode(resolvedValue),
+        comment: buildResolvedAssignmentComment(transaction.id, submissions[transaction.id] || {}, assignmentComments),
       };
     })
     .filter((item) => item && item.sheetCode);

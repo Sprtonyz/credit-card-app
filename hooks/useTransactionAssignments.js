@@ -7,8 +7,12 @@ import {
   getSubmissionStatus,
   getSurfacedSubmissionStatus,
 } from '../utils/reconciliation';
+import {
+  normalizeAssignmentComment,
+  resolveAssignmentCommentForSave,
+  shouldSyncAssignmentComment,
+} from '../utils/assignmentCommentPersistence';
 
-const ASSIGNMENT_COMMENT_MAX_LENGTH = 180;
 const ASSIGNMENT_COMMENTS_ROOT = 'cc_v5_app_state/assignmentComments';
 const USER_ACTIVITY_ROOT = 'cc_v5_app_state/userActivity';
 
@@ -33,13 +37,6 @@ async function persistSubmissionWithRetry(submissionRef, payload, attempts = 3) 
   }
 
   throw lastError;
-}
-
-function normalizeAssignmentComment(comment) {
-  return String(comment || '')
-    .replace(/\r\n?/g, '\n')
-    .trim()
-    .slice(0, ASSIGNMENT_COMMENT_MAX_LENGTH);
 }
 
 function buildSubmissionPayload({ day, dateKey, ts, value, comment }) {
@@ -116,12 +113,16 @@ export function useTransactionAssignments({
     const previousStatus = getSubmissionStatus(txSubmissions);
     const previousSurfacedStatus = getSurfacedSubmissionStatus(txSubmissions, referenceDateKey);
     const ts = Date.now();
+    const resolvedComment = resolveAssignmentCommentForSave({
+      commentInput: comment,
+      embeddedComment: currentSubmission?.comment,
+    });
     let submissionPayload = buildSubmissionPayload({
       day,
       dateKey: referenceDateKey,
       ts,
       value,
-      comment: comment === undefined ? currentSubmission?.comment : comment,
+      comment: resolvedComment,
     });
     const currentSubmissionDateKey = getSubmissionDateKeyEntry(currentSubmission);
 
@@ -137,7 +138,7 @@ export function useTransactionAssignments({
       ...submissionPayload,
     };
 
-    if (comment === null) {
+    if (resolvedComment === null) {
       delete nextSubmission.comment;
     }
 
@@ -206,13 +207,15 @@ export function useTransactionAssignments({
       console.error('Assignment saved, but user activity sync failed:', error);
     });
 
-    try {
-      await persistSubmissionWithRetry(
-        ref(db, `${ASSIGNMENT_COMMENTS_ROOT}/${txId}/${currentUser}`),
-        buildCommentPayload(nextSubmission)
-      );
-    } catch (error) {
-      console.error('Assignment saved, but shared note sync failed:', error);
+    if (shouldSyncAssignmentComment({ commentInput: comment, resolvedComment })) {
+      try {
+        await persistSubmissionWithRetry(
+          ref(db, `${ASSIGNMENT_COMMENTS_ROOT}/${txId}/${currentUser}`),
+          buildCommentPayload(nextSubmission)
+        );
+      } catch (error) {
+        console.error('Assignment saved, but shared note sync failed:', error);
+      }
     }
 
     if (shouldReward) {

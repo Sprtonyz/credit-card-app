@@ -19,9 +19,14 @@ const source = fs
   .replace(/export function /g, 'function ');
 
 const loadReconciliation = new Function(
-  `${source}\nreturn { isVisibleForUser, getSurfacedSubmissionStatus, getSubmissionStatus, groupTallyBreakdownEntries, getGroupedTallyBreakdownEntries };`
+  `${source}\nreturn { isVisibleForUser, getAssigneeContributionRatio, getSurfacedSubmissionStatus, getSubmissionStatus, groupTallyBreakdownEntries, getGroupedTallyBreakdownEntries };`
 );
-const { isVisibleForUser, groupTallyBreakdownEntries, getGroupedTallyBreakdownEntries } = loadReconciliation();
+const {
+  isVisibleForUser,
+  getAssigneeContributionRatio,
+  groupTallyBreakdownEntries,
+  getGroupedTallyBreakdownEntries,
+} = loadReconciliation();
 
 function run(name, fn) {
   fn();
@@ -302,6 +307,34 @@ run('keeps resolved assignments hidden after midnight', () => {
   assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-29'), false, 'Nugs visibility');
   assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-30'), false, 'Tony next-day visibility');
   assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-30'), false, 'Nugs next-day visibility');
+});
+
+run('locks matching assignments made on consecutive days into the tally', () => {
+  const submissions = {
+    'shared-note': {
+      Tony: {
+        value: 'Nugs',
+        dateKey: '2026-07-01',
+      },
+      Nugs: {
+        value: 'Nugs',
+        dateKey: '2026-07-02',
+      },
+    },
+  };
+
+  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-07-03'), false, 'Tony visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-07-03'), false, 'Nugs visibility');
+  assertEqual(
+    getAssigneeContributionRatio(submissions['shared-note'], 'Nugs', '2026-07-03'),
+    1,
+    'Nugs tally contribution'
+  );
+  assertEqual(
+    getAssigneeContributionRatio(submissions['shared-note'], 'Tony', '2026-07-03'),
+    0,
+    'Tony tally contribution'
+  );
 });
 
 run('groups OCR-similar tally breakdown rows by merchant total', () => {

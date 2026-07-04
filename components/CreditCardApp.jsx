@@ -51,6 +51,11 @@ import {
 } from '../utils/tallyCycle';
 import { useTransactionAssignments } from '../hooks/useTransactionAssignments';
 import {
+  ASSIGNMENT_COMMENT_MAX_LENGTH,
+  normalizeAssignmentComment,
+  resolveAssignmentCommentForSave,
+} from '../utils/assignmentCommentPersistence';
+import {
   applyPetActionProgress,
   getFeedBenefits,
   getMoodLabel,
@@ -103,7 +108,6 @@ const LEGACY_PET_ROOT = 'pet';
 const LEGACY_FOOD_ROOT = 'food';
 const APP_VERSION = '5.7';
 const VERSION_KEY = 'cc_version';
-const ASSIGNMENT_COMMENT_MAX_LENGTH = 180;
 const ASSIGNMENT_NOTE_DRAFTS_KEY = 'cc_v5_assignment_note_drafts';
 const TALLY_UNGROUP_UNDO_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 const COMMENTS_FIREBASE_DELAY_MS = 3500;
@@ -361,13 +365,6 @@ function formatAssignmentLabel(value) {
 
 function verifyUserPin(user, pin) {
   return String(USER_PINS[user] || '') === String(pin || '').trim();
-}
-
-function normalizeAssignmentComment(comment) {
-  return String(comment || '')
-    .replace(/\r\n?/g, '\n')
-    .trim()
-    .slice(0, ASSIGNMENT_COMMENT_MAX_LENGTH);
 }
 
 function readAssignmentNoteDrafts() {
@@ -1297,6 +1294,12 @@ const TransactionCard = React.memo(function TransactionCard({
         nextComment = undefined;
       }
     }
+
+    nextComment = resolveAssignmentCommentForSave({
+      commentInput: nextComment,
+      embeddedComment: sub[currentUser]?.comment,
+      sharedComment: myCommentEntry?.comment,
+    });
 
     onAssign(txId, value, event, nextComment);
     setCommentDraft('');

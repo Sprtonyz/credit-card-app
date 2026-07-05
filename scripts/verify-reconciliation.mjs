@@ -16,6 +16,7 @@ const source = fs
     'const isTransactionWithinTallyDateRange = () => true;'
   )
   .replace(/export const PROFILE_NAMES = /, 'const PROFILE_NAMES = ')
+  .replace(/export const ASSIGNMENT_RULES_VERSION = /, 'const ASSIGNMENT_RULES_VERSION = ')
   .replace(/export function /g, 'function ');
 
 const loadReconciliation = new Function(
@@ -24,6 +25,8 @@ const loadReconciliation = new Function(
 const {
   isVisibleForUser,
   getAssigneeContributionRatio,
+  getSurfacedSubmissionStatus,
+  getSubmissionStatus,
   groupTallyBreakdownEntries,
   getGroupedTallyBreakdownEntries,
 } = loadReconciliation();
@@ -83,6 +86,60 @@ run('keeps a row visible to the user who has not acted today', () => {
 
   assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-29'), true, 'Tony visibility');
   assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-29'), false, 'Nugs visibility');
+});
+
+run('returns a one-sided assignment as unsure on the next day', () => {
+  const submissions = {
+    'shared-note': {
+      Tony: {
+        value: 'Tony',
+        dateKey: '2026-04-28',
+        rulesVersion: 2,
+      },
+    },
+  };
+
+  const status = getSurfacedSubmissionStatus(submissions['shared-note'], '2026-04-29');
+  assertEqual(status.unsure, true, 'surfaced unsure status');
+  assertEqual(status.conflict, false, 'surfaced conflict status');
+  assertEqual(status.resolved, false, 'surfaced resolved status');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-29'), true, 'Tony visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-29'), true, 'Nugs visibility');
+});
+
+run('grandfathers one-sided assignments created before the new rules', () => {
+  const submissions = {
+    'shared-note': {
+      Tony: {
+        value: 'Tony',
+        dateKey: '2026-04-28',
+      },
+    },
+  };
+
+  const status = getSurfacedSubmissionStatus(submissions['shared-note'], '2026-04-29');
+  assertEqual(status.unsure, false, 'legacy surfaced unsure status');
+  assertEqual(status.resolved, false, 'legacy surfaced resolved status');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-04-29'), true, 'Tony visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-29'), true, 'Nugs visibility');
+});
+
+run('keeps explicit unsure authoritative regardless of the other assignment', () => {
+  const submission = {
+    Tony: {
+      value: 'Unsure',
+      dateKey: '2026-04-28',
+    },
+    Nugs: {
+      value: 'Nugs',
+      dateKey: '2026-04-28',
+    },
+  };
+
+  const status = getSurfacedSubmissionStatus(submission, '2026-04-29');
+  assertEqual(status.unsure, true, 'surfaced unsure status');
+  assertEqual(status.conflict, false, 'surfaced conflict status');
+  assertEqual(status.resolved, false, 'surfaced resolved status');
 });
 
 run('keeps the other profile pending during same-day conflict correction', () => {
@@ -309,7 +366,40 @@ run('keeps resolved assignments hidden after midnight', () => {
   assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-04-30'), false, 'Nugs next-day visibility');
 });
 
-run('locks matching assignments made on consecutive days into the tally', () => {
+run('keeps post-fix matching assignments from different days open as unsure', () => {
+  const submissions = {
+    'shared-note': {
+      Tony: {
+        value: 'Nugs',
+        dateKey: '2026-07-01',
+      },
+      Nugs: {
+        value: 'Nugs',
+        dateKey: '2026-07-02',
+        rulesVersion: 2,
+      },
+    },
+  };
+
+  const liveStatus = getSubmissionStatus(submissions['shared-note']);
+  const surfacedStatus = getSurfacedSubmissionStatus(submissions['shared-note'], '2026-07-03');
+  assertEqual(liveStatus.unsure, true, 'live unsure status');
+  assertEqual(surfacedStatus.unsure, true, 'surfaced unsure status');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-07-03'), true, 'Tony visibility');
+  assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-07-03'), true, 'Nugs visibility');
+  assertEqual(
+    getAssigneeContributionRatio(submissions['shared-note'], 'Nugs', '2026-07-03'),
+    0,
+    'Nugs tally contribution'
+  );
+  assertEqual(
+    getAssigneeContributionRatio(submissions['shared-note'], 'Tony', '2026-07-03'),
+    0,
+    'Tony tally contribution'
+  );
+});
+
+run('grandfathers matching cross-day assignments created before the new rules', () => {
   const submissions = {
     'shared-note': {
       Tony: {
@@ -323,17 +413,15 @@ run('locks matching assignments made on consecutive days into the tally', () => 
     },
   };
 
+  const status = getSurfacedSubmissionStatus(submissions['shared-note'], '2026-07-03');
+  assertEqual(status.resolved, true, 'legacy resolved status');
+  assertEqual(status.unsure, false, 'legacy unsure status');
   assertEqual(isVisibleForUser(transaction, submissions, 'Tony', '2026-07-03'), false, 'Tony visibility');
   assertEqual(isVisibleForUser(transaction, submissions, 'Nugs', '2026-07-03'), false, 'Nugs visibility');
   assertEqual(
     getAssigneeContributionRatio(submissions['shared-note'], 'Nugs', '2026-07-03'),
     1,
     'Nugs tally contribution'
-  );
-  assertEqual(
-    getAssigneeContributionRatio(submissions['shared-note'], 'Tony', '2026-07-03'),
-    0,
-    'Tony tally contribution'
   );
 });
 

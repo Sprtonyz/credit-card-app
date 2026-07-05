@@ -3,6 +3,7 @@ import { ref, set } from 'firebase/database';
 import { db } from '../config/firebase';
 import { applyPetActionProgress, markPetStateUpdated, normalizePetState } from '../utils/petProgression';
 import {
+  ASSIGNMENT_RULES_VERSION,
   getSubmissionDateKeyEntry,
   getSubmissionStatus,
   getSurfacedSubmissionStatus,
@@ -39,7 +40,7 @@ async function persistSubmissionWithRetry(submissionRef, payload, attempts = 3) 
   throw lastError;
 }
 
-function buildSubmissionPayload({ day, dateKey, ts, value, comment }) {
+function buildSubmissionPayload({ day, dateKey, ts, value, comment, rulesVersion }) {
   if (value === undefined) {
     throw new Error('Cannot persist an assignment without a value.');
   }
@@ -59,6 +60,10 @@ function buildSubmissionPayload({ day, dateKey, ts, value, comment }) {
     payload.dateKey = dateKey;
   }
 
+  if (rulesVersion !== null && rulesVersion !== undefined && Number.isFinite(Number(rulesVersion))) {
+    payload.rulesVersion = Number(rulesVersion);
+  }
+
   if (normalizedComment) {
     payload.comment = normalizedComment;
   }
@@ -75,6 +80,11 @@ function addPreviousSubmissionSnapshot(payload, currentSubmission) {
     ...payload,
     previousValue: currentSubmission.value,
     previousDateKey,
+    ...(currentSubmission.rulesVersion !== null &&
+      currentSubmission.rulesVersion !== undefined &&
+      Number.isFinite(Number(currentSubmission.rulesVersion))
+      ? { previousRulesVersion: Number(currentSubmission.rulesVersion) }
+      : {}),
   };
 }
 
@@ -123,6 +133,7 @@ export function useTransactionAssignments({
       ts,
       value,
       comment: resolvedComment,
+      rulesVersion: ASSIGNMENT_RULES_VERSION,
     });
     const currentSubmissionDateKey = getSubmissionDateKeyEntry(currentSubmission);
 
@@ -278,6 +289,7 @@ export function useTransactionAssignments({
           ts: last.prev.ts || Date.now(),
           value: last.prev.value,
           comment: last.prev.comment,
+          rulesVersion: last.prev.rulesVersion ?? null,
         });
         await set(ref(db, `submissions/${last.txId}/${last.user}`), previousSubmissionPayload);
         await set(ref(db, `${ASSIGNMENT_COMMENTS_ROOT}/${last.txId}/${last.user}`), buildCommentPayload(previousSubmissionPayload));

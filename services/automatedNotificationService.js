@@ -60,6 +60,7 @@ function serializeSentItem(item) {
     profileName: item.profileName,
     subject: item.subject,
     recipients: item.recipients,
+    stats: item.stats,
   };
 }
 
@@ -166,6 +167,7 @@ export async function runAutomatedNotificationEmail({
       profileName,
       subject,
       recipients,
+      stats: report.stats,
     });
   }
 

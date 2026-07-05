@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { buildProfileEmailReports } from '../utils/adminReporting.js';
+import { buildEmailContent } from '../services/emailNotificationService.js';
 
 function run(name, fn) {
   fn();
@@ -35,9 +36,18 @@ const conflictSubmissions = {
   },
 };
 
+const carriedForwardTransaction = {
+  id: 'carried-forward-item',
+  amount: 40,
+  date: null,
+  uploadedDay: '2026-06-13',
+  uploadedDate: '2026-06-13T22:30:00+10:00',
+  isPending: true,
+};
+
 run('builds dashboard-aligned email summaries', () => {
   const [tonyReport] = buildProfileEmailReports(
-    [...transactions, conflictTransaction],
+    [...transactions, conflictTransaction, carriedForwardTransaction],
     conflictSubmissions,
     '2026-06-14',
     {
@@ -47,9 +57,9 @@ run('builds dashboard-aligned email summaries', () => {
   );
 
   assert.equal(tonyReport.statementCycleLabel, '13 June 2026 - 12 July 2026');
-  assert.equal(tonyReport.stats.remainingCount, 1);
+  assert.equal(tonyReport.stats.remainingCount, 2);
   assert.equal(tonyReport.stats.pendingCount, 0);
-  assert.equal(tonyReport.stats.outstandingCount, 0);
+  assert.equal(tonyReport.stats.outstandingCount, 1);
   assert.equal(tonyReport.stats.conflictsCount, 1);
   assert.equal(tonyReport.stats.unsuresCount, 0);
   assert.equal(
@@ -61,4 +71,8 @@ run('builds dashboard-aligned email summaries', () => {
   );
   assert.equal(tonyReport.stats.cycleAssignedTotal, 0);
   assert.equal(tonyReport.stats.totalSpend, 0);
+
+  const content = buildEmailContent(tonyReport);
+  assert.match(content.text, /Items to review: 2/);
+  assert.doesNotMatch(content.text, /Nothing to action/);
 });

@@ -73,9 +73,12 @@ export function buildProfileEmailReports(
       simulatedNow: new Date(`${todayKey}T00:00:00Z`),
       assignees: DASHBOARD_ASSIGNEES,
       tallyDateRange,
+      includeUnassignedHistorical: true,
     });
     const visibleTransactions = cycleTransactions.filter((transaction) =>
-      isVisibleForUser(transaction, submissions, profileName, todayKey)
+      isVisibleForUser(transaction, submissions, profileName, todayKey, PROFILE_NAMES, {
+        includeUnassignedHistorical: true,
+      })
     );
 
     const cycleAssignedTotal = dashboardMetrics.userTallies[profileName] || 0;

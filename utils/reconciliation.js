@@ -2,6 +2,7 @@ import { formatLocalDate } from './simulationDate.js';
 import { isTransactionWithinTallyDateRange } from './tallyCycle.js';
 
 export const PROFILE_NAMES = ['Tony', 'Nugs'];
+export const ASSIGNMENT_RULES_VERSION = 2;
 
 export function getOtherUser(user, users = PROFILE_NAMES) {
   return users.find((candidate) => candidate !== user) || null;
@@ -28,17 +29,45 @@ export function hasSubmissionOnDate(submission, user, referenceDateKey) {
   return getSubmissionDateKey(submission, user) === referenceDateKey;
 }
 
-export function getSubmissionStatus(submission, users = PROFILE_NAMES) {
-  const values = users.map((user) => getSubmissionValue(submission, user)).filter(Boolean);
+function buildSubmissionStatus(entries, expectedCount) {
+  const populatedEntries = entries.filter((entry) => entry?.value);
+  const values = populatedEntries.map((entry) => entry.value);
   const hasUnsure = values.includes('Unsure');
-  const allPicked = values.length === users.length;
+  const usesCurrentRules = populatedEntries.some(
+    (entry) => Number(entry.rulesVersion || 0) >= ASSIGNMENT_RULES_VERSION
+  );
+  const allPicked = values.length === expectedCount;
+  const allPickedOnSameDay =
+    allPicked &&
+    populatedEntries.every((entry) => entry.dateKey) &&
+    new Set(populatedEntries.map((entry) => entry.dateKey)).size === 1;
+  const valuesMatch = allPicked && new Set(values).size === 1;
+  const resolved =
+    allPicked &&
+    !hasUnsure &&
+    valuesMatch &&
+    (!usesCurrentRules || allPickedOnSameDay);
+  const conflict = allPicked && !hasUnsure && !valuesMatch;
 
   return {
-    resolved: allPicked && !hasUnsure && new Set(values).size === 1,
-    conflict: allPicked && !hasUnsure && new Set(values).size > 1,
-    unsure: hasUnsure,
+    resolved,
+    conflict,
+    unsure:
+      hasUnsure ||
+      (usesCurrentRules && values.length > 0 && !resolved && !conflict),
     anyPicked: values.length > 0,
   };
+}
+
+export function getSubmissionStatus(submission, users = PROFILE_NAMES) {
+  return buildSubmissionStatus(
+    users.map((user) => ({
+      value: getSubmissionValue(submission, user),
+      dateKey: getSubmissionDateKey(submission, user),
+      rulesVersion: submission?.[user]?.rulesVersion,
+    })),
+    users.length
+  );
 }
 
 export function getLocalDateKey(dateLike) {
@@ -81,18 +110,23 @@ export function getSurfacedSubmissionValue(submission, user, referenceDateKey) {
 }
 
 export function getSurfacedSubmissionStatus(submission, referenceDateKey, users = PROFILE_NAMES) {
-  const values = users
-    .map((user) => getSurfacedSubmissionValue(submission, user, referenceDateKey))
-    .filter(Boolean);
-  const hasUnsure = values.includes('Unsure');
-  const allPicked = values.length === users.length;
+  return buildSubmissionStatus(
+    users.map((user) => {
+      const entry = submission?.[user];
+      const submittedDateKey = getSubmissionDateKeyEntry(entry);
+      const usesPreviousValue =
+        submittedDateKey >= referenceDateKey &&
+        entry?.previousDateKey &&
+        entry.previousDateKey < referenceDateKey;
 
-  return {
-    resolved: allPicked && !hasUnsure && new Set(values).size === 1,
-    conflict: allPicked && !hasUnsure && new Set(values).size > 1,
-    unsure: hasUnsure,
-    anyPicked: values.length > 0,
-  };
+      return {
+        value: getSurfacedSubmissionValue(submission, user, referenceDateKey),
+        dateKey: usesPreviousValue ? entry.previousDateKey : submittedDateKey,
+        rulesVersion: usesPreviousValue ? entry.previousRulesVersion : entry?.rulesVersion,
+      };
+    }),
+    users.length
+  );
 }
 
 function getAssignmentContributionRatio(value, assignee) {

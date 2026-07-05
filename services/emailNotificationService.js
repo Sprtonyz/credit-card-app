@@ -6,7 +6,7 @@ import {
   DEFAULT_EMAIL_RECIPIENTS,
   DEFAULT_GMAIL_USER,
   DEFAULT_RECIPIENTS_BY_PROFILE,
-} from '../config/emailNotifications';
+} from '../config/emailNotifications.js';
 
 export function parseRecipients(value) {
   if (Array.isArray(value)) {

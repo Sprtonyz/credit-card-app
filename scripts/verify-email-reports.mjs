@@ -76,3 +76,73 @@ run('builds dashboard-aligned email summaries', () => {
   assert.match(content.text, /Items to review: 2/);
   assert.doesNotMatch(content.text, /Nothing to action/);
 });
+
+run('keeps cross-cycle conflicts and same-day unsures in daily email actions', () => {
+  const reports = buildProfileEmailReports(
+    [
+      {
+        id: 'previous-cycle-conflict',
+        amount: 50,
+        date: '2026-07-12',
+        isPending: false,
+      },
+      {
+        id: 'same-day-unsure',
+        amount: 25,
+        date: '2026-07-14',
+        isPending: false,
+      },
+      {
+        id: 'same-day-pending',
+        amount: 15,
+        date: null,
+        uploadedDay: '2026-07-14',
+        uploadedDate: '2026-07-14T21:00:00+10:00',
+        isPending: true,
+      },
+    ],
+    {
+      'previous-cycle-conflict': {
+        Tony: { value: 'Tony', dateKey: '2026-07-12', ts: 1 },
+        Nugs: { value: 'Nugs', dateKey: '2026-07-12', ts: 2 },
+      },
+      'same-day-unsure': {
+        Tony: { value: 'Unsure', dateKey: '2026-07-14', ts: 3, rulesVersion: 2 },
+      },
+    },
+    '2026-07-14',
+    { startDay: 13, startMonth: 7 }
+  );
+
+  for (const report of reports) {
+    assert.equal(report.stats.pendingCount, 1);
+    assert.equal(report.stats.outstandingCount, 0);
+    assert.equal(report.stats.conflictsCount, 1);
+    assert.equal(report.stats.unsuresCount, 1);
+    assert.equal(report.stats.remainingCount, 3);
+    assert.equal(report.stats.cycleAssignedTotal, 0);
+
+    const content = buildEmailContent(report);
+    assert.match(content.text, /Items to review: 3/);
+    assert.match(content.text, /New pending: 1/);
+    assert.match(content.text, /Conflicts: 1/);
+    assert.match(content.text, /Unsures: 1/);
+    assert.doesNotMatch(content.text, /Nothing to action/);
+  }
+});
+
+run('never renders an all-clear email when displayed action categories are non-zero', () => {
+  const content = buildEmailContent({
+    profileName: 'Tony',
+    stats: {
+      remainingCount: 0,
+      pendingCount: 1,
+      outstandingCount: 0,
+      conflictsCount: 1,
+      unsuresCount: 1,
+    },
+  });
+
+  assert.match(content.text, /Items to review: 3/);
+  assert.doesNotMatch(content.text, /Nothing to action/);
+});

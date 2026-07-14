@@ -1,6 +1,6 @@
 import {
   PROFILE_NAMES,
-  getSurfacedSubmissionStatus,
+  getSubmissionStatus,
   getTransactionReferenceDateKey,
   isVisibleForUser,
 } from './reconciliation.js';
@@ -75,37 +75,48 @@ export function buildProfileEmailReports(
       tallyDateRange,
       includeUnassignedHistorical: true,
     });
-    const visibleTransactions = cycleTransactions.filter((transaction) =>
-      isVisibleForUser(transaction, submissions, profileName, todayKey, PROFILE_NAMES, {
-        includeUnassignedHistorical: true,
-      })
-    );
-
     const cycleAssignedTotal = dashboardMetrics.userTallies[profileName] || 0;
-    const remainingCount = dashboardMetrics.remainingByUser[profileName] || 0;
     const macquarieTotal = dashboardMetrics.assigneeTotals.Macquarie || 0;
     const macquarieExcessAmount = getMacquarieExcessAmount(macquarieTotal);
 
-    const bucketCounts = visibleTransactions.reduce(
+    // The statement cycle limits financial totals, not work needing attention.
+    // A conflict or unsure can remain unresolved across a cycle boundary, and
+    // a daily email must continue to surface it until it is resolved.
+    const bucketCounts = transactions.reduce(
       (counts, transaction) => {
         const submission = submissions[transaction.id] || {};
-        const surfacedStatus = getSurfacedSubmissionStatus(submission, todayKey);
+        const liveStatus = getSubmissionStatus(submission, PROFILE_NAMES);
+        const isVisible = isVisibleForUser(
+          transaction,
+          submissions,
+          profileName,
+          todayKey,
+          PROFILE_NAMES,
+          { includeUnassignedHistorical: true }
+        );
         const referenceDay = getTransactionReferenceDateKey(transaction, todayKey);
         const isCurrentDayPending =
           (transaction.isPending || !transaction.date) && referenceDay === todayKey;
 
-        if (isCurrentDayPending) {
-          counts.pendingCount += 1;
-          return counts;
-        }
-
-        if (surfacedStatus.conflict) {
+        // Current-day choices are intentionally hidden in the interactive
+        // reconciliation list, but must not hide a newly created conflict or
+        // unsure from the 11pm email.
+        if (liveStatus.conflict) {
           counts.conflictsCount += 1;
           return counts;
         }
 
-        if (surfacedStatus.unsure) {
+        if (liveStatus.unsure) {
           counts.unsuresCount += 1;
+          return counts;
+        }
+
+        if (!isVisible) {
+          return counts;
+        }
+
+        if (isCurrentDayPending) {
+          counts.pendingCount += 1;
           return counts;
         }
 
@@ -119,6 +130,11 @@ export function buildProfileEmailReports(
         unsuresCount: 0,
       }
     );
+    const remainingCount =
+      bucketCounts.pendingCount +
+      bucketCounts.outstandingCount +
+      bucketCounts.conflictsCount +
+      bucketCounts.unsuresCount;
 
     return {
       profileName,

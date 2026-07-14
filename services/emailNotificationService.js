@@ -40,16 +40,18 @@ function formatCurrency(value) {
 }
 
 function getActionRequiredCount(stats = {}) {
-  if (Number.isFinite(Number(stats.remainingCount))) {
-    return Number(stats.remainingCount);
-  }
-
-  return [
+  const categorizedCount = [
     stats.pendingCount,
     stats.outstandingCount,
     stats.conflictsCount,
     stats.unsuresCount,
   ].reduce((total, value) => total + Number(value || 0), 0);
+
+  // The category counts are what the email displays. Prefer them so a stale
+  // dashboard-derived remainingCount can never turn an actionable report into
+  // an all-clear email. Keep the legacy count as a safety net for any future
+  // action type that has not yet been given its own category.
+  return Math.max(categorizedCount, Number(stats.remainingCount) || 0);
 }
 
 const EMAIL_FONT_STACK =

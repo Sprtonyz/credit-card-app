@@ -637,10 +637,10 @@ export default function PetCompanion({
     const scale = clamp(Number(scalePercent) || 100, 60, 160) / 100;
     const height = Math.max(72, Number(footerHeight) || 132);
     const groundY = height - 12;
-    // Fit the authored art into the footer, then let the scale control push it
-    // up to whatever still fits without clipping the ears.
+    // Fit the authored art to the available footer height instead of reserving
+    // a large dead zone above it; clipping is still prevented by maxUnit.
     const maxUnit = (groundY - 4) / (ART_SHADOW_Y - ART_EAR_TOP);
-    const unit = Math.min(maxUnit, (height * 0.72 * scale) / ART_HEIGHT);
+    const unit = Math.min(maxUnit, (height * scale) / ART_HEIGHT);
     return {
       unit,
       groundY,

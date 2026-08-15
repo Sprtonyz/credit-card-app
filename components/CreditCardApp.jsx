@@ -158,7 +158,7 @@ function formatTallyCycleStartSummary(tallyCycleSettings) {
 
 function getPetFooterHeight(scalePercent) {
   const clamped = Math.max(60, Math.min(160, Number(scalePercent) || 100));
-  return Math.round(48 + clamped * 0.44);
+  return Math.round(44 + clamped * 0.34);
 }
 
 function getPetCareHint(mood, hp) {
@@ -1557,13 +1557,10 @@ const PetBar = React.memo(function PetBar({
         <span className={`pet-chip pet-streak ${streak > 0 ? 'is-hot' : ''}`}>streak {streak}</span>
         <span className="pet-chip pet-mood">anim: {petAnimationMode}</span>
         <span className="pet-chip pet-mood">{petCompanionStyle} / {petPalette}</span>
+        <span className="pet-chip pet-mood">care: {petCareHint}</span>
         <button className="pet-chip pet-quests-btn" onClick={onToggleMissions}>
           quests {completedMissions}/{missions.length}
         </button>
-      </div>
-      <div className="shop-bar" style={{ bottom: `${petFooterHeight - 38}px`, gap: '10px', paddingTop: '8px', paddingBottom: '8px' }}>
-        <span className="pet-chip pet-mood">care: {petCareHint}</span>
-        <span className="pet-chip pet-mood">cozy companion active</span>
       </div>
       {showMissions && (
         <div className="pet-missions-panel" style={{ bottom: missionsBottom }}>
@@ -2718,7 +2715,7 @@ export default function CreditCardApp() {
   const petAnimationMode = resolvePetAnimationMode(petState);
   const petCareHint = getPetCareHint(mood, hp);
   const petFooterHeight = useMemo(() => getPetFooterHeight(petScalePct), [petScalePct]);
-  const appBottomPadding = Math.max(112, petFooterHeight + 64);
+  const appBottomPadding = Math.max(96, petFooterHeight + 40);
 
   useEffect(() => {
     const missionSummary = missions.map((mission) => getPetMissionSignature(mission));

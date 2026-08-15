@@ -9,3 +9,6 @@ coverage/
 .env
 .env.local
 .DS_Store
+
+.vercel
+.env*

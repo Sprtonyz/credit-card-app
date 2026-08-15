@@ -5,19 +5,25 @@ import { fileURLToPath } from 'url';
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const petProgressionPath = path.join(rootDir, 'utils', 'petProgression.js');
 const petProfileSyncPath = path.join(rootDir, 'utils', 'petProfileSync.js');
+const petConfigPath = path.join(rootDir, 'utils', 'petConfig.js');
+
+// Inline the real config rather than restating it, so new palettes/styles are
+// always covered by these checks instead of silently drifting out of sync.
+const configSource = fs.readFileSync(petConfigPath, 'utf8').replace(/^export /gm, '');
 
 const petProgressionSource = fs
   .readFileSync(petProgressionPath, 'utf8')
   .replace(/export function /g, 'function ');
 const petProfileSyncSource = fs
   .readFileSync(petProfileSyncPath, 'utf8')
-  .replace("import { normalizePetState } from './petProgression';\n\n", '')
+  .replace(/^import[^\n]*petProgression[^\n]*\r?\n/m, '')
+  .replace(/^import[^\n]*petConfig[^\n]*\r?\n/m, '')
   .replace(/export function /g, 'function ');
 
 const loadPetSync = new Function(
-  `${petProgressionSource}\n${petProfileSyncSource}\nreturn { markPetStateUpdated, comparePetProfiles, mergePetProfileMaps };`
+  `${configSource}\n${petProgressionSource.replace(/import[\s\S]*?from '\.\/petConfig';\r?\n\r?\n/, '')}\n${petProfileSyncSource}\nreturn { markPetStateUpdated, comparePetProfiles, mergePetProfileMaps, normalizePetProfilesMap };`
 );
-const { markPetStateUpdated, comparePetProfiles, mergePetProfileMaps } = loadPetSync();
+const { markPetStateUpdated, comparePetProfiles, mergePetProfileMaps, normalizePetProfilesMap } = loadPetSync();
 
 function run(name, fn) {
   fn();
@@ -76,6 +82,19 @@ run('legacy untimestamped profiles keep the existing stat-based merge', () => {
 
   assertEqual(merged.Tony.coins, 25, 'coins');
   assertEqual(merged.Tony.food, 0, 'food');
+});
+
+run('normalization injects stable user identities for separate pets', () => {
+  const normalized = normalizePetProfilesMap(
+    {
+      Tony: { xp: 5 },
+      Nugs: { xp: 7 },
+    },
+    '2026-05-15'
+  );
+
+  assertEqual(normalized.Tony.identity.name, 'Maple', 'Tony name');
+  assertEqual(normalized.Nugs.identity.name, 'Mochi', 'Nugs name');
 });
 
 console.log('pet profile sync verification passed');

@@ -1,4 +1,5 @@
 import { normalizePetState } from './petProgression';
+import { PET_PROFILE_VERSION, getPetIdentityPreset } from './petConfig';
 
 const DEFAULT_PROFILE_NAMES = ['Tony', 'Nugs'];
 
@@ -8,7 +9,7 @@ export function normalizePetProfilesMap(rawProfiles, dateKey, profileNames = DEF
   return Object.fromEntries(
     Object.entries(rawProfiles)
       .filter(([user]) => profileNames.includes(user))
-      .map(([user, state]) => [user, normalizePetState(state, dateKey)])
+      .map(([user, state]) => [user, normalizePetState(state, dateKey, user)])
   );
 }
 
@@ -35,6 +36,11 @@ export function getPetProfileSignature(rawProfile, dateKey) {
   if (!rawProfile || typeof rawProfile !== 'object') return '';
   const profile = normalizePetState(rawProfile, dateKey);
   return [
+    Number(profile.profileVersion || 0),
+    profile.identity?.name || '',
+    profile.identity?.palette || '',
+    profile.identity?.companionStyle || '',
+    profile.identity?.homeAnchor || '',
     Number(profile.updatedAt || 0),
     Number(profile.coins || 0),
     Number(profile.food || 0),
@@ -44,6 +50,9 @@ export function getPetProfileSignature(rawProfile, dateKey) {
     Number(profile.streak || 0),
     profile.lastStreakDate || '',
     profile.mood || '',
+    profile.animation?.mode || '',
+    Number(profile.animation?.until || 0),
+    profile.animation?.activeMood || '',
     profile.lastFedDate || '',
     profile.lastHpDecayDate || '',
     (profile.missions || []).map(getPetMissionSignature).join(','),
@@ -63,6 +72,13 @@ export function comparePetProfiles(leftRaw, rightRaw, dateKey) {
   const right = normalizePetState(rightRaw, dateKey);
   const leftUpdatedAt = Number(left.updatedAt || 0);
   const rightUpdatedAt = Number(right.updatedAt || 0);
+  const leftVersion = Number(left.profileVersion || 0);
+  const rightVersion = Number(right.profileVersion || 0);
+
+  if (leftVersion !== rightVersion) {
+    if (leftVersion > rightVersion) return 1;
+    if (leftVersion < rightVersion) return -1;
+  }
 
   if (leftUpdatedAt || rightUpdatedAt) {
     if (leftUpdatedAt > rightUpdatedAt) return 1;
@@ -89,6 +105,21 @@ export function comparePetProfiles(leftRaw, rightRaw, dateKey) {
 export function mergePetProfileMaps(baseProfiles, candidateProfiles, dateKey, profileNames = DEFAULT_PROFILE_NAMES) {
   const next = { ...normalizePetProfilesMap(baseProfiles, dateKey, profileNames) };
   const incoming = normalizePetProfilesMap(candidateProfiles, dateKey, profileNames);
+
+  profileNames.forEach((user) => {
+    const preset = getPetIdentityPreset(user);
+    const fallbackProfile = normalizePetState(
+      {
+        profileVersion: PET_PROFILE_VERSION,
+        identity: preset,
+      },
+      dateKey,
+      user
+    );
+    if (!next[user]) {
+      next[user] = fallbackProfile;
+    }
+  });
 
   Object.entries(incoming).forEach(([user, profile]) => {
     const current = next[user];

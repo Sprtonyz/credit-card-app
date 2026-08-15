@@ -1,5 +1,15 @@
-const DEFAULT_MOOD = 'okay';
-const VALID_MOODS = ['happy', 'okay', 'hungry', 'neglected'];
+import {
+  PET_ANIMATION_MODES,
+  PET_MOODS,
+  PET_PROFILE_VERSION,
+  VALID_COMPANION_STYLES,
+  VALID_HOME_ANCHORS,
+  VALID_PET_PALETTES,
+  getPetIdentityPreset,
+} from './petConfig';
+
+const DEFAULT_MOOD = 'content';
+const VALID_MOODS = PET_MOODS;
 const VALID_PET_TYPES = ['classic', 'shiny', 'ember'];
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const HP_DECAY_PER_UNFED_DAY = 12;
@@ -11,6 +21,26 @@ function clamp(value, min, max) {
 function toFiniteNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeAnimationMode(value) {
+  if (PET_ANIMATION_MODES.includes(value)) return value;
+  return 'idle';
+}
+
+function normalizePalette(value, fallback = 'maple') {
+  if (VALID_PET_PALETTES.includes(value)) return value;
+  return fallback;
+}
+
+function normalizeCompanionStyle(value, fallback = 'cat') {
+  if (VALID_COMPANION_STYLES.includes(value)) return value;
+  return fallback;
+}
+
+function normalizeHomeAnchor(value, fallback = 'left') {
+  if (VALID_HOME_ANCHORS.includes(value)) return value;
+  return fallback;
 }
 
 function isDateKey(value) {
@@ -38,7 +68,7 @@ function diffDays(currentDateKey, previousDateKey) {
 }
 
 function applyHpDecay(rawState, dateKey) {
-  const hp = clamp(toFiniteNumber(rawState?.hp, 60), 0, 100);
+  const hp = clamp(toFiniteNumber(rawState?.hp, 82), 0, 100);
   const currentDateKey = isDateKey(dateKey) ? dateKey : null;
   if (!currentDateKey) {
     return {
@@ -94,11 +124,23 @@ function normalizeMood(value) {
 }
 
 export function getMoodLabel(mood) {
-  if (mood === 'happy') return 'Very happy';
-  if (mood === 'okay') return 'Happy';
+  if (mood === 'excited') return 'Excited';
+  if (mood === 'content') return 'Content';
+  if (mood === 'sleepy') return 'Sleepy';
   if (mood === 'hungry') return 'Hungry';
   if (mood === 'neglected') return 'Neglected';
-  return 'Happy';
+  return 'Content';
+}
+
+export function resolvePetAnimationMode(profile, now = Date.now()) {
+  const animation = profile?.animation || {};
+  if (Number(animation.until || 0) > now) {
+    return normalizeAnimationMode(animation.mode);
+  }
+  if (profile?.mood === 'neglected') return 'sad';
+  if (profile?.mood === 'sleepy') return 'sleep';
+  if (profile?.mood === 'hungry') return 'idle';
+  return 'walk';
 }
 
 function createMissionTemplate({ id, type, title, target, reward, resetKey }) {
@@ -211,7 +253,8 @@ function normalizeMission(mission, template) {
   };
 }
 
-export function normalizePetState(rawState, dateKey) {
+export function normalizePetState(rawState, dateKey, user = null) {
+  const identityPreset = getPetIdentityPreset(user);
   const sourceMissions = Array.isArray(rawState?.missions) ? rawState.missions : [];
   const fallbackDailyResetKey = sourceMissions.find(
     (mission) => typeof mission?.resetKey === 'string' && mission.resetKey.startsWith('daily:')
@@ -232,24 +275,55 @@ export function normalizePetState(rawState, dateKey) {
     return normalizeMission(saved, template);
   });
 
+  const petType = normalizePetType(rawState?.petType);
+  const normalizedHp = decayedHp.hp;
+  const normalizedMood = normalizeMood(rawState?.mood);
+  const derivedMood = derivePetMood(
+    {
+      ...rawState,
+      hp: normalizedHp,
+      mood: normalizedMood,
+      lastFedDate: isDateKey(rawState?.lastFedDate) ? rawState.lastFedDate : null,
+    },
+    fallbackDateKey
+  );
+  const animation = rawState?.animation && typeof rawState.animation === 'object' ? rawState.animation : {};
+
   return {
+    profileVersion: Math.max(PET_PROFILE_VERSION, Math.floor(toFiniteNumber(rawState?.profileVersion, 0))),
+    identity: {
+      name: String(rawState?.identity?.name || identityPreset.name || 'Cozy').trim() || identityPreset.name,
+      palette: normalizePalette(rawState?.identity?.palette, identityPreset.palette),
+      companionStyle: normalizeCompanionStyle(
+        rawState?.identity?.companionStyle,
+        identityPreset.companionStyle
+      ),
+      homeAnchor: normalizeHomeAnchor(rawState?.identity?.homeAnchor, identityPreset.homeAnchor),
+    },
     coins: Math.max(0, toFiniteNumber(rawState?.coins, 0)),
     food: Math.max(0, toFiniteNumber(rawState?.food, 0)),
-    hp: decayedHp.hp,
+    hp: normalizedHp,
     xp: Math.max(0, toFiniteNumber(rawState?.xp, 0)),
     updatedAt: Math.max(0, Math.floor(toFiniteNumber(rawState?.updatedAt, 0))),
-    petType: normalizePetType(rawState?.petType),
+    petType,
     streak: Math.max(0, Math.floor(toFiniteNumber(rawState?.streak, 0))),
     lastStreakDate: isDateKey(rawState?.lastStreakDate) ? rawState.lastStreakDate : null,
-    mood: normalizeMood(rawState?.mood),
+    mood: derivedMood || normalizedMood,
     lastFedDate: isDateKey(rawState?.lastFedDate) ? rawState.lastFedDate : null,
     lastHpDecayDate: decayedHp.lastHpDecayDate,
     missions,
+    animation: {
+      mode: normalizeAnimationMode(animation.mode),
+      until: Math.max(0, Math.floor(toFiniteNumber(animation.until, 0))),
+      activeMood: normalizeMood(animation.activeMood || derivedMood || normalizedMood),
+      bounce: Math.max(0, Math.floor(toFiniteNumber(animation.bounce, 0))),
+      lastEvent: String(animation.lastEvent || '').trim() || null,
+    },
   };
 }
 
-export function markPetStateUpdated(rawState, dateKey, updatedAt = Date.now()) {
-  const normalized = normalizePetState(rawState, dateKey);
+export function markPetStateUpdated(rawState, dateKey, updatedAt = Date.now(), user = null) {
+  const normalized = normalizePetState(rawState, dateKey, user);
   const previousUpdatedAt = Math.max(0, Math.floor(toFiniteNumber(normalized.updatedAt, 0)));
   const nextUpdatedAt = Math.max(
     previousUpdatedAt + 1,
@@ -273,14 +347,21 @@ export function resolvePetType(petType, level, streak) {
 
 export function derivePetMood(profile, dateKey) {
   const hp = clamp(toFiniteNumber(profile?.hp, 60), 0, 100);
-  if (hp >= 100) return 'happy';
-  if (hp >= 80) return 'okay';
+  const lastFedDate = isDateKey(profile?.lastFedDate) ? profile.lastFedDate : null;
+  const daysSinceFed = lastFedDate ? Math.max(0, diffDays(dateKey, lastFedDate) || 0) : 0;
+  const streak = Math.max(0, Math.floor(toFiniteNumber(profile?.streak, 0)));
+
+  if (hp >= 96 && daysSinceFed <= 1 && streak >= 2) return 'excited';
+  if (hp >= 74 && daysSinceFed <= 2) return 'content';
+  if (hp >= 55 && daysSinceFed <= 2) return 'sleepy';
   if (hp >= 40) return 'hungry';
   return 'neglected';
 }
 
 export function getFeedBenefits(mood) {
-  if (mood === 'happy') return { hp: 12, xp: 12 };
+  if (mood === 'excited') return { hp: 8, xp: 8 };
+  if (mood === 'content') return { hp: 10, xp: 10 };
+  if (mood === 'sleepy') return { hp: 11, xp: 9 };
   if (mood === 'hungry') return { hp: 9, xp: 9 };
   if (mood === 'neglected') return { hp: 8, xp: 8 };
   return { hp: 10, xp: 10 };
@@ -310,7 +391,7 @@ function bumpMission(mission, amount) {
 
 export function applyPetActionProgress(profile, payload) {
   const dateKey = payload?.dateKey;
-  const next = normalizePetState(profile, dateKey);
+  const next = normalizePetState(profile, dateKey, payload?.user || null);
 
   const isMeaningfulAction = payload?.kind === 'assign' || payload?.kind === 'feed';
   if (isMeaningfulAction && next.lastStreakDate !== dateKey) {
@@ -371,6 +452,27 @@ export function applyPetActionProgress(profile, payload) {
 
   next.mood = derivePetMood(next, dateKey);
   next.petType = resolvePetType(next.petType, getPetLevel(next.xp), next.streak);
+  next.animation = {
+    mode:
+      payload?.kind === 'feed'
+        ? 'feed'
+        : payload?.kind === 'assign' && payload?.coinReward > 0
+          ? 'celebrate'
+          : next.mood === 'neglected'
+            ? 'sad'
+            : next.mood === 'sleepy'
+              ? 'sleep'
+              : 'walk',
+    until:
+      payload?.kind === 'feed'
+        ? Date.now() + 2600
+        : payload?.kind === 'assign' && payload?.coinReward > 0
+          ? Date.now() + 1800
+          : 0,
+    activeMood: next.mood,
+    bounce: payload?.kind === 'feed' ? 2 : payload?.kind === 'assign' ? 1 : 0,
+    lastEvent: payload?.kind || null,
+  };
 
   return {
     pet: next,

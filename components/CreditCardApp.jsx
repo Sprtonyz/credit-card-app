@@ -1513,10 +1513,6 @@ const PetBar = React.memo(function PetBar({
   onFeedPet,
   petType,
   petName,
-  petAnimationMode,
-  petCareHint,
-  petPalette,
-  petCompanionStyle,
   petFooterHeight,
   petScalePct,
   petState,
@@ -1542,7 +1538,9 @@ const PetBar = React.memo(function PetBar({
           </div>
           <span className="shop-hp-val">{hp}</span>
         </div>
-        <span className={`pet-chip pet-mood mood-${mood}`}>{petName}: {getMoodLabel(mood)}</span>
+        <button type="button" className={`shop-btn shop-btn-status mood-${mood}`}>
+          {petName}: {getMoodLabel(mood)}
+        </button>
         <div className="shop-divider-v" />
         <button className="shop-btn buy" disabled={coins < 1} onClick={onBuyFood}>
           buy food 1 <span className="coin-inline" aria-hidden="true" />
@@ -1555,10 +1553,7 @@ const PetBar = React.memo(function PetBar({
           Lv.{level} - {xp}/{xpNeeded} xp
         </span>
         <span className={`pet-chip pet-streak ${streak > 0 ? 'is-hot' : ''}`}>streak {streak}</span>
-        <span className="pet-chip pet-mood">anim: {petAnimationMode}</span>
-        <span className="pet-chip pet-mood">{petCompanionStyle} / {petPalette}</span>
-        <span className="pet-chip pet-mood">care: {petCareHint}</span>
-        <button className="pet-chip pet-quests-btn" onClick={onToggleMissions}>
+        <button className="shop-btn shop-btn-status" onClick={onToggleMissions}>
           quests {completedMissions}/{missions.length}
         </button>
       </div>
@@ -3728,10 +3723,6 @@ export default function CreditCardApp() {
         onFeedPet={feedPet}
         petType={petType}
         petName={petState?.identity?.name || currentUser}
-        petAnimationMode={petAnimationMode}
-        petCareHint={petCareHint}
-        petPalette={petState?.identity?.palette || 'maple'}
-        petCompanionStyle={petState?.identity?.companionStyle || 'cat'}
         petFooterHeight={petFooterHeight}
         petScalePct={petScalePct}
         petState={petState}

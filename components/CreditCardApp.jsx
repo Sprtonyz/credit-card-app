@@ -38,8 +38,6 @@ import {
   getOtherUser,
   getSurfacedSubmissionStatus,
   getSurfacedSubmissionValue,
-  getGroupedTallyBreakdownEntries,
-  getTallyBreakdownEntries,
   groupTallyBreakdownEntries,
 } from '../utils/reconciliation';
 import {
@@ -125,6 +123,7 @@ const EMPTY_DASHBOARD_METRICS = Object.freeze({
   remainingByUser: Object.freeze({}),
   userTallies: Object.freeze({}),
   assigneeTotals: Object.freeze({}),
+  tallyEntriesByAssignee: Object.freeze({}),
 });
 
 function getDaysInMonth(year, monthIndex) {
@@ -1895,10 +1894,8 @@ function getBreakdownGroupMeta(group) {
 
 function TallyBreakdownModal({
   assignee,
-  total,
   groups = [],
   macquarieExcessGroups = [],
-  macquarieExcessTotal = 0,
   undoableUngroups = [],
   onUngroupItem,
   onUndoUngroup,
@@ -1907,7 +1904,13 @@ function TallyBreakdownModal({
   const [expandedGroups, setExpandedGroups] = useState(() => new Set());
   const transactionCount = groups.reduce((sum, group) => sum + group.items.length, 0);
   const macquarieTransactionCount = macquarieExcessGroups.reduce((sum, group) => sum + group.items.length, 0);
-  const hasMacquarieExcessGroups = macquarieExcessGroups.length > 0 && macquarieExcessTotal > 0;
+  const hasMacquarieExcessGroups = macquarieExcessGroups.length > 0;
+  const ownTotal = groups.reduce((sum, group) => sum + Number(group.countedAmount || 0), 0);
+  const macquarieExcessTotal = macquarieExcessGroups.reduce(
+    (sum, group) => sum + Number(group.countedAmount || 0),
+    0
+  );
+  const displayTotal = ownTotal + macquarieExcessTotal;
   const latestUngroup = undoableUngroups[0] || null;
 
   const toggleGroup = (groupKey) => {
@@ -2021,7 +2024,7 @@ function TallyBreakdownModal({
         <div className="breakdown-header">
           <div>
             <p className="breakdown-eyebrow">{assignee} assignment total</p>
-            <h3 className="breakdown-title">${total.toFixed(2)}</h3>
+            <h3 className="breakdown-title">${displayTotal.toFixed(2)}</h3>
             <p className="breakdown-sub">
               {transactionCount} own transaction{transactionCount === 1 ? '' : 's'} across {groups.length} group
               {groups.length === 1 ? '' : 's'}
@@ -2612,14 +2615,6 @@ export default function CreditCardApp() {
   }, [currentUser, petFirebaseReady, petProfiles, petProfilesHydrated, petProfilesRemoteReady, referenceDateKey]);
 
   const usingFirebaseTransactions = Array.isArray(firebaseTransactions);
-  const sourceTransactions = useMemo(
-    () => (usingFirebaseTransactions ? firebaseTransactions : []),
-    [usingFirebaseTransactions, firebaseTransactions]
-  );
-  const transactionsById = useMemo(
-    () => Object.fromEntries((sourceTransactions || []).map((tx) => [tx.id, tx])),
-    [sourceTransactions]
-  );
   const otherUser = currentUser ? getOtherUser(currentUser) : USERS[0];
   const dayLabel = day === 0 ? 'live' : `+${day} day${day === 1 ? '' : 's'}`;
 
@@ -3148,36 +3143,25 @@ export default function CreditCardApp() {
   const activeTallyBreakdownGroups = useMemo(
     () =>
       breakdownUser
-        ? getGroupedTallyBreakdownEntries(
-          submissions,
-          transactionsById,
-          breakdownUser,
-          statementCycleReferenceDateKey,
-          USERS,
+        ? groupTallyBreakdownEntries(
+          dashboardMetrics.tallyEntriesByAssignee[breakdownUser] || [],
           tallyUngroups,
-          tallyDateRange
+          breakdownUser
         )
       : [],
-    [breakdownUser, submissions, transactionsById, statementCycleReferenceDateKey, tallyUngroups, tallyDateRange]
+    [breakdownUser, dashboardMetrics.tallyEntriesByAssignee, tallyUngroups]
   );
   const activeMacquarieExcessGroups = useMemo(() => {
     if (!breakdownUser || macTally <= 0) return [];
 
     const macquarieExcessEntries = buildMacquarieExcessEntryShares(
-      getTallyBreakdownEntries(
-        submissions,
-        transactionsById,
-        'Macquarie',
-        statementCycleReferenceDateKey,
-        USERS,
-        tallyDateRange
-      ),
+      dashboardMetrics.tallyEntriesByAssignee.Macquarie || [],
       breakdownUser,
       macTally
     );
 
     return groupTallyBreakdownEntries(macquarieExcessEntries);
-  }, [breakdownUser, macTally, submissions, transactionsById, statementCycleReferenceDateKey, tallyDateRange]);
+  }, [breakdownUser, dashboardMetrics.tallyEntriesByAssignee, macTally]);
   const activeTallyUndoRecords = useMemo(
     () => (breakdownUser ? getUndoableTallyUngroupRecords(tallyUngroups, breakdownUser) : []),
     [breakdownUser, tallyUngroups]
@@ -3659,7 +3643,7 @@ export default function CreditCardApp() {
           submissions={submissions}
           assignmentComments={assignmentComments}
           currentUser={currentUser}
-          referenceDateKey={statementCycleReferenceDateKey}
+          referenceDateKey={referenceDateKey}
           onAssign={handleAssign}
           onSaveComment={saveAssignmentComment}
         />
@@ -3694,10 +3678,8 @@ export default function CreditCardApp() {
       {breakdownUser && (
         <TallyBreakdownModal
           assignee={breakdownUser}
-          total={(userTallies[breakdownUser] || 0) + (macquarieExcessShares[breakdownUser] || 0)}
           groups={activeTallyBreakdownGroups}
           macquarieExcessGroups={activeMacquarieExcessGroups}
-          macquarieExcessTotal={macquarieExcessShares[breakdownUser] || 0}
           undoableUngroups={activeTallyUndoRecords}
           onUngroupItem={handleTallyBreakdownUngroup}
           onUndoUngroup={handleUndoTallyBreakdownUngroup}

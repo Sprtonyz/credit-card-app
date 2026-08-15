@@ -1,6 +1,9 @@
-import { getAssigneeContributionRatio, getTransactionReferenceDateKey, isVisibleForUser } from './reconciliation.js';
+import {
+  getTallyBreakdownEntries,
+  getTransactionReferenceDateKey,
+  isVisibleForUser,
+} from './reconciliation.js';
 import { formatLocalDate } from './simulationDate.js';
-import { isTransactionWithinTallyDateRange } from './tallyCycle.js';
 
 export function normalizeFirebaseTransaction(id, tx) {
   const amount = Number(tx.amount) || 0;
@@ -243,22 +246,30 @@ export function buildDashboardMetrics({
   const userTallies = Object.fromEntries(activeUsers.map((user) => [user, 0]));
   const assigneeTotals = Object.fromEntries((assignees || []).map((assignee) => [assignee, 0]));
   const tallyTargets = [...new Set([...activeUsers, ...(assignees || [])])];
+  const tallyEntriesByAssignee = Object.fromEntries(
+    tallyTargets.map((target) => [
+      target,
+      getTallyBreakdownEntries(
+        submissions,
+        transactionsById,
+        target,
+        referenceDateKey,
+        activeUsers,
+        tallyDateRange
+      ),
+    ])
+  );
 
-  Object.entries(submissions || {}).forEach(([transactionId, submission]) => {
-    const transaction = transactionsById[transactionId];
-    if (!transaction || !isTransactionWithinTallyDateRange(transaction, tallyDateRange)) return;
-
-    tallyTargets.forEach((target) => {
-      const contributionRatio = getAssigneeContributionRatio(submission, target, referenceDateKey, activeUsers);
-      if (contributionRatio <= 0) return;
-
-      const amount = Number(transaction.amount || 0) * contributionRatio;
-      if (activeUsers.includes(target)) {
-        userTallies[target] = (userTallies[target] || 0) + amount;
-      } else {
-        assigneeTotals[target] = (assigneeTotals[target] || 0) + amount;
-      }
-    });
+  tallyTargets.forEach((target) => {
+    const amount = tallyEntriesByAssignee[target].reduce(
+      (sum, entry) => sum + Number(entry.countedAmount || 0),
+      0
+    );
+    if (activeUsers.includes(target)) {
+      userTallies[target] = amount;
+    } else {
+      assigneeTotals[target] = amount;
+    }
   });
 
   return {
@@ -267,6 +278,7 @@ export function buildDashboardMetrics({
     remainingByUser,
     userTallies,
     assigneeTotals,
+    tallyEntriesByAssignee,
   };
 }
 
@@ -275,18 +287,14 @@ export function countVisibleTransactions(transactions, submissions, user, refere
 }
 
 function sumAssignedTransactions(submissions, transactionsById, assignee, referenceDateKey, tallyDateRange = null) {
-  return Object.entries(submissions).reduce((acc, [transactionId, submission]) => {
-    const transaction = transactionsById[transactionId];
-    const contributionRatio = getAssigneeContributionRatio(submission, assignee, referenceDateKey);
-    if (
-      !transaction ||
-      contributionRatio <= 0 ||
-      !isTransactionWithinTallyDateRange(transaction, tallyDateRange)
-    ) {
-      return acc;
-    }
-    return acc + Number(transaction.amount || 0) * contributionRatio;
-  }, 0);
+  return getTallyBreakdownEntries(
+    submissions,
+    transactionsById,
+    assignee,
+    referenceDateKey,
+    undefined,
+    tallyDateRange
+  ).reduce((sum, entry) => sum + Number(entry.countedAmount || 0), 0);
 }
 
 export function buildUserTallies(users, submissions, transactionsById, referenceDateKey, tallyDateRange = null) {

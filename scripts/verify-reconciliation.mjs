@@ -13,20 +13,25 @@ const source = fs
   )
   .replace(
     /import\s+\{\s*isTransactionWithinTallyDateRange\s*\}\s+from\s+'\.\/tallyCycle(?:\.js)?';/,
-    'const isTransactionWithinTallyDateRange = () => true;'
+    `const isTransactionWithinTallyDateRange = (transaction, range) => {
+      if (!range?.startKey || !range?.endKey) return true;
+      const dateKey = transaction?.date || transaction?.uploadedDay || null;
+      return Boolean(dateKey && dateKey >= range.startKey && dateKey <= range.endKey);
+    };`
   )
   .replace(/export const PROFILE_NAMES = /, 'const PROFILE_NAMES = ')
   .replace(/export const ASSIGNMENT_RULES_VERSION = /, 'const ASSIGNMENT_RULES_VERSION = ')
   .replace(/export function /g, 'function ');
 
 const loadReconciliation = new Function(
-  `${source}\nreturn { isVisibleForUser, getAssigneeContributionRatio, getSurfacedSubmissionStatus, getSubmissionStatus, groupTallyBreakdownEntries, getGroupedTallyBreakdownEntries };`
+  `${source}\nreturn { isVisibleForUser, getAssigneeContributionRatio, getSurfacedSubmissionStatus, getSubmissionStatus, getTallyBreakdownEntries, groupTallyBreakdownEntries, getGroupedTallyBreakdownEntries };`
 );
 const {
   isVisibleForUser,
   getAssigneeContributionRatio,
   getSurfacedSubmissionStatus,
   getSubmissionStatus,
+  getTallyBreakdownEntries,
   groupTallyBreakdownEntries,
   getGroupedTallyBreakdownEntries,
 } = loadReconciliation();
@@ -530,6 +535,81 @@ run('keeps manually ungrouped tally rows out of fuzzy groups', () => {
   assertEqual(grouped[0].manuallyUngrouped, true, 'ungrouped flag');
   assertEqual(grouped[1].desc, 'UNIQLO', 'remaining fuzzy group title');
   assertEqual(grouped[1].itemCount, 2, 'remaining group count');
+});
+
+run('keeps historical-cycle breakdowns aligned with current assignment truth for every user', () => {
+  const users = ['Tony', 'Nugs'];
+  const referenceDateKey = '2026-08-15';
+  const previousCycle = {
+    startKey: '2026-07-13',
+    endKey: '2026-08-12',
+  };
+  const submissions = {
+    'nugs-large': {
+      Tony: { value: 'Nugs', dateKey: '2026-07-20', rulesVersion: 2 },
+      Nugs: { value: 'Nugs', dateKey: '2026-07-20', rulesVersion: 2 },
+    },
+    'nugs-cafe': {
+      Tony: { value: 'Nugs', dateKey: '2026-08-10', rulesVersion: 2 },
+      Nugs: { value: 'Nugs', dateKey: '2026-08-10', rulesVersion: 2 },
+    },
+    'nugs-coffee': {
+      Tony: { value: 'Nugs', dateKey: '2026-08-10', rulesVersion: 2 },
+      Nugs: { value: 'Nugs', dateKey: '2026-08-10', rulesVersion: 2 },
+    },
+    'tony-own': {
+      Tony: { value: 'Tony', dateKey: '2026-07-14', rulesVersion: 2 },
+      Nugs: { value: 'Tony', dateKey: '2026-07-14', rulesVersion: 2 },
+    },
+    split: {
+      Tony: { value: 'Split', dateKey: '2026-08-01', rulesVersion: 2 },
+      Nugs: { value: 'Split', dateKey: '2026-08-01', rulesVersion: 2 },
+    },
+    'outside-cycle': {
+      Tony: { value: 'Nugs', dateKey: '2026-08-14', rulesVersion: 2 },
+      Nugs: { value: 'Nugs', dateKey: '2026-08-14', rulesVersion: 2 },
+    },
+  };
+  const transactionsById = {
+    'nugs-large': { id: 'nugs-large', desc: 'LARGE NUGS PURCHASE', amount: 623.6, date: '2026-07-25' },
+    'nugs-cafe': { id: 'nugs-cafe', desc: 'LITTLE BYRD CAFE ASCOT VALE AUS', amount: 32.5, date: '2026-08-01' },
+    'nugs-coffee': { id: 'nugs-coffee', desc: 'PARLANCE COFFEE MELBOURNE AUS', amount: 4.95, date: '2026-08-05' },
+    'tony-own': { id: 'tony-own', desc: 'TONY PURCHASE', amount: 100, date: '2026-07-14' },
+    split: { id: 'split', desc: 'SHARED PURCHASE', amount: 90, date: '2026-07-30' },
+    'outside-cycle': { id: 'outside-cycle', desc: 'NEXT CYCLE', amount: 500, date: '2026-08-14' },
+  };
+
+  const expectedTotals = {
+    Tony: 160,
+    Nugs: 691.05,
+  };
+
+  users.forEach((user) => {
+    const groups = getGroupedTallyBreakdownEntries(
+      submissions,
+      transactionsById,
+      user,
+      referenceDateKey,
+      users,
+      {},
+      previousCycle
+    );
+    const total = groups.reduce((sum, group) => sum + group.countedAmount, 0);
+
+    assertEqual(Number(total.toFixed(2)), expectedTotals[user], `${user} historical-cycle total`);
+  });
+
+  const rewoundGroups = getGroupedTallyBreakdownEntries(
+    submissions,
+    transactionsById,
+    'Nugs',
+    '2026-07-15',
+    users,
+    {},
+    previousCycle
+  );
+  const rewoundTotal = rewoundGroups.reduce((sum, group) => sum + group.countedAmount, 0);
+  assertEqual(Number(rewoundTotal.toFixed(2)), 0, 'rewound assignment truth demonstrates the former bug');
 });
 
 console.log('reconciliation verification passed');
